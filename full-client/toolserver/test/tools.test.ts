@@ -132,9 +132,17 @@ describe("navigation and observation", () => {
     await f.tools.call("go_to", { x: 3, y: 64, z: -2 }); expect(f.requests.at(-1)?.body).toEqual({ text: "#goto 3 64 -2" });
   });
   test("arrival is horizontal and emitted once", async () => {
-    const f = await fixture(); await f.tools.call("go_to", { x: 5, y: 100, z: 0 });
-    f.state.pos.x = 4; await f.body.poll();
+    const f = await fixture(); await f.tools.call("go_to", { x: 5, z: 0 });
+    f.state.pos.x = 4; f.state.pos.y += 30; await f.body.poll();
     expect(f.body.events.consume()).toContain("arrived"); await f.body.poll(); expect(f.body.events.consume()).not.toContain("arrived");
+  });
+  test("a goal with a height is not reached from far above it", async () => {
+    const f = await fixture(); const surface = f.state.pos.y;
+    await f.tools.call("go_to", { x: 5, y: surface - 40, z: 0 });
+    f.state.pos.x = 5; await f.body.poll();
+    expect(f.body.events.consume()).not.toContain("arrived");
+    f.state.pos.y = surface - 39; await f.body.poll();
+    expect(f.body.events.consume()).toContain("arrived");
   });
   test("stopped short after four seconds without movement", async () => {
     const f = await fixture(); await f.tools.call("go_to", { x: 10, z: 0 });

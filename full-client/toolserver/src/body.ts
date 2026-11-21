@@ -1,8 +1,10 @@
 import { Events, LogTail } from "./events.ts";
 import { angles, hostileEntity, nonempty, playerEntity, type Config, type Entity, type Position, type Stack, type State, Synapse } from "./synapse.ts";
 
+/** A destination. `y` is present only when the goal names a height, as in `#goto x y z`. */
+export interface Goal { x: number; z: number; y?: number }
 export interface Navigation {
-  description: string; target?: Position; follow?: string;
+  description: string; target?: Goal; follow?: string;
   lastPos: Position; lastMoved: number; reported: boolean;
 }
 export interface Reflexes { auto_eat: boolean; eat_below: number; when_attacked: "auto" | "fight" | "flee" | "nothing" }
@@ -77,12 +79,16 @@ export class Body {
     if (!nav || nav.reported || this.combat || this.fleeing) return;
     if (nav.follow) {
       const player = this.entities.find(e => playerEntity(e) && e.name === nav.follow);
-      if (player) nav.target = { x: player.pos[0], y: player.pos[1], z: player.pos[2] };
+      if (player) nav.target = { x: player.pos[0], z: player.pos[2] };
     }
     if (Math.hypot(state.pos.x - nav.lastPos.x, state.pos.y - nav.lastPos.y, state.pos.z - nav.lastPos.z) > 0.15) {
       nav.lastPos = { ...state.pos }; nav.lastMoved = this.now();
     }
-    const distance = nav.target ? Math.hypot(state.pos.x - nav.target.x, state.pos.z - nav.target.z) : undefined;
+    // A goal with a height is not reached by standing above or below it: an
+    // underground destination must not report arrival from the surface.
+    const distance = nav.target
+      ? Math.hypot(state.pos.x - nav.target.x, state.pos.z - nav.target.z, nav.target.y === undefined ? 0 : state.pos.y - nav.target.y)
+      : undefined;
     if (distance !== undefined && distance <= 2) {
       this.events.add("arrived", { goal: nav.description }); nav.reported = true;
     } else if (this.now() - nav.lastMoved >= 4000) {
@@ -90,7 +96,7 @@ export class Body {
       nav.reported = true;
     }
   }
-  async navigate(command: string, target?: Position, follow?: string) {
+  async navigate(command: string, target?: Goal, follow?: string) {
     const state = await this.api.state();
     await this.api.chat(command);
     if (this.combat || this.fleeing) await this.api.chat("#pause");

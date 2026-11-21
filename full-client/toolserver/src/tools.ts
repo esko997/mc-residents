@@ -99,7 +99,7 @@ export class Tools {
       case "wait": return body.events.wait(args.seconds, args.for, signal);
       case "go_to": {
         const command = `#goto ${args.x} ${args.y === undefined ? "" : `${args.y} `}${args.z}`;
-        await body.navigate(command, { x: args.x, y: args.y ?? body.state?.pos.y ?? 0, z: args.z });
+        await body.navigate(command, { x: args.x, z: args.z, ...(args.y === undefined ? {} : { y: args.y }) });
         return `Started ${command}.`;
       }
       case "mine": {
