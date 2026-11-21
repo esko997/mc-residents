@@ -462,7 +462,10 @@ export class Body {
         await this.lookAt({ x: crumb.x, y: state.eye.y, z: crumb.z }, state);
         rescue.lastAim = this.now();
       }
-      this.rescueMove(rescue, { ...(crumb ? { forward: true } : {}), jump: true, sprint: true, ticks: 5 });
+      // Lava only lifts a held jump about 0.04 blocks a tick; 5-tick pulses
+      // sank back between polls and failed 10 s in a row from a 1-deep pool.
+      // A 20-tick hold climbed out in one press, 4 of 4 live.
+      this.rescueMove(rescue, { ...(crumb ? { forward: true } : {}), jump: true, sprint: true, ticks: 20 });
       return;
     }
     if (rescue.bucketSlot === undefined) {

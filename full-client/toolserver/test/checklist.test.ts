@@ -214,7 +214,7 @@ test("A12 lava rescue jumps and sprints toward the last safe crumb until out", a
   const f = await fixture(); await f.body.poll(); moveTo(f, 2, 64, 0);
   Object.assign(f.state, { inLava: true, onFire: true, onGround: false });
   await f.body.poll(); await f.body.api.state();
-  expect(f.requests.find(r => r.body.action === "move")?.body).toEqual({ action: "move", forward: true, jump: true, sprint: true, ticks: 5 });
+  expect(f.requests.find(r => r.body.action === "move")?.body).toEqual({ action: "move", forward: true, jump: true, sprint: true, ticks: 20 });
   expect(f.requests.find(r => r.body.action === "look")?.body.yaw as number).toBeCloseTo(90);
   f.tick(250); await f.body.poll(); await f.body.api.state(); expect(f.requests.filter(r => r.body.action === "move")).toHaveLength(2);
   Object.assign(f.state, { inLava: false, onFire: false, onGround: true });
