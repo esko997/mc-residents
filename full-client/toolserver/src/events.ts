@@ -2,8 +2,9 @@ import { open, stat, type FileHandle } from "node:fs/promises";
 
 export interface ResidentEvent { seq: number; type: string; [key: string]: unknown }
 const waking: Record<string, true> = { chat: true, hurt: true, died: true, player_near: true, arrived: true, stopped_short: true, navigation_stopped: true, reflex: true };
-/** Lines that carry coordinates and a reason; the rest stay short so eight of them fit a tool result. */
-const long: Record<string, true> = { stopped_short: true, navigation_stopped: true, died: true, reflex: true };
+/** Lines that carry coordinates and a reason; the rest stay at 91 so eight of them fit a tool result.
+ * navigation_stopped ends with how often it has happened, after a goal, a reason and two positions. */
+const lineLimit: Record<string, number> = { stopped_short: 160, navigation_stopped: 200, died: 160, reflex: 160 };
 export class Events {
   private sequence = 0;
   private seen = 0;
@@ -43,7 +44,7 @@ export class Events {
   private line(event: ResidentEvent) {
     const { seq, type, ...fields } = event;
     const text = Object.entries(fields).map(([key, value]) => `${key}=${String(value).replace(/\s+/g, " ")}`).join(" ");
-    return `${seq} ${type}${text ? ` ${text}` : ""}`.slice(0, long[type] ? 160 : 91);
+    return `${seq} ${type}${text ? ` ${text}` : ""}`.slice(0, lineLimit[type] ?? 91);
   }
   /** The newest eight events after `seq`, as lines, without marking them shown. */
   since(seq: number): string[] {

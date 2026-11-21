@@ -405,9 +405,20 @@ test("status shows air and burning/lava, and new rescues can be disabled", async
 });
 
 const chats = (f: Fixture) => f.requests.filter(r => r.path === "/chat").map(r => r.body.text);
-async function startDrowning(f: Fixture) {
-  Object.assign(f.state, { underwater: true, inWater: true, onGround: false, air: 40, maxAir: 300 });
+async function startDrowning(f: Fixture, air = 40) {
+  Object.assign(f.state, { underwater: true, inWater: true, onGround: false, air, maxAir: 300 });
   await f.body.poll(); await f.body.api.state();
+}
+/** Under water with air just below half, then three seconds later the head is out and the air is back. */
+async function breath(f: Fixture) {
+  await startDrowning(f, 148);
+  Object.assign(f.state, { underwater: false, air: 300 });
+  f.tick(3000); await f.body.poll();
+  return f.body.events.consume();
+}
+async function lavaDip(f: Fixture) {
+  Object.assign(f.state, { inLava: true, onFire: true, onGround: false }); await f.body.poll(); await f.body.api.state();
+  Object.assign(f.state, { inLava: false, onFire: false, onGround: true }); f.tick(1000); await f.body.poll();
 }
 async function reachDryGround(f: Fixture, x: number, y: number, z: number) {
   moveTo(f, x, y, z); Object.assign(f.state, { underwater: false, inWater: false, onGround: true, air: 300 });
@@ -444,31 +455,179 @@ test("a death recorder that fails is reported and does not keep held keys down",
   expect(f.body.error).toBeUndefined();
 });
 
-test("A13 a go_to that led into deep water is stopped after the rescue, not resumed", async () => {
+test("A13 a breath during a go_to holds the head up until the air is back, then resumes the same trip", async () => {
   const f = await fixture(); await f.body.poll();
-  await f.tools.call("go_to", { x: 400, y: 60, z: -621 });
-  moveTo(f, 387.5, 61, -617.5); await startDrowning(f);
-  await reachDryGround(f, 388.3, 64, -617.2);
-  expect(chats(f)).toEqual(["#goto 400 60 -621", "#pause", "#stop"]);
-  expect(f.body.navigation).toBeUndefined();
+  await f.tools.call("go_to", { x: 400, z: -621 });
+  moveTo(f, 30, 62, -40); await startDrowning(f, 148);
+  f.body.events.consume();
+  // Head out, air still short of 80%: he is held up where he is, not sent back to the shore crumb at 0,0.
+  Object.assign(f.state, { underwater: false, air: 239 });
+  f.tick(1000); await f.body.poll(); await f.body.api.state();
+  expect(chats(f)).toEqual(["#goto 400 -621", "#pause"]);
+  expect(f.body.events.consume()).not.toContain("surface rescue ended");
+  const moves = f.requests.filter(r => r.body.action === "move").map(r => r.body);
+  expect(moves).toHaveLength(2);
+  for (const move of moves) expect(move).toEqual({ action: "move", jump: true, ticks: 5 });
+  expect(f.requests.some(r => r.body.action === "look")).toBe(false);
+  f.state.air = 240; f.tick(2400); await f.body.poll();
+  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#resume"]);
+  expect(f.requests.filter(r => r.body.action === "release")).toHaveLength(1);
+  expect(f.body.navigation?.description).toBe("goto 400 -621");
   const events = f.body.events.consume();
-  expect(events).toContain("surface rescue ended");
-  expect(events).toContain("navigation_stopped goal=goto 400 60 -621 reason=the path led into deep water you=388,64,-618 remaining=12.9");
-  expect(events).not.toContain("times=");
+  expect(events).toContain("surface rescue ended after 3.4 s: took a breath, air 148 -> 240; trip resumed");
+  expect(events).not.toContain("navigation_stopped");
+  // The stall timer starts over at the resume: 3.4 s of standing still for air is not a stop-short.
+  f.tick(3999); await f.body.poll();
+  expect(f.body.events.consume()).not.toContain("stopped_short");
+  f.tick(1); await f.body.poll();
+  expect(f.body.events.consume()).toContain("stopped_short distance=688.8");
+});
+
+test("A13 breaths that come with 8 blocks of progress keep the trip; three that do not stop it", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("go_to", { x: 100, z: 0 });
+  for (const x of [0, 5, 9]) { // 9 blocks closer over three breaths
+    moveTo(f, x, 62, 0);
+    const events = await breath(f);
+    expect(events).toContain("trip resumed"); expect(events).not.toContain("navigation_stopped");
+  }
+  expect(chats(f)).toEqual(["#goto 100 0", "#pause", "#resume", "#pause", "#resume", "#pause", "#resume"]);
+  expect(f.body.navigation?.description).toBe("goto 100 0");
+  moveTo(f, 12, 62, 0); // the last three breaths were at 5, 9 and 12: 7 blocks
+  const events = await breath(f);
+  expect(events).toContain("surface rescue ended after 3 s: took a breath, air 148 -> 300");
+  expect(events).not.toContain("trip resumed");
+  expect(events).toContain("navigation_stopped goal=goto 100 0 reason=needed air 3 times in 2 minutes and got only 7 closer you=12,62,0 remaining=88");
+  expect(chats(f).slice(-2)).toEqual(["#pause", "#stop"]);
+  expect(f.body.navigation).toBeUndefined();
+});
+
+test("A13 the third breath in two minutes with no progress stops the go_to; the next go_to starts a fresh count", async () => {
+  const f = await fixture(); await f.body.poll();
+  moveTo(f, 3.5, 62.4, 0.5);
+  await f.tools.call("go_to", { x: 27, z: 0 });
+  expect(await breath(f)).toContain("trip resumed");
+  expect(await breath(f)).toContain("trip resumed");
+  const third = await breath(f);
+  expect(third).toContain("navigation_stopped goal=goto 27 0 reason=needed air 3 times in 2 minutes and got no closer you=3,62,0 remaining=23.5");
+  expect(third).not.toContain("times=");
+  expect(chats(f)).toEqual(["#goto 27 0", "#pause", "#resume", "#pause", "#resume", "#pause", "#stop"]);
+  expect(f.body.navigation).toBeUndefined();
   f.tick(4000); await f.body.poll();
   expect(f.body.events.consume()).not.toContain("stopped_short");
+  await f.tools.call("go_to", { x: 27, z: 0 });
+  for (let i = 0; i < 2; i++) {
+    const events = await breath(f);
+    expect(events).toContain("trip resumed"); expect(events).not.toContain("navigation_stopped");
+  }
+  expect(f.body.navigation?.description).toBe("goto 27 0");
+  expect(await breath(f)).toContain("reason=needed air 3 times in 2 minutes and got no closer you=3,62,0 remaining=23.5 times=2 in ten minutes");
+  expect(chats(f).filter(text => text === "#stop")).toHaveLength(2);
+});
+
+test("A13 explore is stopped on the third breath within two minutes; older breaths do not count", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("explore");
+  expect(await breath(f)).toContain("trip resumed");
+  expect(await breath(f)).toContain("trip resumed");
+  f.tick(121_000); moveTo(f, 40, 62, 0); // still swimming; the first two breaths are now too old
+  expect(await breath(f)).toContain("trip resumed");
+  expect(await breath(f)).toContain("trip resumed");
+  expect(chats(f)).not.toContain("#stop");
+  const events = await breath(f);
+  expect(events).toContain("navigation_stopped goal=explore reason=needed air 3 times in 2 minutes; no destination to measure progress by you=40,62,0");
+  expect(events).not.toContain("remaining=");
+  expect(chats(f).filter(text => text === "#resume")).toHaveLength(4);
+  expect(chats(f).slice(-2)).toEqual(["#pause", "#stop"]);
+  expect(f.body.navigation).toBeUndefined();
+});
+
+test("A13 a breath that cannot get the head out in 12 s stops the trip, and the shore rescue takes over", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("go_to", { x: 400, z: -621 });
+  await startDrowning(f);
+  // Past six seconds a rescue without a trip turns for the shore crumb; a breath only goes up.
+  f.state.air = 38; f.tick(6500); await f.body.poll(); await f.body.api.state();
+  expect(f.requests.filter(r => r.body.action === "move").at(-1)?.body).toEqual({ action: "move", jump: true, ticks: 5 });
+  expect(f.requests.some(r => r.body.action === "look")).toBe(false);
+  f.state.air = 35; f.tick(5500); await f.body.poll();
+  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#stop"]);
+  expect(f.body.navigation).toBeUndefined();
+  let events = f.body.events.consume();
+  expect(events).toContain("surface rescue ended after 12 s: timed out, air 40 -> 35");
+  expect(events).toContain("navigation_stopped goal=goto 400 -621 reason=could not keep your head above water for 12 s (air 35/300) you=0,64,0 remaining=738.7");
+  await f.body.poll(); await f.body.api.state();
+  events = f.body.events.consume();
+  expect(events).toContain("surface rescue started: air 35/300");
+  expect(chats(f).slice(3)).toEqual(["#pause"]);
+  f.tick(6000); await f.body.poll(); await f.body.api.state();
+  expect(f.requests.filter(r => r.body.action === "move").at(-1)?.body).toEqual({ action: "move", forward: true, jump: true, ticks: 5 });
+});
+
+test("A13 with the trip already reported as stopped short, the rescue makes for the shore and stops Baritone", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("go_to", { x: 50, z: 0 });
+  f.tick(4000); await f.body.poll();
+  expect(f.body.events.consume()).toContain("stopped_short distance=50");
+  moveTo(f, 3, 62, 0); await startDrowning(f);
+  Object.assign(f.state, { underwater: false, air: 300 });
+  f.tick(600); await f.body.poll(); await f.body.api.state();
+  // Air is back, but with no trip under way he is not left floating: he swims for the crumb at 0,0.
+  expect(f.body.events.consume()).not.toContain("surface rescue ended");
+  expect(f.requests.filter(r => r.body.action === "move").at(-1)?.body).toEqual({ action: "move", forward: true, jump: true, ticks: 5 });
+  expect(f.requests.filter(r => r.body.action === "look").at(-1)?.body.yaw as number).toBeCloseTo(90);
+  moveTo(f, 0.5, 64, 0); Object.assign(f.state, { inWater: false, onGround: true });
+  f.tick(1000); await f.body.poll();
+  expect(chats(f)).toEqual(["#goto 50 0", "#pause", "#stop"]);
+  expect(f.body.navigation).toBeUndefined();
+  const events = f.body.events.consume();
+  expect(events).toContain("out of the water after 1.6 s, air 40 -> 300");
+  expect(events).toContain("navigation_stopped goal=goto 50 0 reason=the path led into deep water you=0,64,0 remaining=49.5");
   expect(toolText(await f.tools.call("status"))).toContain("Navigation: none");
 });
 
-test("A13 the second rescue on one goal within ten minutes says so; other goals and later rescues count afresh", async () => {
+test("A13 a tool call during a breath hands the body over with the trip resumed; stop then sends one stop", async () => {
   const f = await fixture(); await f.body.poll();
-  const rescued = async (goal: { x: number; z: number }) => {
-    await f.tools.call("go_to", goal); await startDrowning(f); await reachDryGround(f, 0, 64, 0);
-    return f.body.events.consume();
-  };
+  await f.tools.call("go_to", { x: 400, z: -621 });
+  await startDrowning(f, 148);
+  const looked = await f.tools.call("look", { yaw: 10, pitch: 0 });
+  expect(looked.isError).toBe(false);
+  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#resume"]);
+  expect(f.body.navigation?.description).toBe("goto 400 -621");
+  const events = toolText(looked);
+  expect(events).toContain("surface rescue ended after 0 s: interrupted by your action");
+  expect(events).not.toContain("navigation_stopped");
+  // Still under water with little air: the next poll takes another breath rather than leaving him to drown.
+  await f.body.poll(); await f.body.api.state();
+  expect(chats(f).slice(3)).toEqual(["#pause"]);
+  const result = await f.tools.call("stop");
+  expect(toolText(result)).toContain("Stopped navigation and released keys.");
+  expect(toolText(result)).not.toContain("navigation_stopped");
+  expect(chats(f).slice(4)).toEqual(["#resume", "#stop"]);
+  expect(f.body.navigation).toBeUndefined();
+});
+
+test("A12 lava taking over from a breath stops the trip once and leaves Baritone unpaused", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("go_to", { x: 400, z: -621 });
+  await startDrowning(f, 148);
+  Object.assign(f.state, { inLava: true, onFire: true }); f.tick(500); await f.body.poll(); await f.body.api.state();
+  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#stop", "#pause"]);
+  expect(f.body.navigation).toBeUndefined();
+  Object.assign(f.state, { inLava: false, onFire: false, underwater: false, inWater: false, onGround: true, air: 300 });
+  f.tick(1000); await f.body.poll();
+  expect(chats(f).slice(4)).toEqual(["#resume"]);
+  const events = f.body.events.consume();
+  expect(events).toContain("surface rescue ended after 0.5 s: superseded by lava");
+  expect(events.match(/navigation_stopped/g)).toHaveLength(1);
+});
+
+test("A12 the second lava rescue on one goal within ten minutes says so; other goals and later rescues count afresh", async () => {
+  const f = await fixture(); await f.body.poll();
+  const rescued = async (goal: { x: number; z: number }) => { await f.tools.call("go_to", goal); await lavaDip(f); return f.body.events.consume(); };
   expect(await rescued({ x: 400, z: -621 })).not.toContain("times=");
   f.tick(60_000);
-  expect(await rescued({ x: 400, z: -621 })).toContain("navigation_stopped goal=goto 400 -621 reason=the path led into deep water you=0,64,0 remaining=738.7 times=2 in ten minutes");
+  expect(await rescued({ x: 400, z: -621 })).toContain("navigation_stopped goal=goto 400 -621 reason=the path led into lava you=0,64,0 remaining=738.7 times=2 in ten minutes");
   expect(await rescued({ x: 50, z: 0 })).not.toContain("times=");
   f.tick(600_000);
   const later = await rescued({ x: 400, z: -621 });
@@ -506,7 +665,7 @@ test("A23 a retreat during a go_to still pauses and resumes the same navigation"
   expect(f.body.events.consume()).toContain("stopped_short distance=738.7");
 });
 
-test("A13 death during a rescue on a go_to stops Baritone once and never resumes it", async () => {
+test("A13 death during a breath on a go_to stops Baritone once and never resumes it", async () => {
   const f = await fixture(); await f.body.poll();
   await f.tools.call("go_to", { x: 400, z: -621 });
   await startDrowning(f);
@@ -521,7 +680,7 @@ test("A13 death during a rescue on a go_to stops Baritone once and never resumes
   expect(chats(f)).toHaveLength(3);
 });
 
-test("A13 a go_to given during the rescue is a new path and is resumed, not stopped", async () => {
+test("A13 a go_to given during a breath is a new trip: it is resumed, and the breath is not counted against it", async () => {
   const f = await fixture(); await f.body.poll();
   await f.tools.call("go_to", { x: 400, z: -621 });
   await startDrowning(f);
@@ -529,7 +688,12 @@ test("A13 a go_to given during the rescue is a new path and is resumed, not stop
   await reachDryGround(f, 1, 64, 1);
   expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#goto -30 8", "#pause", "#resume"]);
   expect(f.body.navigation?.description).toBe("goto -30 8");
-  expect(f.body.events.consume()).not.toContain("navigation_stopped");
+  const events = f.body.events.consume();
+  expect(events).toContain("took a breath, air 40 -> 300; trip resumed"); expect(events).not.toContain("navigation_stopped");
+  // Had that breath counted, the second of these would be the third; the new trip gets its own three.
+  expect(await breath(f)).toContain("trip resumed");
+  expect(await breath(f)).toContain("trip resumed");
+  expect(await breath(f)).toContain("navigation_stopped goal=goto -30 8 reason=needed air 3 times in 2 minutes and got no closer");
 });
 
 test("A13 shutdown during a rescue on a go_to sends one stop and no resume", async () => {
@@ -543,9 +707,9 @@ test("A13 shutdown during a rescue on a go_to sends one stop and no resume", asy
 test("a wait for arrival wakes when a rescue stops the navigation instead", async () => {
   const f = await fixture(); await f.body.poll();
   await f.tools.call("go_to", { x: 400, z: -621 });
-  await startDrowning(f); f.body.events.consume();
+  f.body.events.consume();
   const waiting = f.tools.call("wait", { seconds: 2, for: ["arrived", "stopped_short"] });
-  await reachDryGround(f, 0, 64, 0);
+  await lavaDip(f);
   const text = toolText(await waiting);
   expect(text).toContain("Waking event received."); expect(text).toContain("navigation_stopped goal=goto 400 -621");
 });

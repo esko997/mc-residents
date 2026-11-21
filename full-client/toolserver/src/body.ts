@@ -30,6 +30,9 @@ interface Rescue {
   rotation?: State["rotation"]; slot?: number; bucketSlot?: number; placedAt?: number;
   /** The navigation that was running when a surface or lava rescue began. */
   navigation?: Navigation;
+  /** A surface rescue that began with that navigation still under way: he
+   * comes up for air and the trip goes on, instead of making for the shore. */
+  breath?: true;
 }
 const rescuePriority: Record<RescueKind, number> = { retreat: 1, fire: 2, surface: 3, lava: 4 };
 const seconds = (ms: number) => `${Math.round(ms / 100) / 10} s`;
@@ -72,6 +75,8 @@ export class Body {
   private rescueCleanup?: Promise<void>;
   /** Per goal description, when a surface or lava rescue stopped it (body clock, last ten minutes). */
   private hazardStops = new Map<string, number[]>();
+  /** Breaths taken for one goal in the last two minutes; `left` is the distance to a fixed destination afterwards. */
+  private breaths?: { description: string; taken: { at: number; left?: number }[] };
   /** Consecutive stop-shorts of one goal from about one place; `start` is where the latest attempt began. */
   private stopShorts?: { description: string; start: Position; count: number };
   private manual = 0;
@@ -316,7 +321,7 @@ export class Body {
   async manualAction<T>(action: () => Promise<T>): Promise<T> {
     this.manual++;
     try {
-      if (this.rescue) await this.finishRescue("interrupted by your action");
+      if (this.rescue) await this.finishRescue("interrupted by your action", this.rescue.breath);
       await this.finishCombat();
       if (this.fleeing) {
         this.fleeGeneration++; this.fleeing = false;
@@ -409,6 +414,7 @@ export class Body {
       enemyId: enemy?.id, initialAir: current.air, initialMaxAir: current.maxAir,
       ...(kind === "fire" && usesControls ? { rotation: { ...current.rotation }, slot: current.selectedSlot, bucketSlot: bucket!.slot } : {}),
       ...(kind === "surface" || kind === "lava" ? { navigation: this.navigation } : {}),
+      ...(kind === "surface" && this.navigation?.reported === false ? { breath: true as const } : {}),
     };
     this.rescue = rescue;
     if (kind === "fire" && !usesControls) rescue.detail = current.dimension === "minecraft:the_nether" ? "water cannot be used in the Nether" : !this.reflexes.water_bucket ? "water bucket use is off" : "no water bucket in the hotbar";
@@ -468,6 +474,24 @@ export class Body {
     }
     if (rescue.kind === "surface") {
       if (state.underwater === undefined || state.air === undefined || state.maxAir === undefined) { await this.finishRescue("air senses disappeared"); return; }
+      if (rescue.breath) {
+        const air = `air ${rescue.initialAir} -> ${state.air}`;
+        if (state.air >= state.maxAir * 0.8) {
+          // A go_to given during the breath is another trip; it is resumed and this breath is not held against it.
+          const stuck = rescue.navigation === this.navigation ? this.breathWithoutProgress(rescue.navigation!, state) : undefined;
+          await this.finishRescue(`took a breath, ${air}${stuck || !this.navigation ? "" : "; trip resumed"}`, !stuck, stuck);
+          return;
+        }
+        if (elapsed >= 12000) {
+          await this.finishRescue(`timed out, ${air}`, false, `could not keep your head above water for 12 s (air ${state.air}/${state.maxAir})`);
+          return;
+        }
+        // Up only, and held there until the air is back: resumed at once he went
+        // under again within seconds, and live that fired a rescue every few
+        // seconds for ten minutes. The trail leads back to the shore he left.
+        if (!rescue.busy && (state.underwater || state.inWater === true)) this.rescueMove(rescue, { jump: true, ticks: 5 });
+        return;
+      }
       if (!state.underwater) {
         // Surfacing alone is not safe: left floating, he sinks and drowns again.
         // Swim for the last dry ground he stood on, head kept up, until out.
@@ -524,15 +548,36 @@ export class Body {
     const water = retrieved ? "water placed and retrieved" : "water placed but NOT picked back up; it is still flowing there";
     await this.finishRescue(`${water}; ${state.onFire === false ? "no longer burning" : "still burning"}`);
   }
-  private async finishRescue(outcome: string) {
+  /** Counts a finished breath for this trip. Returns why the trip should stop,
+   * if this is the third in two minutes without coming 8 blocks closer. */
+  private breathWithoutProgress(nav: Navigation, state: State): string | undefined {
+    const now = this.now();
+    // A followed player moves, so the distance to them says nothing about progress.
+    const left = nav.target && !nav.follow ? remaining(state.pos, nav.target) : undefined;
+    const earlier = this.breaths?.description === nav.description ? this.breaths.taken.filter(b => now - b.at <= 120_000) : [];
+    const taken = [...earlier, { at: now, left }];
+    this.breaths = { description: nav.description, taken };
+    const first = taken.at(-3);
+    if (!first) return undefined;
+    if (left === undefined || first.left === undefined) return "needed air 3 times in 2 minutes; no destination to measure progress by";
+    const closer = first.left - left;
+    if (closer >= 8) return undefined;
+    return `needed air 3 times in 2 minutes and got ${closer < 1 ? "no closer" : `only ${Math.round(closer * 10) / 10} closer`}`;
+  }
+  /** Ends the rescue. The navigation a surface or lava rescue interrupted is
+   * stopped for `reason` unless `resume` says the trip goes on. */
+  private async finishRescue(outcome: string, resume = false, reason?: string) {
     const rescue = this.rescue;
     if (!rescue) { await this.rescueCleanup; return; }
     this.rescue = undefined;
-    // Resuming would walk him back into the water or lava this path crosses.
-    // Dropped before any await, so no stopped_short is reported for it. A
-    // navigation given during the rescue is another path and resumes as usual.
-    const abandoned = rescue.navigation !== undefined && rescue.navigation === this.navigation ? rescue.navigation : undefined;
-    if (abandoned) this.navigation = undefined;
+    // Resuming would walk him back into the lava, or the water he cannot get
+    // through, that this path crosses. Dropped before any await, so no
+    // stopped_short is reported for it. A navigation given during the rescue
+    // is another path and resumes as usual.
+    const abandoned = !resume && rescue.navigation !== undefined && rescue.navigation === this.navigation ? rescue.navigation : undefined;
+    if (abandoned) { this.navigation = undefined; this.breaths = undefined; }
+    // He stood still for the rescue; a poll during the cleanup below must not take that for a stall.
+    else if (this.navigation) this.navigation.lastMoved = this.now();
     const cleanup = (async () => {
       await rescue.action;
       let failed = false;
@@ -554,12 +599,12 @@ export class Body {
         } catch { failed = true; }
       }
       this.events.add("reflex", { text: `${rescue.kind} rescue ended after ${seconds(this.now() - rescue.started)}: ${outcome}${failed ? "; cleanup incomplete" : ""}` });
-      if (abandoned) this.reportHazardStop(abandoned, rescue.kind === "lava" ? "lava" : "deep water");
+      if (abandoned) this.reportTripStopped(abandoned, reason ?? `the path led into ${rescue.kind === "lava" ? "lava" : "deep water"}`);
     })();
     this.rescueCleanup = cleanup;
     try { await cleanup; } finally { if (this.rescueCleanup === cleanup) this.rescueCleanup = undefined; }
   }
-  private reportHazardStop(nav: Navigation, hazard: string) {
+  private reportTripStopped(nav: Navigation, reason: string) {
     const now = this.now(), window = 600_000;
     for (const [goal, times] of this.hazardStops) if (now - times.at(-1)! > window) this.hazardStops.delete(goal);
     const times = [...(this.hazardStops.get(nav.description) ?? []).filter(time => now - time <= window), now];
@@ -568,7 +613,7 @@ export class Body {
     const alive = state.health > 0, here = blockOf(state.pos);
     this.events.add("navigation_stopped", {
       goal: nav.description,
-      reason: `the path led into ${hazard}${alive ? "" : " and you died there"}`,
+      reason: `${reason}${alive ? "" : " and you died there"}`,
       ...(alive ? { you: `${here.x},${here.y},${here.z}` } : {}),
       ...(alive && nav.target && !nav.follow ? { remaining: Math.round(remaining(state.pos, nav.target) * 10) / 10 } : {}),
       ...(times.length > 1 ? { times: `${times.length} in ten minutes` } : {}),
@@ -603,7 +648,10 @@ export class Body {
       }
     } else if (state.screen === "none") this.rescueBlocked = false;
     if (state.screen !== "none" || state.health <= 0 || this.manual || this.stopped) {
-      if (this.rescue) await this.finishRescue(state.health <= 0 ? "death" : state.screen !== "none" ? `screen opened: ${state.screen}` : "manual control");
+      if (this.rescue) {
+        const dead = state.health <= 0, screen = state.screen !== "none";
+        await this.finishRescue(dead ? "death" : screen ? `screen opened: ${state.screen}` : "manual control", !dead && !screen && this.rescue.breath);
+      }
       if (this.eating?.automatic || this.fleeing) {
         if (this.eating) await this.releaseMeal(this.eating);
         this.fleeGeneration++; this.fleeing = false;
