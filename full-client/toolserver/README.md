@@ -73,7 +73,8 @@ KNOWLEDGE_DB = "/home/your-user/gary-client/knowledge.sqlite"
 - `set_reflexes` — Configure `auto_eat`, `eat_below`, `when_attacked` (`auto`, `fight`, `flee`, `nothing`), and the independently switchable `surface`, `escape_fire` (both fire and lava) and `avoid_creepers` rescues. Rescue switches default to `true`.
 - `recall` — Keyword search of the resident's own notes (`memory.md`, `journal.md`, `notebook.md`, `notes/**`); never `archive/`.
 - `place_save`, `place_find`, `place_remove` — Named coordinates kept as data: private in `RESIDENT_DIR/places.json`, shared between residents in `../shared/places.json`. `place_find` lists nearest first and includes the last five deaths with their age.
-- `wiki` — Look up the vanilla Minecraft Wiki (page intro and section names, then one section); answers cached beside the knowledge database.
+
+Not registered: `src/wiki.ts` (a lookup of the vanilla Minecraft Wiki) is work in progress. The wiki describes the newest game version while the server runs 1.20.1, and it is written for keyboard and mouse; until both gaps have real answers the residents do not get it.
 
 Events that carry what the resident needs to decide for itself: `died` gives the block and dimension and that dropped items last about five minutes; `navigation_stopped` replaces a silent resume when a drowning or lava rescue interrupted a trip (goal, reason, where it stands, distance left, and a count when it recurs within ten minutes); `stopped_short` adds `attempts=N` from the third consecutive failure of the same goal from about the same place.
 

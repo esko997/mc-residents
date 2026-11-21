@@ -254,7 +254,6 @@ describe("reflexes and interactions", () => {
   });
   test("all tool text stays below 1500 characters with full inventory and event burst", async () => {
     const f = await fixture(); f.state.inventory!.main = Array.from({ length: 36 }, (_, slot) => ({ slot, count: 64, item: `mekanism:very_long_modded_material_stack_${slot}` }));
-    f.tools.wiki = { lookup: async () => "Breeding\n" + "w".repeat(1290) };
     await writeFile(join(f.dir, "memory.md"), Array.from({ length: 60 }, (_, i) => `- bread note ${i} ${"n".repeat(200)}`).join("\n"));
     const argumentsByTool: Record<string, unknown> = {
       wait: { seconds: 1 }, go_to: { x: 10, z: 10 }, mine: { block: "minecraft:stone" },
@@ -265,7 +264,7 @@ describe("reflexes and interactions", () => {
       find_item: { query: "bread" }, recipes: { item: "minecraft:bread" }, uses: { item: "minecraft:bread" },
       guide: { query: "bread" }, craft: { item: "minecraft:bread" }, note_difficulty: { text: "test" },
       recall: { query: "bread", limit: 8 }, place_save: { name: "home", note: "n".repeat(120) }, place_find: {},
-      place_remove: { name: "home" }, wiki: { query: "Breeding" },
+      place_remove: { name: "home" },
     };
     for (const tool of Object.keys(definitions)) {
       f.state.hotbar = [{ slot: 0, item: tool === "write_sign" ? "minecraft:oak_sign" : "minecraft:bread", count: 2 }];

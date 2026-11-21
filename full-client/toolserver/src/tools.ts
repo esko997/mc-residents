@@ -1,5 +1,5 @@
 import { appendFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Body } from "./body.ts";
@@ -7,7 +7,6 @@ import { hostileEntity, nonempty, playerEntity, type Stack } from "./synapse.ts"
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 import { craft } from "./craft.ts";
 import { createNotes, notesDefinitions, type Notes } from "./notes.ts";
-import { createWiki, wikiDefinition, type Wiki } from "./wiki.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -48,7 +47,6 @@ export const definitions = {
   note_difficulty: { description: "Tell body maintainers what is hard; append dated position and last error to difficulties.md.", schema: z.object({ text: z.string().min(1).max(4000) }) },
   set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
   ...notesDefinitions,
-  wiki: wikiDefinition,
 };
 export type ToolName = keyof typeof definitions;
 const knowledgeNames = ["find_item", "recipes", "craft", "uses", "guide"];
@@ -78,17 +76,13 @@ export class Tools {
   craftWaitMs = 2000;
   /** His own notes and places. Deaths are recorded as places so he can judge whether to go back. */
   readonly notes: Notes;
-  /** Replaceable, so tests never reach the network. */
-  wiki: Wiki;
   constructor(readonly body: Body, readonly knowledge?: Knowledge, private knowledgeError = "KNOWLEDGE_DB is not configured.") {
-    const { residentDir, name, knowledgeDb } = body.config;
+    const { residentDir, name } = body.config;
     this.notes = createNotes({
       residentDir, residentName: name,
       position: async () => { const state = await body.api.state(); return { ...state.pos, dimension: state.dimension }; },
     });
     body.onDeath = death => this.notes.recordDeath(death.pos, death.dimension);
-    // One cache file per resident: two tool servers never share a SQLite writer.
-    this.wiki = createWiki({ cachePath: knowledgeDb ? join(dirname(knowledgeDb), `wiki-cache-${name}.sqlite`) : undefined });
   }
   get registeredNames(): ToolName[] {
     return (Object.keys(definitions) as ToolName[]).filter(n => this.knowledge || !knowledgeNames.includes(n));
@@ -326,7 +320,6 @@ export class Tools {
       case "place_save": return this.notes.place_save(args);
       case "place_find": return this.notes.place_find(args);
       case "place_remove": return this.notes.place_remove(args);
-      case "wiki": return this.wiki.lookup(args);
       case "set_reflexes":
         Object.assign(body.reflexes, args);
         return `Reflexes: auto_eat=${body.reflexes.auto_eat}, eat_below=${body.reflexes.eat_below}, when_attacked=${body.reflexes.when_attacked}, surface=${body.reflexes.surface}, escape_fire=${body.reflexes.escape_fire}, avoid_creepers=${body.reflexes.avoid_creepers}, water_bucket=${body.reflexes.water_bucket}.`;
