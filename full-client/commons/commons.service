@@ -1,0 +1,29 @@
+# The residents' commons: one page on the home LAN to watch the residents and
+# review what they put in the commons. Runs on the game machine, next to the
+# clients it reads.
+#
+#   mkdir -p ~/.config/systemd/user ~/.config/commons
+#   cp ~/gary-client/commons/commons.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now commons
+#   journalctl --user -u commons | grep 'commons: open'    # the address, printed once
+#
+# Settings are optional; every one has a default (see README.md). Put them in
+# ~/.config/commons/env as NAME=value lines, for example CHAT_URL=http://192.168.1.233:8766/<chat token>/
+[Unit]
+Description=Residents commons web app (LAN only)
+
+[Service]
+EnvironmentFile=-%h/.config/commons/env
+WorkingDirectory=%h/gary-client/commons
+ExecStart=%h/gary-client/bin/bun src/server.ts
+Restart=on-failure
+RestartSec=5
+# It shares the machine with the game clients and the owner's own game.
+MemoryHigh=384M
+MemoryMax=512M
+CPUQuota=50%
+Nice=10
+
+[Install]
+WantedBy=default.target

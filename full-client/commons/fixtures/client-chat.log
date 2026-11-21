@@ -1,0 +1,22 @@
+[10:15:17] [Render thread/INFO]:   BeforeConstant found STRING constant: value = [{}] [CHAT] {}, stringValue = null
+[10:15:17] [Render thread/INFO]:       BeforeConstant found LdcInsn [{}] [CHAT] {}
+[10:15:17] [Render thread/INFO]:   BeforeConstant found STRING constant: value = [CHAT] {}, stringValue = null
+[10:15:17] [Render thread/INFO]:       BeforeConstant found LdcInsn [CHAT] {}
+[10:15:37] [Render thread/INFO]: [System] [CHAT] [SecurityCraft] Thanks for using SecurityCraft v1.10.1! Tip: Have a suggestion for SecurityCraft or found a bug? Join the official SecurityCraft Discord server (English only)! You'll also receive important updates and announcements regarding SecurityCraft there. https://discord.gg/U8DvBAW
+[10:15:37] [Render thread/INFO]: [System] [CHAT] Margo joined the game
+[10:15:59] [Render thread/INFO]: [System] [CHAT] [Baritone] > goto 112 119 -205
+[10:15:59] [Render thread/INFO]: [System] [CHAT] [Baritone] Going to: GoalBlock{x=112,y=119,z=-205}
+[10:16:20] [Render thread/INFO]: [System] [CHAT] [Baritone] > goto 114 119 -205
+[10:16:20] [Render thread/INFO]: [System] [CHAT] [Baritone] Going to: GoalBlock{x=114,y=119,z=-205}
+[10:16:28] [Render thread/INFO]: [System] [CHAT] [Baritone] > goto 112 119 -202
+[10:16:28] [Render thread/INFO]: [System] [CHAT] [Baritone] Going to: GoalBlock{x=112,y=119,z=-202}
+[10:16:44] [Render thread/INFO]: [System] [CHAT] [Baritone] > goto 115 120 -205
+[10:16:44] [Render thread/INFO]: [System] [CHAT] [Baritone] Going to: GoalBlock{x=115,y=120,z=-205}
+[10:16:56] [Render thread/INFO]: [System] [CHAT] [Baritone] > goto 110 120 -205
+[10:16:56] [Render thread/INFO]: [System] [CHAT] [Baritone] Going to: GoalBlock{x=110,y=120,z=-205}
+[10:17:38] [Render thread/INFO]: [System] [CHAT] [Baritone] > goto 105 115 -202
+[10:17:38] [Render thread/INFO]: [System] [CHAT] [Baritone] Going to: GoalBlock{x=105,y=115,z=-202}
+[10:17:54] [Render thread/INFO]: [System] [CHAT] [Baritone] > goto 104 116 -201
+[10:17:54] [Render thread/INFO]: [System] [CHAT] [Baritone] Going to: GoalBlock{x=104,y=116,z=-201}
+[10:18:24] [Render thread/INFO]: [System] [CHAT] [Baritone] > goto 110 120 -208
+[10:18:24] [Render thread/INFO]: [System] [CHAT] [Baritone] Going to: GoalBlock{x=110,y=120,z=-208}

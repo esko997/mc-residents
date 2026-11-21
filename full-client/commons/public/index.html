@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1e23">
+<meta name="referrer" content="no-referrer">
+<title>Commons</title>
+<link rel="stylesheet" href="app.css">
+
+<header id="top">
+  <h1>Commons</h1>
+  <p id="pulse" aria-live="polite">Reading…</p>
+</header>
+<p id="lost" role="alert" hidden>This page lost contact with the commons server. Check you are on home Wi-Fi; it keeps trying.</p>
+
+<main>
+  <section id="p-residents" class="panel" aria-labelledby="t-residents">
+    <div id="residents" class="cards"></div>
+    <div id="shared" class="strip"></div>
+  </section>
+
+  <section id="p-activity" class="panel" aria-labelledby="t-activity" hidden>
+    <div class="controls">
+      <div id="activity-who" class="seg" role="group" aria-label="Whose activity"></div>
+      <label class="check"><input type="checkbox" id="activity-quiet"> Routine lines too</label>
+    </div>
+    <div id="signs" class="cards"></div>
+    <ol id="feed" class="feed"></ol>
+    <p id="feed-empty" class="empty" hidden></p>
+  </section>
+
+  <section id="p-map" class="panel" aria-labelledby="t-map" hidden>
+    <div class="controls">
+      <div id="map-hours" class="seg" role="group" aria-label="How far back the trails go"></div>
+      <span class="seg"><button type="button" id="map-out" aria-label="Zoom out">−</button><button type="button" id="map-in" aria-label="Zoom in">+</button><button type="button" id="map-fit">Fit all</button></span>
+    </div>
+    <div id="map-box"><canvas id="map" aria-label="Map of resident trails, places and deaths"></canvas></div>
+    <p id="map-readout" class="readout">Move over the map, or tap it, to read coordinates.</p>
+    <div id="map-legend" class="strip"></div>
+    <p class="fine">Overworld only. No terrain is drawn: this is a plain coordinate grid, north (−z) up, one square per grid step shown at the top left. Trails come from a position sample every few seconds while a resident is online.</p>
+  </section>
+
+  <section id="p-notes" class="panel" aria-labelledby="t-notes" hidden>
+    <div class="controls">
+      <div id="notes-who" class="seg" role="group" aria-label="Whose notes"></div>
+      <div id="notes-what" class="seg" role="group" aria-label="Which notes"></div>
+    </div>
+    <div id="notes-body"></div>
+  </section>
+
+  <section id="p-commons" class="panel" aria-labelledby="t-commons" hidden>
+    <form id="reviewer" class="controls" autocomplete="off">
+      <label for="reviewer-name">Reviewing as</label>
+      <input id="reviewer-name" maxlength="40" placeholder="Your name" enterkeyhint="done">
+      <span id="reviewer-hint" class="fine"></span>
+    </form>
+    <div id="commons-body"></div>
+  </section>
+
+  <section id="p-chat" class="panel" aria-labelledby="t-chat" hidden>
+    <iframe id="chat-frame" title="Server chat" referrerpolicy="no-referrer"></iframe>
+  </section>
+</main>
+
+<nav id="tabs" aria-label="Panels"></nav>
+<script src="app.js"></script>
+</html>

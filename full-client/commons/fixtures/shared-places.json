@@ -1,0 +1,23 @@
+{
+  "places": [
+    {
+      "name": "Gary's cabin",
+      "note": "Cabin interior; shelter and furnace. Walk around porch exterior to the crafting table.",
+      "x": 110,
+      "y": 120,
+      "z": -208,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Cabin stream",
+      "x": 104,
+      "y": 116,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Gary",
+      "note": "Stream edge near cabin; possible site for a wheat patch."
+    }
+  ],
+  "deaths": []
+}
