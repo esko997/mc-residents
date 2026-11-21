@@ -38,7 +38,9 @@ if [ ! -f "$home/$persona_file" ]; then
 fi
 unit="gary-client@$name.service"
 log=$GAME_DIR/logs/latest.log
-mkdir -p "$base/sessions"
+mkdir -p "$base/sessions" "$base/calls"
+# Every body call, one JSON line each, for the caretaker (src/calllog.ts).
+call_log=$base/calls/$name.jsonl
 session_log=$base/sessions/$(date +%Y%m%d-%H%M)-$name.log
 
 finish() {
@@ -75,8 +77,8 @@ end=$(date -d "@$end_at" +%H:%M)
 cd "$home" || exit 1
 
 body_env() {
-  printf '{"CLIENT_LOG":"%s","SYNAPSE_URL":"%s","RESIDENT_NAME":"%s","RESIDENT_DIR":"%s","KNOWLEDGE_DB":"%s"}' \
-    "$log" "$SYNAPSE_URL" "$name" "$home" "$base/knowledge.sqlite"
+  printf '{"CLIENT_LOG":"%s","SYNAPSE_URL":"%s","RESIDENT_NAME":"%s","RESIDENT_DIR":"%s","KNOWLEDGE_DB":"%s","CALL_LOG":"%s"}' \
+    "$log" "$SYNAPSE_URL" "$name" "$home" "$base/knowledge.sqlite" "$call_log"
 }
 
 run_mind() { # <seconds> <prompt> [Codex thread to resume]
@@ -105,6 +107,7 @@ run_mind() { # <seconds> <prompt> [Codex thread to resume]
         -c "mcp_servers.body.env.RESIDENT_DIR=\"$home\""
         -c "mcp_servers.body.env.CLIENT_LOG=\"$log\""
         -c "mcp_servers.body.env.SYNAPSE_URL=\"$SYNAPSE_URL\""
+        -c "mcp_servers.body.env.CALL_LOG=\"$call_log\""
       )
       if [ -n "${3:-}" ]; then
         CODEX_HOME=$base/codex-home timeout "$1" "$base/bin/codex" exec resume \

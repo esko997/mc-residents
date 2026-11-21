@@ -24,8 +24,8 @@ export const planDefinitions = {
     schema: z.object({ name: planName, goal: oneLine(140), why: oneLine(140).optional(), steps: z.array(oneLine(120)).min(1).max(12), focus: z.boolean().optional() }).strict(),
   },
   plan_step: {
-    description: "Set the state of a step of a plan: todo, doing, done, blocked or dropped. Give either step (a step number, counting from 1) or all: true, which means every step that is still todo, doing or blocked (all: true with state dropped gives up the plan). name defaults to the plan in focus. note is kept with the step, for example why it is blocked. When no step is left todo, doing or blocked, the plan ends and moves to history.",
-    schema: z.object({ name: planName.optional(), step: z.number().int().min(1).max(12).optional(), all: z.boolean().optional(), state: stepState, note: oneLine(100).optional() }).strict()
+    description: "Set the state of a step of a plan: todo, doing, done, blocked or dropped. Give either step (a step number, counting from 1) or all: true, which means every step that is still todo, doing or blocked (all: true with state dropped gives up the plan). name defaults to the plan in focus. note is kept with the step: one short sentence, such as why it is blocked (at most 200 characters). When no step is left todo, doing or blocked, the plan ends and moves to history.",
+    schema: z.object({ name: planName.optional(), step: z.number().int().min(1).max(12).optional(), all: z.boolean().optional(), state: stepState, note: oneLine(200).optional() }).strict()
       // No full stop: the tool server adds one when it reports a schema error.
       .refine(args => (args.step !== undefined) !== (args.all === true), { message: "Give either step (a step number, counting from 1) or all: true; not both and not neither" }),
   },

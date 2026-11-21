@@ -7,6 +7,7 @@ import { configuration, Synapse } from "./synapse.ts";
 import { definitions, Tools } from "./tools.ts";
 import { openKnowledge } from "./knowledge/index.ts";
 import type { Knowledge } from "./knowledge/types.ts";
+import { withCallLog } from "./calllog.ts";
 
 async function main() {
   const config = configuration();
@@ -27,7 +28,8 @@ async function main() {
       inputSchema: { ...zodToJsonSchema(definitions[name].schema, { target: "jsonSchema7", $refStrategy: "none" }), type: "object" } as Tool["inputSchema"],
     })),
   }));
-  server.setRequestHandler(CallToolRequestSchema, (request, extra) => tools.call(request.params.name, request.params.arguments ?? {}, extra.signal));
+  const call = withCallLog(process.env.CALL_LOG, (name, args, signal) => tools.call(name, args, signal));
+  server.setRequestHandler(CallToolRequestSchema, (request, extra) => call(request.params.name, request.params.arguments ?? {}, extra.signal));
   let closing = false;
   async function shutdown() {
     if (closing) return;

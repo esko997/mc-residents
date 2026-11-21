@@ -16,7 +16,7 @@ export interface NotesOptions {
 const block = z.number().finite().transform(Math.floor);
 const placeSaveSchema = z.object({
   name: z.string().trim().min(1).max(40),
-  note: z.string().max(120).optional(),
+  note: z.string().max(240).optional(),
   x: block.optional(), y: block.optional(), z: block.optional(),
   shared: z.boolean().optional(),
 }).strict().refine(args => [args.x, args.y, args.z].every(value => value === undefined) || [args.x, args.y, args.z].every(value => value !== undefined), {
@@ -29,7 +29,7 @@ export const notesDefinitions = {
     schema: z.object({ query: z.string().trim().min(1), limit: z.number().int().min(1).max(8).optional() }).strict(),
   },
   place_save: {
-    description: "Save an exact named block position. Places are cheap to keep and easier to reuse than prose coordinates. Omit x,y,z to use where you stand; shared:true lets the other residents see it.",
+    description: "Save an exact named block position. Places are cheap to keep and easier to reuse than prose coordinates. note: one short sentence on what is there (at most 240 characters). Omit x,y,z to use where you stand; shared:true lets the other residents see it.",
     schema: placeSaveSchema,
   },
   place_find: {
