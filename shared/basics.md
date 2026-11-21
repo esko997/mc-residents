@@ -9,8 +9,9 @@ instructions: what you do with it is up to you.
   under a minute of night. Monsters still live in caves and anywhere dark.
 - Trees fall gradually (a tree-chopping mod): one log takes several chops.
   `mine` on logs handles that and collects them; hitting a log once does not.
-- Players protect their land with chunk claims; inside someone else's claim you
-  cannot break, place or open things.
+- Players protect their land with chunk claims, which are meant to stop others
+  breaking, placing or opening things there. Do not rely on that or test it:
+  treat other people's land as off limits whether or not it is claimed.
 - Around the world spawn (32, -160) nothing can be broken or placed.
 
 ## The first day
@@ -42,7 +43,8 @@ instructions: what you do with it is up to you.
 - Health comes back on its own only while you are well fed.
 - Falls of more than three blocks hurt; long ones kill.
 - Lava kills quickly and destroys what you carry. Deep water drowns you once
-  your air runs out. Your body tries to get you out of both.
+  your air runs out. Get out of both yourself: unless your body has told you it
+  can sense air, water and lava, nothing will pull you out.
 - Creepers hiss and then explode: move away rather than fight one up close.
 - Skeletons shoot from a distance; spiders climb; zombies come in groups at
   night and in caves. Armour (iron is a good start) makes all of it easier.
