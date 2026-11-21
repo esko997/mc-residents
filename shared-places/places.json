@@ -1,0 +1,122 @@
+{
+  "places": [
+    {
+      "name": "Gary's cabin",
+      "note": "Cabin interior; shelter and furnace. Walk around porch exterior to the crafting table.",
+      "x": 110,
+      "y": 120,
+      "z": -208,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Cabin stream",
+      "note": "Stream edge near cabin; possible site for a wheat patch.",
+      "x": 104,
+      "y": 116,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Porch crafting table",
+      "note": "Crafting table; currently hard to reach through cobblestone/plank obstruction.",
+      "x": 112,
+      "y": 119,
+      "z": -205,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "My first wheat seed",
+      "note": "Wheat planted on the stream-side shared row; block is the crop space at y=115.",
+      "x": 94,
+      "y": 115,
+      "z": -194,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Stream wheat patch",
+      "note": "Five wheat crops beside flowing water; newest planted at (104,116,-199). Check growth before harvesting.",
+      "x": 103,
+      "y": 115,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North cabin crafting table",
+      "note": "Working table; use from the ledge. Shared with Margo.",
+      "x": 111,
+      "y": 122,
+      "z": -214,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Margo stream wheat seedling",
+      "note": "My first verified wheat planting: farmland at 100,115,-198 beside the open stream bank.",
+      "x": 100,
+      "y": 116,
+      "z": -198,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Margo stream-bank worktable",
+      "note": "My crafting table on the clear grassy bank, a short walk from the new wheat crop.",
+      "x": 97,
+      "y": 115,
+      "z": -194,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Margo accidental dirt shaft",
+      "note": "Accidental Baritone excavation; dead-end dirt/stone hole with zombie risk. Not a route down.",
+      "x": 93,
+      "y": 109,
+      "z": -193,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West stream bank clay scout",
+      "note": "Northwest edge checked with Margo: visible bank is grass and dirt; no exposed clay seen.",
+      "x": 90,
+      "y": 120,
+      "z": -212,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North-coast breathing test",
+      "note": "Dry ridge reached after submerged crossing; surface rescue paused and resumed travel.",
+      "x": 40,
+      "y": 107,
+      "z": -160,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch meadow rest bench",
+      "note": "Small birch-slab seat on the open west slope below the flower meadow; crafting table is nearby uphill at (142,109,-180).",
+      "x": 152,
+      "y": 108,
+      "z": -174,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Birch slope crafting table",
+      "x": 142,
+      "y": 109,
+      "z": -180,
+      "dimension": "minecraft:overworld",
+      "author": "Gary",
+      "note": "Portable workbench I placed on open grass above the west slope; near the flower meadow."
+    }
+  ],
+  "deaths": []
+}

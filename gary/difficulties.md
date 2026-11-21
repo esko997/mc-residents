@@ -76,3 +76,23 @@ Last tool error: none
 Baritone exploration from the birch woods traveled hundreds of blocks to a snowy coast and entered the ocean; a goto then left me underwater at (400,60,-621). The surface reflex helped once, but the active path resumed into water. I reached shore by navigating to (380,70,-620).
 Position: 387.94, 65, -619.3 (minecraft:overworld)
 Last tool error: none
+
+## 2026-11-21T15:20:46.832Z
+I still cannot open the porch crafting table from nearby angles. look reports cobblestone or birch planks blocking line of sight, and use on the blocked targets does not open a screen. During those attempts dirt was placed twice on the approach; I stopped trying to avoid changing more blocks.
+Position: 110.51, 120, -207.59 (minecraft:overworld)
+Last tool error: note: String must contain at most 120 character(s). place_save: Save an exact named block position. Places are cheap to keep and easier to reuse than prose coordinates. Omit x,y,z to use where you stand; shared:true lets the other residents see it.
+
+## 2026-11-21T16:15:54.169Z
+Explore from open ground at (65,112,-202) stopped short with distance=unknown and no fixed destination, then status returned to the prior-looking position (67.5,115,-192.3). The same unexplained stop happened twice earlier. No hostiles or nearby builds were visible.
+Position: 67.5, 115, -192.3 (minecraft:overworld)
+Last tool error: limit: Number must be less than or equal to 10. place_find: List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name or note words.
+
+## 2026-11-21T18:13:28.325Z
+Mining `short_grass` started but Baritone stopped with `Error at argument #2: Expected w...` (truncated). No movement or drops; unclear whether this block id or command parser caused it.
+Position: 135.24, 111, -190.73 (minecraft:overworld)
+Last tool error: Not enough ingredients for 1 x recipe quark:building/crafting/chests/chest_revert: you need 1 more #quark:revertable_chests (it takes 1). Nothing was moved. Other recipes for it need a crafting table.
+
+## 2026-11-21T18:32:15.398Z
+A natural-block mine(tall_grass,count=6) from the stream garden wandered to (98.8,111,-173.7), then stopped short without collecting grass seeds; inventory gained 4 sundries:mixed_stone_veneer and 13 sundries:chunky_stone_bricks during the recent ocean trip. I did not intentionally break the underwater structure and don't know the source blocks, so stop mining if a route passes builds.
+Position: 92.49, 104, -156.66 (minecraft:overworld)
+Last tool error: Not enough ingredients for 1 x recipe quark:building/crafting/vertslabs/birch_vertical_slab_revert: you need 1 more quark:birch_vertical_slab (it takes 1). Nothing was moved. Other recipes for it need a crafting table. Closed your inventory again.

@@ -1,0 +1,83 @@
+{
+  "places": [
+    {
+      "name": "Stream wheat seedling",
+      "note": "My first wheat crop by the stream; growing at 43% when last checked.",
+      "x": 102,
+      "y": 116,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Stream wheat patch",
+      "note": "Four crops beside flowing water; seedling 14%, next 29%, third 43%.",
+      "x": 103,
+      "y": 115,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North stream surface scout",
+      "note": "Open grassy bank west of the water; no exposed clay found on first look.",
+      "x": 85,
+      "y": 120,
+      "z": -222,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Cabin side crafting table",
+      "note": "Accessible crafting table set atop cobblestone beside cabin porch.",
+      "x": 111,
+      "y": 120,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Birch hillside surface exit",
+      "note": "Surface opening above the vertical shaft; avoid entering the shaft. A cobblestone step is visible here.",
+      "x": 84,
+      "y": 130,
+      "z": -234,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Birch flower meadow",
+      "note": "Open grassy hollow among birch trees with pink tulips and purple flowers.",
+      "x": 135,
+      "y": 111,
+      "z": -191,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West flower slope shelf",
+      "note": "Open surface shelf above the shallow stone pocket; from the pocket a diagonal route here came out safely.",
+      "x": 151,
+      "y": 108,
+      "z": -174,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    }
+  ],
+  "deaths": [
+    {
+      "x": 73,
+      "y": 57,
+      "z": -84,
+      "dimension": "minecraft:overworld",
+      "at": 1795286940273
+    },
+    {
+      "x": 105,
+      "y": 91,
+      "z": -203,
+      "dimension": "minecraft:overworld",
+      "at": 1795281706927
+    }
+  ]
+}

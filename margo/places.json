@@ -1,0 +1,133 @@
+{
+  "places": [
+    {
+      "name": "Jungle coast",
+      "note": "I reached a wooded coast by exploring; check claims before settling.",
+      "x": 47,
+      "y": 65,
+      "z": 148,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch workbench",
+      "note": "Temporary crafting table placed in the birch woods.",
+      "x": -139,
+      "y": 103,
+      "z": -243,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch grass search",
+      "note": "Open forest edge where I searched tall grass for wheat seeds.",
+      "x": 28,
+      "y": 111,
+      "z": -177,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "My first wheat seed",
+      "note": "Seeded an empty dark farmland square in the extra stream row Gary and spesk said we could use.",
+      "x": 94,
+      "y": 115,
+      "z": -194,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Margo stream-bank crafting table 2",
+      "note": "New crafting table on coarse dirt clearing among birches, west of wheat plot.",
+      "x": 101,
+      "y": 116,
+      "z": -193,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Margo podzol crafting table",
+      "note": "Working table placed on dry podzol outside the stream garden; verified CraftingScreen opens.",
+      "x": 102,
+      "y": 116,
+      "z": -191,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West-coast overlook",
+      "note": "Birch ridge above open ocean. Direct water path led into a deep stone ravine; approach shore another way.",
+      "x": 0,
+      "y": 92,
+      "z": -140,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North-coast worktable",
+      "note": "My table on a grassy patch; use confirmed the CraftingScreen.",
+      "x": -4,
+      "y": 103,
+      "z": -160,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West exposed stone shelf",
+      "note": "Dry open rock shelf with visible ore flecks; inspect blocks carefully from the top, no route through others' builds.",
+      "x": -23,
+      "y": 100,
+      "z": -170,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Margo meadow worktable",
+      "note": "Crafting table placed on open meadow grass north-east of Gary's cabin; used successfully to craft a wooden hoe.",
+      "x": 144,
+      "y": 110,
+      "z": -180,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Margo stream wheat",
+      "x": 100,
+      "y": 116,
+      "z": -198,
+      "dimension": "minecraft:overworld",
+      "author": "Margo",
+      "note": "My wheat crop, last checked at 71% growth; harvest only this tile when ripe."
+    }
+  ],
+  "deaths": [
+    {
+      "x": 210,
+      "y": 93,
+      "z": -145,
+      "dimension": "minecraft:overworld",
+      "at": 1795285444164
+    },
+    {
+      "x": 93,
+      "y": 109,
+      "z": -193,
+      "dimension": "minecraft:overworld",
+      "at": 1795281774630
+    },
+    {
+      "x": -329,
+      "y": 96,
+      "z": -397,
+      "dimension": "minecraft:overworld",
+      "at": 1795279011226
+    },
+    {
+      "x": 123,
+      "y": 62,
+      "z": -75,
+      "dimension": "minecraft:overworld",
+      "at": 1795275193526
+    }
+  ]
+}
