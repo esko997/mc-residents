@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { appendFile } from "node:fs/promises";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { fixture as fakeFixture, type Fixture } from "./fake-synapse.ts";
 
@@ -151,16 +152,96 @@ test("A23 retreat never heads for a crumb on the far side of the threat", async 
   expect(f.body.events.consume()).toContain("retreat rescue started");
 });
 
-test("A23 direct-away fallback walks and stops as soon as ground is lost", async () => {
+const zombie = (x: number, z: number) => [{ id: 9, type: "minecraft:zombie", hostile: true, distance: 2, pos: [x, 64, z] as [number, number, number], health: 20 }];
+const moves = (f: Fixture) => f.requests.filter(r => r.body.action === "move").map(r => r.body);
+
+test("A23 a hit that throws him into the air does not end the retreat: it waits for the ground, then walks away", async () => {
+  const f = await fixture(); await f.body.poll();
+  // The zombie's hit knocks him up: his feet are off the ground and he is rising when the retreat starts.
+  Object.assign(f.state, { health: 18, onGround: false, velocity: { x: -0.3, y: 0.31, z: 0 } });
+  f.state.nearbyEntities = zombie(2, 0);
+  await f.body.poll();
+  expect(f.body.rescuing).toBe("retreat");
+  // Coming down again, as far and as fast as a jump on level ground.
+  Object.assign(f.state, { fallDistance: 1.1, velocity: { x: -0.2, y: -0.39, z: 0 } });
+  f.tick(250); await f.body.poll(); await f.body.api.state();
+  expect(f.body.rescuing).toBe("retreat");
+  expect(moves(f)).toHaveLength(0); // No step is begun in the air.
+  Object.assign(f.state, { onGround: true, fallDistance: 0, velocity: { x: 0, y: -0.08, z: 0 } });
+  f.tick(250); await f.body.poll(); await f.body.api.state();
+  expect(moves(f)).toEqual([{ action: "move", forward: true, ticks: 4 }]);
+  expect(f.requests.filter(r => r.body.action === "look").at(-1)?.body.yaw as number).toBeCloseTo(90);
+  const events = f.body.events.consume();
+  expect(events).toContain("retreat rescue started: fleeing from minecraft:zombie (no weapon)");
+  expect(events).not.toContain("rescue ended");
+  expect(f.requests.some(r => r.body.text === "#resume")).toBe(false);
+});
+
+test("A23 a retreat that walks off a drop stops when he is falling and says how far", async () => {
   const f = await fixture(); await f.body.poll(); f.state.health = 18;
-  f.state.nearbyEntities = [{ id: 9, type: "minecraft:zombie", hostile: true, distance: 2, pos: [2, 64, 0], health: 20 }];
+  f.state.nearbyEntities = zombie(2, 0);
   await f.body.poll(); await f.body.api.state();
-  expect(f.requests.find(r => r.body.action === "move")?.body).toEqual({ action: "move", forward: true, ticks: 4 });
-  f.state.onGround = false; await f.body.poll();
-  expect(f.body.events.consume()).toContain("left safe ground; movement stopped");
-  expect(f.requests.filter(r => r.body.action === "move")).toHaveLength(1);
+  expect(moves(f)).toEqual([{ action: "move", forward: true, ticks: 4 }]);
+  // Over the edge: at first no different from a step down.
+  Object.assign(f.state, { onGround: false, fallDistance: 0.4, velocity: { x: 0, y: -0.23, z: 0 } });
+  f.tick(250); await f.body.poll();
+  expect(f.body.rescuing).toBe("retreat");
+  // Further and faster than any jump or step.
+  moveTo(f, -1, 61.1, 0); Object.assign(f.state, { fallDistance: 2.9, velocity: { x: 0, y: -0.72, z: 0 } });
+  f.tick(250); await f.body.poll();
+  expect(f.body.events.consume()).toContain("retreat rescue ended after 0.5 s: falling, 2.9 blocks so far; movement stopped");
+  expect(moves(f)).toHaveLength(1);
   expect(f.requests.filter(r => r.body.action === "release")).toHaveLength(1);
   expect(f.requests.filter(r => r.body.text === "#resume")).toHaveLength(1);
+});
+
+test("A23 a retreat with no ground for longer than a jump lasts stops and says so", async () => {
+  const f = await fixture(); await f.body.poll(); f.state.health = 18;
+  f.state.nearbyEntities = zombie(2, 0);
+  await f.body.poll(); await f.body.api.state();
+  // Feet off the ground without falling, as in a cobweb or on a vine.
+  f.state.onGround = false;
+  f.tick(250); await f.body.poll();
+  f.tick(999); await f.body.poll();
+  expect(f.body.rescuing).toBe("retreat");
+  f.tick(1); await f.body.poll();
+  expect(f.body.events.consume()).toContain("retreat rescue ended after 1.3 s: no ground underfoot for 1 s; movement stopped");
+  expect(moves(f)).toHaveLength(1);
+});
+
+test("A23 a retreat begun afloat swims away instead of ending for want of ground, and runs once his feet are down", async () => {
+  const f = await fixture();
+  Object.assign(f.state, { inWater: true, onGround: false }); await f.body.poll();
+  f.state.health = 17.5;
+  f.state.nearbyEntities = [{ id: 4, type: "minecraft:drowned", hostile: true, distance: 2, pos: [2, 63, 0], health: 20 }];
+  await f.body.poll(); await f.body.api.state();
+  expect(f.body.events.consume()).toContain("retreat rescue started: fleeing from minecraft:drowned (no weapon); afloat, swimming away");
+  expect(moves(f)).toEqual([{ action: "move", forward: true, jump: true, ticks: 5 }]);
+  expect(f.requests.filter(r => r.body.action === "look").at(-1)?.body.yaw as number).toBeCloseTo(90);
+  f.tick(500); await f.body.poll(); await f.body.api.state();
+  expect(moves(f)).toHaveLength(2);
+  // Wading: water at his feet, the bed under them.
+  f.state.onGround = true;
+  f.tick(500); await f.body.poll(); await f.body.api.state();
+  expect(moves(f).at(-1)).toEqual({ action: "move", forward: true, ticks: 4 });
+  f.tick(4000); await f.body.poll();
+  expect(f.body.events.consume()).toContain("retreat rescue ended after 5 s: timed out after 5 s");
+});
+
+test("A23 a retreat on foot wades on, and stops once he is afloat in water he walked into", async () => {
+  const f = await fixture(); await f.body.poll(); f.state.health = 18;
+  f.state.nearbyEntities = zombie(2, 0);
+  await f.body.poll(); await f.body.api.state();
+  f.state.inWater = true;
+  f.tick(500); await f.body.poll(); await f.body.api.state();
+  expect(moves(f)).toHaveLength(2);
+  f.state.onGround = false;
+  f.tick(250); await f.body.poll();
+  f.tick(499); await f.body.poll();
+  expect(f.body.rescuing).toBe("retreat");
+  f.tick(1); await f.body.poll();
+  expect(f.body.events.consume()).toContain("retreat rescue ended after 1.3 s: entered deep water; movement stopped");
+  expect(moves(f)).toHaveLength(2);
 });
 
 test("A13 surfacing repeats jump, seeks the trail after six seconds, then resumes", async () => {
@@ -747,4 +828,208 @@ test("a mine command ending three times from one place is counted without naming
   expect(await stall(f, "mine", args)).not.toContain("attempts=");
   expect(await stall(f, "mine", args)).not.toContain("attempts=");
   expect(await stall(f, "mine", args)).toContain("stopped_short distance=unknown (no fixed destination) attempts=3 text=same command has ended 3 times from about here baritone=");
+});
+
+const craftingTable = { type: "block", block: "minecraft:crafting_table", blockPos: [1, 64, 1] };
+const guiActions = (f: Fixture, from = 0) => f.requests.slice(from).filter(r => r.path === "/gui" && r.body.action !== undefined);
+const mealUses = (f: Fixture) => f.requests.filter(r => r.body.action === "use" && r.body.ticks === 40);
+
+test("I01 a meal straight after a fight, the trip resumed and a crafting table in the sights, eats without opening it", async () => {
+  // Baritone turns the view back to its work on every tick it is not paused; anything but straight up opens the table.
+  const f = await fakeFixture({ rotation: { yaw: 73, pitch: 10 }, selectedSlot: 4, interactable: true, steering: { yaw: 120, pitch: 35 } });
+  f.state.hotbar = [{ slot: 1, item: "minecraft:bread", count: 3 }, { slot: 2, item: "minecraft:iron_sword", count: 1 }];
+  f.state.food = 15; f.state.lookingAt = craftingTable;
+  await f.tools.call("mine", { block: "minecraft:stone" }); await f.body.poll();
+  f.state.health = 10.5;
+  f.state.nearbyEntities = [{ id: 9, type: "minecraft:skeleton", hostile: true, distance: 2, pos: [0, 64, 2], health: 20 }];
+  await f.body.poll();
+  expect(f.baritone.paused).toBe(true);
+  // The skeleton backs off: the fight ends and the trip goes on, a moment before the meal the wounds call for.
+  f.state.nearbyEntities = []; f.tick(1000); await f.body.poll();
+  expect(f.baritone).toEqual({ active: true, paused: false });
+  await f.body.poll();
+  expect(mealUses(f)).toHaveLength(1);
+  expect(f.state.screen).toBe("none");
+  expect(f.baritone.paused).toBe(true);
+  f.tick(2200); await f.body.poll();
+  const events = f.body.events.consume();
+  expect(events).toContain("ate minecraft:bread, food 15 -> 20");
+  expect(events).not.toContain("Meal opened"); expect(events).not.toContain("stopped_short");
+  expect(guiActions(f)).toHaveLength(0);
+  expect(chats(f)).toEqual(["#mine minecraft:stone", "#pause", "#resume", "#pause", "#resume"]);
+  expect(f.state.selectedSlot).toBe(4);
+});
+
+test("I01 a meal whose view will not stay up uses nothing and says why, for the reflex and for eat", async () => {
+  // A command Baritone still has from before a toolserver restart: the body knows of no trip to pause.
+  const f = await fakeFixture({ rotation: { yaw: 73, pitch: 10 }, selectedSlot: 4, interactable: true, steering: { yaw: 120, pitch: 35 }, baritoneBusy: true });
+  f.state.food = 8; f.state.hotbar = [{ slot: 1, item: "minecraft:bread", count: 3 }]; f.state.lookingAt = craftingTable;
+  await f.body.poll();
+  expect(f.body.events.consume()).toContain("reflex text=Meal not started: The view did not stay straight up (pitch 35); something else is turning it. Nothing was used. Auto-eat retries in 10 s.");
+  expect(f.requests.some(r => r.body.action === "use")).toBe(false);
+  expect(f.state.screen).toBe("none"); expect(f.state.selectedSlot).toBe(4); expect(f.body.error).toBeUndefined();
+  f.tick(9999); await f.body.poll();
+  expect(f.body.events.consume()).not.toContain("Meal not started");
+  f.tick(1); await f.body.poll();
+  expect(f.body.events.consume()).toContain("Meal not started");
+  const manual = await f.tools.call("eat");
+  expect(manual.isError).toBe(true);
+  expect(toolText(manual)).toContain("Error: The view did not stay straight up (pitch 35); something else is turning it. Nothing was used.");
+  expect(f.requests.some(r => r.body.action === "use")).toBe(false);
+  expect(f.state.food).toBe(8);
+});
+
+test("I01 a meal is not started under a block that the held use would open; under plain stone it is", async () => {
+  const f = await fakeFixture({ selectedSlot: 4, overhead: { type: "block", block: "minecraft:oak_trapdoor", blockPos: [0, 66, 0] } });
+  f.state.food = 8; f.state.hotbar = [{ slot: 1, item: "minecraft:bread", count: 3 }];
+  await f.body.poll();
+  expect(f.body.events.consume()).toContain("Meal not started: minecraft:oak_trapdoor is directly overhead and the meal would use it instead. Nothing was used. Auto-eat retries in 10 s.");
+  expect(mealUses(f)).toHaveLength(0); expect(f.state.selectedSlot).toBe(4);
+  f.options.overhead = { type: "block", block: "minecraft:stone", blockPos: [0, 66, 0] };
+  f.tick(10000); await f.body.poll(); f.tick(2200); await f.body.poll();
+  expect(f.body.events.consume()).toContain("ate minecraft:bread, food 8 -> 14");
+});
+
+test("a meal's own pause of the trip is not reported as the trip stopping", async () => {
+  const f = await fixture(); await f.tools.call("go_to", { x: 20, z: 0 });
+  f.tick(3000); await startMeal(f);
+  expect(f.baritone.paused).toBe(true);
+  f.tick(2200); await f.body.poll();
+  const events = f.body.events.consume();
+  expect(events).toContain("ate minecraft:bread, food 8 -> 14"); expect(events).not.toContain("stopped_short");
+  expect(f.baritone.paused).toBe(false);
+  // A trip that then really stands still is still reported.
+  f.tick(4000); await f.body.poll(); f.tick(4000); await f.body.poll();
+  expect(f.body.events.consume()).toContain("stopped_short distance=20");
+});
+
+test("I06 death during a meal clicks nothing and closes nothing, and the meal is not blamed for the death screen", async () => {
+  const f = await fixture(); await startMeal(f);
+  const start = f.requests.length;
+  f.state.health = 0; f.setScreen({ screen: "DeathScreen" });
+  for (let poll = 0; poll < 3; poll++) { f.tick(500); await f.body.poll(); }
+  const events = f.body.events.consume();
+  expect(events).toContain("died at=0,64,0");
+  expect(events).not.toContain("Meal"); expect(events).not.toContain("DeathScreen"); expect(events).not.toContain("reflex");
+  expect(guiActions(f, start)).toHaveLength(0);
+  const actions = f.requests.slice(start).filter(r => r.path === "/player").map(r => r.body.action);
+  expect(actions).toContain("release");
+  expect(actions.some(action => action === "use" || action === "attack" || action === "move")).toBe(false);
+  expect(f.state.screen).toBe("DeathScreen"); expect(f.body.error).toBeUndefined();
+  const meal = await f.tools.call("eat");
+  expect(toolText(meal)).toContain("Error: You are dead; nothing was eaten.");
+  expect(guiActions(f, start)).toHaveLength(0);
+});
+
+test("I06 a death the state has not shown yet starts no meal and says nothing about the death screen", async () => {
+  const f = await fixture(); f.state.food = 8; f.state.hotbar = [{ slot: 1, item: "minecraft:bread", count: 3 }];
+  // He died between the two reads: the screen is up, the polled state still shows him alive with none open.
+  f.setScreen({ screen: "DeathScreen" }); f.state.screen = "none";
+  await f.body.poll(); f.tick(500); await f.body.poll();
+  expect(f.body.events.consume()).toBe("Since last time:\nnone");
+  expect(f.requests.some(r => r.body.action === "use")).toBe(false);
+  expect(guiActions(f)).toHaveLength(0); expect(f.body.error).toBeUndefined();
+});
+
+test("N04 death ends the trip at once: Baritone is stopped, no stop-short follows, and no trip starts while dead", async () => {
+  const f = await fixture(); await f.tools.call("go_to", { x: 20, z: 0 }); await startMeal(f);
+  expect(f.baritone).toEqual({ active: true, paused: true });
+  const start = f.requests.length;
+  f.state.health = 0; f.setScreen({ screen: "DeathScreen" }); f.tick(500); await f.body.poll();
+  expect(f.baritone).toEqual({ active: false, paused: false });
+  expect(chats(f)).toEqual(["#goto 20 0", "#pause", "#stop"]);
+  expect(f.body.navigation).toBeUndefined();
+  f.tick(4000); await f.body.poll();
+  const events = f.body.events.consume();
+  expect(events).toContain("navigation_stopped goal=goto 20 0 reason=you died");
+  expect(events).not.toContain("stopped_short"); expect(events).not.toContain("Meal");
+  expect(guiActions(f, start)).toHaveLength(0);
+  const trip = await f.tools.call("go_to", { x: 5, z: 0 });
+  expect(trip.isError).toBe(true);
+  expect(toolText(trip)).toContain("Error: You are dead; no trip can start before you respawn.");
+  expect(chats(f)).toHaveLength(3);
+});
+
+test("a wait for arrival wakes when death ends the trip", async () => {
+  const f = await fixture(); await f.tools.call("go_to", { x: 20, z: 0 }); await f.body.poll();
+  f.body.events.consume();
+  const waiting = f.tools.call("wait", { seconds: 2, for: ["arrived", "stopped_short"] });
+  f.state.health = 0; await f.body.poll();
+  expect(toolText(await waiting)).toContain("navigation_stopped goal=goto 20 0 reason=you died");
+});
+
+test("following a player who stands still is arrival within Baritone's three blocks, and a real gap still stops short", async () => {
+  const player = (x: number) => [{ id: 3, type: "minecraft:player", name: "Margo", player: true, pos: [x, 64, 0] as [number, number, number], distance: x }];
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("follow", { player: "Margo" });
+  f.state.nearbyEntities = player(2.7); f.tick(1000); await f.body.poll();
+  expect(f.body.events.consume()).toContain("arrived goal=follow player Margo distance=2.7");
+  f.tick(4000); await f.body.poll();
+  expect(f.body.events.consume()).not.toContain("stopped_short");
+  const far = await fixture(); await far.body.poll();
+  await far.tools.call("follow", { player: "Margo" });
+  far.state.nearbyEntities = player(8.4); far.tick(1000); await far.body.poll(); far.tick(3000); await far.body.poll();
+  const events = far.body.events.consume();
+  expect(events).toContain("stopped_short distance=8.4"); expect(events).not.toContain("arrived");
+});
+
+test("a stop short of a goal with a height says how far across and how far above or below the goal is", async () => {
+  const f = await fixture(); moveTo(f, 50.5, 117, -189.5);
+  expect(await stall(f, "go_to", { x: 50, y: 120, z: -190 })).toContain("stopped_short distance=3.1 across=0.7 height=goal is 3 above you baritone=");
+  expect(await stall(f, "go_to", { x: 50, y: 112, z: -190 })).toContain("stopped_short distance=5 across=0.7 height=goal is 5 below you baritone=");
+  expect(await stall(f, "go_to", { x: 60, y: 117, z: -190 })).toContain("stopped_short distance=9.5 across=9.5 height=goal is level with you baritone=");
+  expect(await stall(f, "go_to", { x: 60, z: -190 })).toContain("stopped_short distance=9.5 baritone=");
+});
+
+test("Baritone's Paused and Resumed, answers to the body's own reflexes, take no event line and do not replace its last word on the trip", async () => {
+  const f = await fixture(); await f.tools.call("go_to", { x: 50, z: 0 });
+  await appendFile(f.log, "[CHAT] [Baritone] Going to: GoalXZ{x=50,z=0}\n[CHAT] [Baritone] Paused\n[CHAT] [Baritone] Resumed\n");
+  await f.body.poll();
+  expect(f.body.events.consume()).toBe("Since last time:\n1 baritone text=Going to: GoalXZ{x=50,z=0}");
+  f.tick(4000); await f.body.poll();
+  expect(f.body.events.consume()).toContain("stopped_short distance=50 baritone=Going to: GoalXZ{x=50,z=0}");
+});
+
+test("breaking blocks from one spot is work, not a stop, until 30 s have passed in one place", async () => {
+  const f = await fixture(); await f.tools.call("mine", { block: "oak_log" });
+  const chop = async (log: number) => {
+    // Three seconds a log by hand; when it breaks, the next one up the trunk is in the sights.
+    f.state.lookingAt = { type: "block", block: "minecraft:oak_log", blockPos: [1, 64 + log, 0] };
+    f.tick(3000); await f.body.poll();
+  };
+  for (let log = 0; log < 9; log++) await chop(log);
+  expect(f.body.events.consume()).not.toContain("stopped_short");
+  await chop(9);
+  expect(f.body.events.consume()).toContain("stopped_short distance=unknown (no fixed destination)");
+  // With nothing turning and nothing breaking, four seconds are still a stop.
+  await f.tools.call("mine", { block: "oak_log" }); f.tick(3999); await f.body.poll();
+  expect(f.body.events.consume()).not.toContain("stopped_short");
+  f.tick(1); await f.body.poll();
+  expect(f.body.events.consume()).toContain("stopped_short");
+});
+
+const chatLine = (label: string) => `${label} ${"word ".repeat(60)}`.slice(0, 250) + ` end${label}`.padEnd(6, ".");
+
+test("a full 256-character chat line reaches the resident whole", async () => {
+  const f = await fixture(); const said = chatLine("a1");
+  expect(said).toHaveLength(256);
+  await appendFile(f.log, `[12:10:00] [Render thread/INFO]: [CHAT] <Margo_Longname16> ${said}\n`);
+  await f.body.poll();
+  const text = toolText(await f.tools.call("status"));
+  expect(text).toContain(`chat from=Margo_Longname16 text=${said}`);
+  expect(text.length).toBeLessThan(1500);
+});
+
+test("more long chat than a tool result holds drops the oldest lines whole, counted, and cuts none", async () => {
+  const f = await fixture(); const said = ["b1", "b2", "b3", "b4", "b5", "b6"].map(chatLine);
+  await appendFile(f.log, said.map(line => `[CHAT] <Margo> ${line}\n`).join(""));
+  await f.body.poll();
+  const text = toolText(await f.tools.call("status"));
+  expect(text.length).toBeLessThan(1500);
+  expect(text).toContain("Position 0, 64, 0"); expect(text).toContain("Screen: none");
+  expect(text).toContain("Since last time: (3 older dropped)");
+  const shown = text.split("\n").filter(line => line.includes(" chat from=Margo "));
+  expect(shown).toEqual(said.slice(3).map((line, index) => `${index + 4} chat from=Margo text=${line}`));
+  // The dropped lines are gone for good, as the count said; nothing is shown twice.
+  expect(toolText(await f.tools.call("status"))).toContain("Since last time:\nnone");
 });

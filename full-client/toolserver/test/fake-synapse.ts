@@ -24,6 +24,12 @@ export interface FakeOptions {
   /** Fail this many plain /gui reads (no action) with a 500. */
   guiReadFailures?: number;
   rotation?: State["rotation"]; selectedSlot?: number;
+  /** Where Baritone turns the view on every tick it is working (a command given, not paused, not stopped). */
+  steering?: State["rotation"];
+  /** A Baritone command is already under way when the body starts, as after a toolserver restart. */
+  baritoneBusy?: boolean;
+  /** What the crosshair rests on when he looks straight up (pitch -90); open sky by default. */
+  overhead?: State["lookingAt"];
   recipes?: FakeRecipe[];
   /** What a used-up ingredient leaves in its grid cell, e.g. milk bucket -> bucket. */
   remainders?: Record<string, string>;
@@ -39,6 +45,8 @@ export interface FakeOptions {
 export interface Fixture {
   dir: string; log: string; state: State; requests: Request[]; body: Body; tools: Tools; options: FakeOptions;
   tick(ms: number): void; setScreen(value: Screen): void; setUnavailable(): void;
+  /** Baritone as the chat commands left it: `active` after goto/mine/explore/follow until stop, `paused` after pause until resume or stop. */
+  baritone: { active: boolean; paused: boolean };
   /** Open a menu with exactly these stacks (menu slot numbers) and cursor, replacing the player's inventory. */
   setMenu(kind: MenuKind, slots: Stack[], carried?: Item): void;
   /** The open menu's non-empty slots and cursor, or undefined when no menu is open. */
@@ -212,6 +220,9 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
     show({ screen: kind }, opened);
   };
   let unavailable = false;
+  const baritone = { active: options.baritoneBusy === true, paused: false };
+  // Baritone sets the view on every client tick while it works, whatever was looked at in between.
+  const steer = () => { if (options.steering && baritone.active && !baritone.paused) state.rotation = { ...options.steering }; };
   const requests: Request[] = [];
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", async fetch(req) {
     const url = new URL(req.url);
@@ -220,7 +231,7 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
     if (req.headers.get("X-Synapse-Token") !== "test-token") return Response.json({ ok: false, error: { message: "Unauthorized" } }, { status: 401 });
     if (unavailable) return Response.json({ ok: false, error: { message: "No player in world." } }, { status: 409 });
     let data: unknown = {};
-    if (url.pathname === "/state") data = state;
+    if (url.pathname === "/state") data = state.rotation.pitch === -90 ? { ...state, lookingAt: options.overhead ?? { type: "miss" } } : state;
     else if (url.pathname === "/screenshot") data = { image: "aGVsbG8=" };
     else if (url.pathname === "/gui" && !body.action && options.guiReadFailures && options.guiReadFailures-- > 0) {
       return Response.json({ ok: false, error: { message: "read failed" } }, { status: 500 });
@@ -241,8 +252,10 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
         menu.click(body.slot as number, (body.button as number | undefined) ?? 0, (body.mode as string | undefined) ?? "PICKUP");
         syncState(menu);
       }
+      // Only its own Respawn button takes the death screen away.
+      const dismissable = screen.screen !== "DeathScreen";
       const close = body.action === "close" && !(options.closeFailures && options.closeFailures-- > 0);
-      if (close || body.action === "clickButton" || (body.key === "ESCAPE" && !options.escapeBlocked)) show({ screen: "none" });
+      if (((close || (body.key === "ESCAPE" && !options.escapeBlocked)) && dismissable) || body.action === "clickButton") show({ screen: "none" });
       data = menu ? menu.render() : screen;
     } else if (url.pathname === "/player") {
       if (body.action === "use" && !body.ticks && state.hotbar.some(s => s.item.endsWith("_sign"))) {
@@ -258,12 +271,21 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
       }
       if (body.action === "selectHotbar") state.selectedSlot = body.slot as number;
       if (body.action === "look") state.rotation = { yaw: body.yaw as number, pitch: body.pitch as number };
+      // A hold begins on the next client tick, with the view as it is then.
+      if (body.action === "use" && body.ticks) steer();
       if (body.action === "use" && body.ticks === 40) {
         if (options.forceMealScreen || (options.interactable && state.rotation.pitch !== -90)) {
           show({ screen: "CraftingScreen" });
         } else if (options.eatWorks !== false) state.food = Math.min(20, state.food + 6);
       }
-    } else if (url.pathname !== "/chat" && url.pathname !== "/wait") return new Response("not found", { status: 404 });
+    } else if (url.pathname === "/chat") {
+      const text = String(body.text);
+      if (/^#(goto|mine|explore|follow)\b/.test(text)) baritone.active = true;
+      else if (text === "#pause") baritone.paused = true;
+      else if (text === "#resume") baritone.paused = false;
+      else if (text === "#stop") { baritone.active = false; baritone.paused = false; }
+    } else if (url.pathname === "/wait") steer();
+    else return new Response("not found", { status: 404 });
     return Response.json({ ok: true, data });
   } });
   const url = `http://127.0.0.1:${server.port}`;
@@ -272,7 +294,7 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
   const tools = new Tools(body);
   cleanups.push(async () => { await body.close(); tools.close(); server.stop(true); await rm(dir, { recursive: true, force: true }); });
   return {
-    dir, log, state, requests, body, tools, options, tick: (ms: number) => { clock += ms; }, setScreen: show, setUnavailable: () => { unavailable = true; },
+    dir, log, state, requests, body, tools, options, baritone, tick: (ms: number) => { clock += ms; }, setScreen: show, setUnavailable: () => { unavailable = true; },
     setMenu: (kind, slots, carried) => {
       const opened = new Menu(kind, options);
       for (const { slot, ...item } of slots) opened.slots.set(slot, item);

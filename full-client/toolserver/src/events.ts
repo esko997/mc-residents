@@ -3,8 +3,13 @@ import { open, stat, type FileHandle } from "node:fs/promises";
 export interface ResidentEvent { seq: number; type: string; [key: string]: unknown }
 const waking: Record<string, true> = { chat: true, hurt: true, died: true, player_near: true, arrived: true, stopped_short: true, navigation_stopped: true, reflex: true };
 /** Lines that carry coordinates and a reason; the rest stay at 91 so eight of them fit a tool result.
- * navigation_stopped ends with how often it has happened, after a goal, a reason and two positions. */
-const lineLimit: Record<string, number> = { stopped_short: 160, navigation_stopped: 200, died: 160, reflex: 160 };
+ * navigation_stopped ends with how often it has happened, after a goal, a reason and two positions.
+ * A chat line is never cut: Minecraft sends at most 256 characters, after a sequence number and a sender
+ * (a system line is chat too: a server announcement, a death message). */
+const lineLimit: Record<string, number> = { chat: 320, system: 320, stopped_short: 220, navigation_stopped: 200, died: 160, reflex: 200 };
+/** The most characters of a tool result (about 1,500 in all) the event tail may take, heading included. Three
+ * full chat lines fit, which is the most one `say` sends; the tool's own text keeps about 500. */
+const tailLimit = 1000;
 export class Events {
   private sequence = 0;
   private seen = 0;
@@ -44,20 +49,36 @@ export class Events {
   private line(event: ResidentEvent) {
     const { seq, type, ...fields } = event;
     const text = Object.entries(fields).map(([key, value]) => `${key}=${String(value).replace(/\s+/g, " ")}`).join(" ");
-    return `${seq} ${type}${text ? ` ${text}` : ""}`.slice(0, lineLimit[type] ?? 91);
+    const line = `${seq} ${type}${text ? ` ${text}` : ""}`, limit = lineLimit[type] ?? 91;
+    return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
   }
-  /** The newest eight events after `seq`, as lines, without marking them shown. */
+  /** As many of the newest of these as fit: eight at most and `room` characters, counting line breaks. Older
+   * ones are left out whole, never cut; the newest is shown even when it alone is longer. */
+  private lines(events: ResidentEvent[], room: number): string[] {
+    const lines: string[] = [];
+    for (let index = events.length - 1; index >= 0 && lines.length < 8; index--) {
+      const line = this.line(events[index]!);
+      room -= line.length + 1;
+      if (room < 0 && lines.length) break;
+      lines.unshift(line);
+    }
+    return lines;
+  }
+  /** The newest events after `seq` that fit, as lines, without marking them shown. */
   since(seq: number): string[] {
-    return this.entries.filter(e => e.seq > seq).slice(-8).map(e => this.line(e));
+    return this.lines(this.entries.filter(e => e.seq > seq), tailLimit);
   }
   consume(): string {
-    const unseen = this.entries.filter(e => e.seq > this.seen).slice(-8);
-    const dropped = this.sequence - this.seen - unseen.length;
+    const heading = "Since last time:";
+    const lines = this.lines(this.entries.filter(e => e.seq > this.seen), tailLimit - heading.length - " (99999 older dropped)".length);
+    const dropped = this.sequence - this.seen - lines.length;
     this.seen = this.sequence;
-    const lines = unseen.map(e => this.line(e));
-    return `Since last time:${dropped > 0 ? ` (${dropped} older dropped)` : ""}\n${lines.length ? lines.join("\n") : "none"}`;
+    return `${heading}${dropped > 0 ? ` (${dropped} older dropped)` : ""}\n${lines.length ? lines.join("\n") : "none"}`;
   }
 }
+/** Baritone's answers to `#pause` and `#resume`, which only the body's reflexes send. They are no news of a
+ * trip and get no event line: the reflex that paused it has its own. */
+export const pauseReply = /^(Paused|Resumed|Already paused|Not paused)\b/;
 export function parseLogLine(line: string, ownName: string): { type: string; fields: Record<string, unknown> } | undefined {
   const marker = line.indexOf("[CHAT] ");
   if (marker < 0) return;
@@ -118,7 +139,10 @@ export class LogTail {
       for (const line of lines) {
         const parsed = parseLogLine(line, this.ownName);
         if (parsed) {
-          if (parsed.type === "baritone") this.onBaritone?.(String(parsed.fields.text));
+          if (parsed.type === "baritone") {
+            this.onBaritone?.(String(parsed.fields.text));
+            if (pauseReply.test(String(parsed.fields.text))) continue;
+          }
           this.events.add(parsed.type, parsed.fields);
         }
       }

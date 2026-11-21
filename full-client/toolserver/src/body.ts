@@ -1,4 +1,4 @@
-import { Events, LogTail } from "./events.ts";
+import { Events, LogTail, pauseReply } from "./events.ts";
 import { angles, hostileEntity, nonempty, playerEntity, type Config, type Entity, type Position, type Stack, type State, Synapse } from "./synapse.ts";
 
 /** A destination. `y` is present only when the goal names a height, as in `#goto x y z`. */
@@ -7,7 +7,10 @@ export interface Navigation {
   description: string; target?: Goal; follow?: string;
   /** Where he stood when the command was given. */
   start: Position;
-  lastPos: Position; lastMoved: number; lastReply?: string; reported: boolean;
+  /** `lastMoved` is the last sign of life (a step, a turn of the view, a Baritone reply); `lastStep` the last change of position. */
+  lastPos: Position; lastMoved: number; lastStep: number; lastView: string; lastReply?: string; reported: boolean;
+  /** Arrival at a fixed destination was reported: Baritone has nothing left to do for this command. */
+  arrived?: true;
 }
 /** `pos` is the block he last stood in alive; `at` is the body clock (ms) when the death was seen. */
 export interface Death { pos: Position; dimension: string; at: number }
@@ -21,11 +24,25 @@ export interface Reflexes {
 interface Meal {
   item: string; before: number; slot: number; rotation: State["rotation"]; doneAt: number;
   moved?: string; automatic: boolean; finished?: boolean; failure?: string;
+  /** Baritone was paused for this meal and is resumed when the meal is released. */
+  paused?: true;
 }
+/** The body declined to start a meal; nothing was used. */
+class MealRefused extends Error {}
+/** No meal for a dead body. Reflexes say nothing about it: the `died` event already has. */
+class DeadError extends MealRefused { constructor() { super("You are dead; nothing was eaten."); } }
+const deathScreen = "DeathScreen";
+/** Blocks whose right-click opens or toggles something even with food in hand, by registry name. A heuristic for
+ * modded worlds: it only decides whether a meal is refused under such a block, never what is opened. */
+const interactable = /(table|chest|barrel|furnace|smoker|shulker_box|hopper|dropper|dispenser|door|gate|button|lever|anvil|sign|loom|stonecutter|grindstone|brewing_stand|beacon|lectern|bell|cake|crate|drawer|cabinet|workbench)(_|$)/;
 type RescueKind = "retreat" | "surface" | "lava" | "fire";
 interface Rescue {
   kind: RescueKind; reason: string; started: number; paused: boolean; busy: boolean;
   action?: Promise<void>; error?: string; lastAim: number; detail?: string;
+  /** Retreat: afloat when it began, so it swims instead of running. */
+  swimming?: boolean;
+  /** Retreat: body clock when the feet last left the ground, while they are still off it. */
+  offGround?: number;
   enemyId?: number; initialAir?: number; initialMaxAir?: number;
   rotation?: State["rotation"]; slot?: number; bucketSlot?: number; placedAt?: number;
   /** The navigation that was running when a surface or lava rescue began. */
@@ -36,6 +53,13 @@ interface Rescue {
 }
 const rescuePriority: Record<RescueKind, number> = { retreat: 1, fire: 2, surface: 3, lava: 4 };
 const seconds = (ms: number) => `${Math.round(ms / 100) / 10} s`;
+const tenth = (value: number) => Math.round(value * 10) / 10;
+// A retreat is not ended by a hop: knocked back by a hit, a jump or a step down he is airborne for at most 12
+// ticks (0.6 s), falls 1.25 blocks and reaches 0.45 blocks a tick downwards; off a one-block ledge 15 ticks,
+// 2.25 blocks and 0.59. Beyond these limits it is a drop, and past 3 blocks a fall starts to hurt.
+const hopLimit = { ms: 1000, fall: 2.5, speed: 0.65 };
+/** What Baritone turns while it works in place: the view, and the block in the sights once the last one is broken. */
+const viewOf = (state: State) => `${Math.round(state.rotation.yaw)},${Math.round(state.rotation.pitch)},${state.lookingAt.type === "block" ? `${state.lookingAt.block}@${state.lookingAt.blockPos}` : ""}`;
 const distance = (a: Position, b: Position) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 const blockOf = (p: Position): Position => ({ x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) });
 // A goal with a height is not reached by standing above or below it: an
@@ -84,7 +108,8 @@ export class Body {
   constructor(readonly config: Config, readonly api: Synapse, private now = Date.now) {
     this.tail = new LogTail(config.log, config.name, this.events, reply => {
       if (this.navigation && !this.navigation.reported) {
-        this.navigation.lastReply = reply;
+        // "Paused" and "Resumed" answer the body's own reflexes; they say nothing about why a trip ended.
+        if (!pauseReply.test(reply)) this.navigation.lastReply = reply;
         this.navigation.lastMoved = this.now();
       }
     });
@@ -168,26 +193,47 @@ export class Body {
     if (this.reflexes.escape_fire && (state.onFire === undefined || state.inWater === undefined || state.inLava === undefined)) unavailable.push("fire/lava rescue off");
     return unavailable.length ? `Survival senses unavailable from older Synapse: ${unavailable.join("; ")}.` : undefined;
   }
+  /** Baritone was just told to carry on, or a new command began: the stall clocks start again. */
+  private restartStallClock() {
+    if (this.navigation) this.navigation.lastMoved = this.navigation.lastStep = this.now();
+  }
   private checkNavigation(state: State) {
     const nav = this.navigation;
-    if (!nav || nav.reported || this.combat || this.fleeing || this.rescue?.paused) return;
+    if (!nav || nav.reported) return;
+    // Sampled even while a reflex has the body, so the view it leaves behind is not taken for Baritone's work.
+    const view = viewOf(state), turned = view !== nav.lastView;
+    nav.lastView = view;
+    if (this.combat || this.fleeing || this.rescue?.paused || this.eating?.paused) return;
     if (nav.follow) {
       const player = this.entities.find(e => playerEntity(e) && e.name === nav.follow);
       if (player) nav.target = { x: player.pos[0], z: player.pos[2] };
     }
+    const now = this.now();
     if (Math.hypot(state.pos.x - nav.lastPos.x, state.pos.y - nav.lastPos.y, state.pos.z - nav.lastPos.z) > 0.15) {
-      nav.lastPos = { ...state.pos }; nav.lastMoved = this.now();
+      nav.lastPos = { ...state.pos }; nav.lastMoved = nav.lastStep = now;
     }
+    // Breaking blocks from one spot moves nothing but the view and the block in the sights. That is work, not
+    // a stop, for up to 30 s in one place.
+    if (turned) nav.lastMoved = now;
     const left = nav.target ? remaining(state.pos, nav.target) : undefined;
-    if (left !== undefined && left <= 2) {
-      this.events.add("arrived", { goal: nav.description }); nav.reported = true;
+    // Baritone keeps a followed player within 3 blocks (its followRadius) and comes no closer.
+    if (left !== undefined && left <= (nav.follow ? 4 : 2)) {
+      this.events.add("arrived", { goal: nav.description, ...(nav.follow ? { distance: tenth(left) } : {}) });
+      nav.reported = true;
+      if (!nav.follow) nav.arrived = true;
       this.stopShorts = undefined;
-    } else if (this.now() - nav.lastMoved >= 4000) {
+    } else if (now - nav.lastMoved >= 4000 || now - nav.lastStep >= 30000) {
       // navigate() dropped the count if this is another goal or began far from the last attempt.
       const attempts = (this.stopShorts?.count ?? 0) + 1;
       this.stopShorts = { description: nav.description, start: nav.start, count: attempts };
+      // With a height in the goal, standing on the spot but above or below it also stops short.
+      const up = nav.target?.y === undefined || nav.follow ? undefined : nav.target.y - state.pos.y;
       this.events.add("stopped_short", {
-        distance: left === undefined ? "unknown (no fixed destination)" : Math.round(left * 10) / 10,
+        distance: left === undefined ? "unknown (no fixed destination)" : tenth(left),
+        ...(up === undefined ? {} : {
+          across: tenth(Math.hypot(state.pos.x - nav.target!.x, state.pos.z - nav.target!.z)),
+          height: Math.abs(up) < 0.5 ? "goal is level with you" : `goal is ${tenth(Math.abs(up))} ${up > 0 ? "above" : "below"} you`,
+        }),
         // Ahead of the Baritone reply, which is what the line limit may cut.
         ...(attempts >= 3 ? {
           attempts,
@@ -202,13 +248,16 @@ export class Body {
   }
   async navigate(command: string, target?: Goal, follow?: string) {
     const state = await this.api.state();
+    // Baritone accepts a command on the death screen and nothing moves; the body's stall timer then called that a stop.
+    if (state.health <= 0) throw new Error("You are dead; no trip can start before you respawn.");
     await this.tail.read(); // Drain old replies before assigning a new navigation.
     // A rescue that is still cleaning up may be about to send #stop for the
     // navigation it interrupted; that must not land after this command.
     while (this.rescueCleanup) await this.rescueCleanup;
     const description = command.slice(1), last = this.stopShorts;
     if (last && (last.description !== description || Math.hypot(state.pos.x - last.start.x, state.pos.z - last.start.z) > 8)) this.stopShorts = undefined;
-    this.navigation = { description, target, follow, start: { ...state.pos }, lastPos: { ...state.pos }, lastMoved: this.now(), reported: false };
+    const now = this.now();
+    this.navigation = { description, target, follow, start: { ...state.pos }, lastPos: { ...state.pos }, lastMoved: now, lastStep: now, lastView: viewOf(state), reported: false };
     try {
       await this.api.chat(command);
       if (this.combat || this.fleeing || this.rescue?.paused) await this.api.chat("#pause");
@@ -246,57 +295,76 @@ export class Body {
   }
   async beginEating(state: State, item?: string, automatic = false) {
     const screen = (await this.api.gui()).screen;
-    if (screen !== "none" || state.screen !== "none") throw new Error(`Close ${screen !== "none" ? screen : state.screen} before eating.`);
+    if (state.health <= 0 || screen === deathScreen || state.screen === deathScreen) throw new DeadError();
+    if (screen !== "none" || state.screen !== "none") throw new MealRefused(`Close ${screen !== "none" ? screen : state.screen} before eating.`);
     let stack = this.food({ ...state, inventory: undefined }, item);
     let moved: string | undefined;
     if (!stack) {
       state = await this.api.state(true);
       stack = this.food(state, item);
-      if (!stack) throw new Error("No matching food in inventory.");
+      if (!stack) throw new MealRefused("No matching food in inventory.");
       if (stack.slot >= 9) {
         const inventory = await this.openInventory();
         // Survival InventoryMenu slots 9..35 are the main inventory; 36..44 are H0..H8.
         const source = inventory.container?.slots.find(s => s.slot === stack!.slot);
         if (!source || source.item !== stack.item || source.count !== stack.count) {
           await this.closeScreen();
-          throw new Error("Inventory food slot changed; no stack was moved.");
+          throw new MealRefused("Inventory food slot changed; no stack was moved.");
         }
         const slot = Array.from({ length: 9 }, (_, i) => i).find(i => !state.hotbar.some(s => s.slot === i && nonempty(s))) ?? state.selectedSlot;
         const displaced = state.hotbar.find(s => s.slot === slot && nonempty(s));
         await this.api.gui({ action: "clickSlot", slot: stack.slot, button: slot, mode: "SWAP" });
         const closed = await this.closeScreen();
         moved = `Moved ${stack.count} x ${stack.item} from inventory ${stack.slot} to H${slot}${displaced ? `; swapped ${displaced.item} to inventory ${stack.slot}` : ""}.`;
-        if (closed.after !== "none") throw new Error(`${moved} ${closed.after} is still open after close and ESCAPE; cannot eat.`);
+        if (closed.after !== "none") throw new MealRefused(`${moved} ${closed.after} is still open after close and ESCAPE; cannot eat.`);
         const refreshed = await this.api.state();
         const ready = refreshed.hotbar.find(s => s.slot === slot && s.item === stack!.item && nonempty(s));
-        if (!ready) throw new Error(`Food move to H${slot} was not observed; cannot eat.`);
+        if (!ready) throw new MealRefused(`Food move to H${slot} was not observed; cannot eat.`);
         stack = ready;
       }
     }
     const meal: Meal = { item: stack.item, before: state.food, slot: state.selectedSlot, rotation: { ...state.rotation }, doneAt: 0, moved, automatic };
     try {
+      // Eating is a held right-click, and it lands on whatever the crosshair rests on when the hold begins and
+      // again whenever the bite ends early. Baritone turns the view every tick it walks or digs, so a trip that
+      // was resumed a moment ago undid the look away below; live that opened the crafting table beside him
+      // straight after a fight. Nothing else may steer while the food is in the hand.
+      if (this.navigation && !this.navigation.arrived) { await this.api.chat("#pause"); meal.paused = true; }
       await this.api.player({ action: "selectHotbar", slot: stack.slot });
       // move(sneak) only acknowledges after it ends, so cannot safely order it before use.
       // Look away instead, then wait for the client raycast to refresh before holding use.
       await this.api.player({ action: "look", yaw: state.rotation.yaw, pitch: -90 });
       await this.api.request("/wait?ticks=2");
-      const current = (await this.api.gui()).screen;
-      if (current !== "none") throw new Error(`Close ${current} before eating.`);
+      const aimed = await this.api.state();
+      if (aimed.health <= 0 || aimed.screen === deathScreen) throw new DeadError();
+      if (aimed.screen !== "none") throw new MealRefused(`Close ${aimed.screen} before eating.`);
+      // The look is checked, not assumed: a trip the body does not know of (after a restart) still turns it.
+      if (aimed.rotation.pitch > -85) throw new MealRefused(`The view did not stay straight up (pitch ${tenth(aimed.rotation.pitch)}); something else is turning it. Nothing was used.`);
+      const sights = aimed.lookingAt;
+      const overhead = sights.type === "entity" ? sights.entity ?? "an entity" : sights.type === "block" && interactable.test(sights.block ?? "") ? sights.block : undefined;
+      if (overhead) throw new MealRefused(`${overhead} is directly overhead and the meal would use it instead. Nothing was used.`);
       await this.api.player({ action: "use", ticks: 40 });
       meal.doneAt = this.now() + 2200;
       this.eating = meal;
       return meal;
     } catch (error) {
       await this.releaseMeal(meal);
-      throw new Error(`${moved ? `${moved} ` : ""}${error instanceof Error ? error.message : "Could not start eating."}`);
+      if (error instanceof DeadError) throw error;
+      const text = `${moved ? `${moved} ` : ""}${error instanceof Error ? error.message : "Could not start eating."}`;
+      throw error instanceof MealRefused ? new MealRefused(text) : new Error(text);
     }
   }
-  private async releaseMeal(meal: Meal) {
+  /** Lets go of the food and puts slot and view back. `resume: false` leaves a Baritone the meal paused to the caller. */
+  private async releaseMeal(meal: Meal, resume = true) {
     meal.finished = true;
     if (this.eating === meal) this.eating = undefined;
-    await this.api.player({ action: "release" });
-    await this.api.player({ action: "selectHotbar", slot: meal.slot });
-    await this.api.player({ action: "look", ...meal.rotation });
+    try {
+      await this.api.player({ action: "release" });
+      await this.api.player({ action: "selectHotbar", slot: meal.slot });
+      await this.api.player({ action: "look", ...meal.rotation });
+    } finally {
+      if (meal.paused && resume) { await this.api.chat("#resume"); this.restartStallClock(); }
+    }
   }
   private async mealOpenedScreen(meal: Meal, screen: string) {
     meal.failure = `Meal opened ${screen} instead of eating.`;
@@ -310,7 +378,9 @@ export class Body {
   async finishEating(meal: Meal, state?: State) {
     state ??= await this.api.state();
     if (!meal.finished) {
-      if (state.screen !== "none") await this.mealOpenedScreen(meal, state.screen);
+      // The death screen is not the meal's doing and cannot be closed: let go and touch nothing else.
+      if (state.health <= 0 || state.screen === deathScreen) { await this.releaseMeal(meal); meal.failure = "You died before the meal was finished."; }
+      else if (state.screen !== "none") await this.mealOpenedScreen(meal, state.screen);
       else await this.releaseMeal(meal);
     }
     if (meal.failure) throw new Error(`${meal.failure}${meal.moved ? ` ${meal.moved}` : ""}`);
@@ -343,7 +413,7 @@ export class Body {
     await this.api.player({ action: "selectHotbar", slot: combat.previousSlot });
     if (resume) {
       await this.api.chat("#resume");
-      if (this.navigation) this.navigation.lastMoved = this.now();
+      this.restartStallClock();
       this.events.add("reflex", { text: "fight ended; navigation resumed" });
     }
   }
@@ -372,7 +442,7 @@ export class Body {
         if (!this.stopped) {
           try {
             await this.api.chat("#resume");
-            if (this.navigation) this.navigation.lastMoved = this.now();
+            this.restartStallClock();
             this.events.add("reflex", { text: "flee ended; navigation resumed" });
           } catch (error) { this.events.add("reflex", { text: String(error) }); }
         }
@@ -393,8 +463,10 @@ export class Body {
     return undefined;
   }
   private async interruptForRescue() {
-    const paused = this.combat !== undefined || this.fleeing;
-    if (this.eating) await this.releaseMeal(this.eating);
+    // A meal that paused Baritone hands that pause on to the rescue, which resumes or stops it when it ends.
+    const meal = this.eating;
+    const paused = this.combat !== undefined || this.fleeing || meal?.paused === true;
+    if (meal) await this.releaseMeal(meal, false);
     if (this.combat) await this.finishCombat(false);
     if (this.fleeing) {
       this.fleeGeneration++; this.fleeing = false;
@@ -418,7 +490,10 @@ export class Body {
     };
     this.rescue = rescue;
     if (kind === "fire" && !usesControls) rescue.detail = current.dimension === "minecraft:the_nether" ? "water cannot be used in the Nether" : !this.reflexes.water_bucket ? "water bucket use is off" : "no water bucket in the hotbar";
-    this.events.add("reflex", { text: `${kind} rescue started: ${reason}${rescue.detail ? `; ${rescue.detail}; reported only` : ""}` });
+    // Afloat there is no ground to run on, and standing still in the water is no escape: live, a drowned
+    // killed him while each of five retreats ended at once for want of ground.
+    if (kind === "retreat" && current.inWater === true && current.onGround !== true) rescue.swimming = true;
+    this.events.add("reflex", { text: `${kind} rescue started: ${reason}${rescue.swimming ? "; afloat, swimming away" : ""}${rescue.detail ? `; ${rescue.detail}; reported only` : ""}` });
     try {
       if (usesControls) await this.api.chat("#pause");
       if (kind === "fire") {
@@ -454,8 +529,27 @@ export class Body {
       const separation = distance(state.pos, threat);
       if (separation >= 10) { await this.finishRescue(`clear of threat at ${Math.round(separation * 10) / 10} blocks`); return; }
       if (elapsed >= 5000) { await this.finishRescue(`timed out after 5 s, ${Math.round(separation * 10) / 10} blocks from threat`); return; }
-      if (state.onGround !== true) { await this.finishRescue("left safe ground; movement stopped"); return; }
       if (!this.retreatSensors(state)) { await this.finishRescue("survival senses disappeared"); return; }
+      // Lava belongs to the lava rescue when that reflex is on; without it the retreat at least walks no further in.
+      if (state.inLava === true) { await this.finishRescue("entered lava; movement stopped"); return; }
+      const now = this.now(), grounded = state.onGround === true, afloat = state.inWater === true && !grounded;
+      if (grounded) rescue.offGround = undefined; else rescue.offGround ??= now;
+      if (rescue.swimming && !afloat) rescue.swimming = false; // Feet down or out of the water: on from here as on land.
+      if (!rescue.swimming && !grounded) {
+        // The hit that starts a retreat throws him into the air, and a jump or a step down lifts his feet too.
+        // Ending the retreat for that left him standing beside the mob: live, all 16 retreats from a hit ended
+        // within half a second for "left safe ground". Only a real loss of ground ends it.
+        const aloft = now - rescue.offGround!;
+        if (afloat) {
+          if (aloft >= 500) { await this.finishRescue("entered deep water; movement stopped"); return; }
+        } else {
+          const fell = state.fallDistance ?? 0;
+          if (fell > hopLimit.fall || (state.velocity?.y ?? 0) < -hopLimit.speed) { await this.finishRescue(`falling, ${tenth(fell)} blocks so far; movement stopped`); return; }
+          if (aloft >= hopLimit.ms) { await this.finishRescue(`no ground underfoot for ${seconds(aloft)}; movement stopped`); return; }
+        }
+        // A step is begun only from the ground, so none carries him further over an edge.
+        return;
+      }
       if (rescue.busy) return;
       if (this.now() - rescue.lastAim >= 500) {
         // The crumb must lie on his side, away from the threat: one merely
@@ -468,7 +562,7 @@ export class Body {
         const target = crumb ?? { x: state.pos.x * 2 - threat.x, y: state.eye.y, z: state.pos.z * 2 - threat.z };
         await this.lookAt({ x: target.x, y: state.eye.y, z: target.z }, state);
         rescue.lastAim = this.now();
-        this.rescueMove(rescue, crumb ? { forward: true, sprint: true, ticks: 5 } : { forward: true, ticks: 4 });
+        this.rescueMove(rescue, rescue.swimming ? { forward: true, jump: true, ticks: 5 } : crumb ? { forward: true, sprint: true, ticks: 5 } : { forward: true, ticks: 4 });
       }
       return;
     }
@@ -577,7 +671,7 @@ export class Body {
     const abandoned = !resume && rescue.navigation !== undefined && rescue.navigation === this.navigation ? rescue.navigation : undefined;
     if (abandoned) { this.navigation = undefined; this.breaths = undefined; }
     // He stood still for the rescue; a poll during the cleanup below must not take that for a stall.
-    else if (this.navigation) this.navigation.lastMoved = this.now();
+    else this.restartStallClock();
     const cleanup = (async () => {
       await rescue.action;
       let failed = false;
@@ -594,7 +688,7 @@ export class Body {
           if (abandoned) { if (!this.stopped) await this.api.chat("#stop"); }
           else {
             await this.api.chat("#resume");
-            if (this.navigation) this.navigation.lastMoved = this.now();
+            this.restartStallClock();
           }
         } catch { failed = true; }
       }
@@ -619,9 +713,28 @@ export class Body {
       ...(times.length > 1 ? { times: `${times.length} in ten minutes` } : {}),
     });
   }
+  /** Death ends whatever the body was doing: keys are let go and Baritone is stopped. Nothing is clicked or
+   * closed, and nothing is said beyond the `died` event and the end of a trip that was under way. */
+  private async settleDeath() {
+    const meal = this.eating, nav = this.navigation;
+    const paused = meal?.paused === true || this.combat !== undefined || this.fleeing;
+    this.navigation = undefined; this.breaths = undefined;
+    if (meal) await this.releaseMeal(meal, false);
+    if (this.fleeing) {
+      this.fleeGeneration++; this.fleeing = false;
+      await this.api.player({ action: "release" });
+    }
+    await this.finishCombat(false);
+    const live = nav !== undefined && !nav.reported;
+    // Baritone's stop also drops the pause a reflex set. A trip left alive would set off again from the respawn
+    // point, and left to the stall timer it was reported four seconds later as stopped short.
+    if ((paused || live) && !this.stopped) await this.api.chat("#stop");
+    if (live) this.events.add("navigation_stopped", { goal: nav.description, reason: "you died" });
+  }
   private async reflex(state: State, hurt: boolean) {
+    const dead = state.health <= 0 || state.screen === deathScreen;
     const needsMeal = this.reflexes.auto_eat && (state.food < this.reflexes.eat_below || (state.health < 14 && state.food < 20));
-    const blocked = needsMeal && state.health > 0 && state.screen !== "none";
+    const blocked = needsMeal && !dead && state.screen !== "none";
     if (blocked) {
       this.mealsBlocked ??= { since: this.now(), reported: false };
       if (!this.mealsBlocked.reported && this.now() - this.mealsBlocked.since > 20000) {
@@ -629,14 +742,15 @@ export class Body {
         this.mealsBlocked.reported = true;
       }
     } else this.mealsBlocked = undefined;
-    if (this.eating && state.screen !== "none") {
+    // The death screen is no screen the meal opened; it is settled below without a click.
+    if (this.eating && state.screen !== "none" && !dead) {
       await this.mealOpenedScreen(this.eating, state.screen);
       return;
     }
     // A screen freezes movement and held keys, so a hazard that arrives while
     // one is open (a chest opened at the water's edge, a crafting table in a
     // burning cabin) must get it out of the way rather than wait for him.
-    if (state.screen !== "none" && state.health > 0 && !this.manual && !this.stopped && this.environmentalRescue(state)) {
+    if (state.screen !== "none" && !dead && !this.manual && !this.stopped && this.environmentalRescue(state)) {
       const closed = await this.closeScreen();
       if (closed.after === "none") {
         this.events.add("reflex", { text: `closed ${closed.before} to escape danger` });
@@ -647,11 +761,12 @@ export class Body {
         this.events.add("reflex", { text: `in danger but ${closed.after} will not close; rescue blocked` });
       }
     } else if (state.screen === "none") this.rescueBlocked = false;
-    if (state.screen !== "none" || state.health <= 0 || this.manual || this.stopped) {
+    if (state.screen !== "none" || dead || this.manual || this.stopped) {
       if (this.rescue) {
-        const dead = state.health <= 0, screen = state.screen !== "none";
+        const screen = state.screen !== "none";
         await this.finishRescue(dead ? "death" : screen ? `screen opened: ${state.screen}` : "manual control", !dead && !screen && this.rescue.breath);
       }
+      if (dead) { await this.settleDeath(); return; }
       if (this.eating?.automatic || this.fleeing) {
         if (this.eating) await this.releaseMeal(this.eating);
         this.fleeGeneration++; this.fleeing = false;
@@ -714,7 +829,14 @@ export class Body {
       return;
     }
     if (needsMeal && !this.eating && this.now() >= this.nextMeal && this.food(state)) {
-      await this.beginEating(state, undefined, true);
+      try { await this.beginEating(state, undefined, true); }
+      catch (error) {
+        if (!(error instanceof MealRefused)) throw error;
+        // Said once and tried again in ten seconds. Thrown on to poll(), a refusal became a system line on
+        // every poll, and "Close DeathScreen before eating." when he died between two reads.
+        this.nextMeal = this.now() + 10000;
+        if (!(error instanceof DeadError)) this.events.add("reflex", { text: `Meal not started: ${error.message} Auto-eat retries in 10 s.` });
+      }
     }
   }
   async close() {
