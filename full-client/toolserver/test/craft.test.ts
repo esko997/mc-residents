@@ -25,11 +25,14 @@ const recipeFiles: Record<string, Record<string, unknown>> = {
   "minecraft:oak_planks": { type: "minecraft:crafting_shapeless", ingredients: [{ tag: "minecraft:oak_logs" }], result: { item: mc("oak_planks"), count: 4 } },
   "minecraft:flint_and_steel": { type: "minecraft:crafting_shapeless", ingredients: [{ item: mc("iron_ingot") }, { item: mc("flint") }], result: { item: mc("flint_and_steel") } },
   "minecraft:iron_ingot_from_smelting": { type: "minecraft:smelting", ingredient: { item: mc("raw_iron") }, result: mc("iron_ingot") },
+  "minecraft:chest": shaped({ "#": { tag: "minecraft:planks" } }, ["###", "# #", "###"], mc("chest")),
+  "quark:building/crafting/chests/chest_revert": { type: "minecraft:crafting_shapeless", ingredients: [{ tag: "quark:revertable_chests" }], result: { item: mc("chest") } },
 };
 const tags: Record<string, string[]> = {
   "minecraft:planks": [mc("oak_planks"), mc("spruce_planks")],
   "minecraft:stone_crafting_materials": [mc("cobblestone"), mc("andesite")],
   "minecraft:oak_logs": [mc("oak_log"), mc("stripped_oak_log")],
+  "quark:revertable_chests": ["quark:oak_chest", "quark:birch_chest"],
 };
 function knowledge(dir: string) {
   const path = join(dir, "knowledge.sqlite");
@@ -233,6 +236,15 @@ describe("craft", () => {
     expect(f.state.screen).toBe("none");
     await tools.call("open_inventory");
     expect(text(await tools.call("craft", { item: "furnace" }))).toContain("needs a 3x3 grid: close your inventory, look at a crafting table");
+    expect(clicks(f)).toBe(0);
+  });
+  test("a missing ingredient is named for the recipe that was meant, not a mod's one-slot conversion", async () => {
+    const { f, tools } = await crafter();
+    carry(f, [9, 5, mc("oak_planks")]);
+    const short = await tools.call("craft", { item: "chest" });
+    expect(text(short)).toContain("Not enough ingredients for 1 x recipe minecraft:chest: you need 3 more #minecraft:planks (it takes 8). It also needs a 3x3 grid, so a crafting table.");
+    carry(f, [9, 5, mc("oak_planks")], [10, 3, mc("spruce_planks")]);
+    expect(text(await tools.call("craft", { item: "chest" }))).toContain("minecraft:chest needs a 3x3 grid (recipe minecraft:chest) and you carry the ingredients: look at a crafting table");
     expect(clicks(f)).toBe(0);
   });
   test("other screens are refused by name, and items without a crafting recipe say so", async () => {

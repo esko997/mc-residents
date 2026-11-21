@@ -214,15 +214,24 @@ export async function craft(body: Body, knowledge: Knowledge, item: string, craf
   const supply = new Map<string, number>();
   for (const stack of [...bench.inventory(), ...bench.stacks(1, size * size)]) supply.set(stack.item, (supply.get(stack.item) ?? 0) + stack.count);
   let chosen: { candidate: Candidate; plan: Allotment } | undefined;
-  let closest: typeof chosen;
   for (const candidate of fitting) {
     const plan = allot(candidate, supply, crafts);
     if (!plan.missing) { chosen = { candidate, plan }; break; }
-    if (!closest || plan.missing < closest.plan.missing) closest = { candidate, plan };
   }
   if (!chosen) {
-    const { candidate, plan } = closest!;
+    // Name the recipe the supply comes closest to, over every recipe and not only those that fit this grid:
+    // a mod's one-slot conversion recipe always fits and is rarely what was meant (asked for a chest in a
+    // 2x2 grid, the answer used to be a Quark recipe turning another chest back into a plain one).
+    const share = (entry: { candidate: Candidate; plan: Allotment }) => entry.plan.missing / (entry.candidate.cells.length * crafts);
+    const vanilla = (entry: { candidate: Candidate }) => entry.candidate.recipe.id.startsWith("minecraft:") ? 0 : 1;
+    const { candidate, plan } = usable.map(candidate => ({ candidate, plan: allot(candidate, supply, crafts) }))
+      .sort((a, b) => share(a) - share(b) || vanilla(a) - vanilla(b) || a.plan.missing - b.plan.missing)[0]!;
     const missing = [...plan.short].map(([what, short]) => `${short} more ${what} (it takes ${candidate.cells.filter(cell => cell.what === what).length * crafts})`).join(", ");
+    if (!fitting.includes(candidate)) {
+      return nothingMade(plan.missing
+        ? `Not enough ingredients for ${crafts} x recipe ${candidate.recipe.id}: you need ${missing}. It also needs a 3x3 grid, so a crafting table. Nothing was moved.`
+        : `${item} needs a 3x3 grid (recipe ${candidate.recipe.id}) and you carry the ingredients: look at a crafting table and use it, then craft again. Nothing was moved.`);
+    }
     return nothingMade(`Not enough ingredients for ${crafts} x recipe ${candidate.recipe.id}: you need ${missing}. Nothing was moved.${larger}`);
   }
 
