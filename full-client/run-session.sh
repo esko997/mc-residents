@@ -4,6 +4,9 @@
 #
 #   run-session.sh <username> <persona-dir-name> <minutes> [model]
 #
+# SESSION_NOTE, when set, is appended to the opening prompt: one-off news for
+# him, such as a change to his body.
+#
 # Start it as a transient user unit so it outlives the SSH session:
 #   systemd-run --user --unit=gary-session ~/gary-client/run-session.sh Gary gary 60
 set -uo pipefail
@@ -50,7 +53,7 @@ CODEX_HOME=$base/codex-home timeout "$((minutes * 60 + 300))" "$base/bin/codex" 
   --skip-git-repo-check -s workspace-write -m "$model" \
   -c "mcp_servers.body.env.RESIDENT_NAME=\"$name\"" \
   -c "mcp_servers.body.env.RESIDENT_DIR=\"$home\"" \
-  "It is $(date +%H:%M). Play until $end." < /dev/null >> "$session_log" 2>&1
+  "It is $(date +%H:%M). Play until $end.${SESSION_NOTE:+ $SESSION_NOTE}" < /dev/null >> "$session_log" 2>&1
 status=$?
 echo "session ended with status $status at $(date +%H:%M)" >> "$session_log"
 # The unit must fail when the mind did: a login, model or tool-server problem
