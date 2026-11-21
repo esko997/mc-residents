@@ -213,7 +213,11 @@ export class Tools {
         }
         return lines.join("\n");
       }
-      case "click_slot": await api.gui({ action: "clickSlot", ...args }); return `Clicked slot ${args.slot}.`;
+      case "click_slot": {
+        await api.gui({ action: "clickSlot", ...args });
+        const carried = (await api.gui()).container?.carried;
+        return `Clicked slot ${args.slot}.${carried && carried !== "minecraft:air" ? ` Cursor now holds ${carried}; put it in a slot before closing.` : ""}`;
+      }
       case "click_button": await api.gui({ action: "clickButton", ...args }); return "Pressed button.";
       case "type_text": await api.gui({ action: "keys", text: args.text }); return "Typed text.";
       case "press_key": {
@@ -222,9 +226,13 @@ export class Tools {
         return `Pressed ${args.key}; screen afterwards: ${after.screen}.`;
       }
       case "close_screen": {
+        // Closing with a stack on the cursor throws it on the ground; Margo
+        // lost track of her pickaxe that way and thought it had vanished.
+        const carried = (await api.gui()).container?.carried;
         const { before, after } = await body.closeScreen();
         if (after !== "none") throw new Error(`${after} is still open after close and ESCAPE.`);
-        return before === "none" ? "No screen open." : `Closed ${before}.`;
+        if (before === "none") return "No screen open.";
+        return `Closed ${before}.${carried && carried !== "minecraft:air" ? ` The ${carried} on your cursor was dropped on the ground in front of you; walk over it to pick it up.` : ""}`;
       }
       case "picture": return { text: "Client view.", image: await api.picture() };
       case "write_sign": {

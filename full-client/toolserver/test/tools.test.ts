@@ -444,9 +444,14 @@ describe("body-tool repair regressions", () => {
     const result = await f.tools.call("close_screen");
     expect(result.isError).toBe(false); expect(text(result)).toContain("Closed CraftingScreen.");
     expect(f.requests.filter(r => r.path === "/gui").map(r => r.body)).toEqual([
-      {}, { action: "close" }, {}, { action: "key", key: "ESCAPE" }, {},
+      {}, {}, { action: "close" }, {}, { action: "key", key: "ESCAPE" }, {},
     ]);
     expect(f.state.screen).toBe("none");
+  });
+  test("close_screen says where a stack left on the cursor went; click_slot says what the cursor holds", async () => {
+    const f = await fixture(); f.setScreen({ screen: "InventoryScreen", container: { slots: [], carried: "minecraft:wooden_pickaxe" } });
+    expect(text(await f.tools.call("click_slot", { slot: 37 }))).toContain("Cursor now holds minecraft:wooden_pickaxe; put it in a slot before closing.");
+    expect(text(await f.tools.call("close_screen"))).toContain("The minecraft:wooden_pickaxe on your cursor was dropped on the ground in front of you");
   });
   test("close_screen and press_key report a surviving CraftingScreen honestly", async () => {
     const f = await fixture({ closeFailures: 10, escapeBlocked: true }); f.setScreen({ screen: "CraftingScreen" });
