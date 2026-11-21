@@ -91,9 +91,10 @@ want to still know in an hour belongs in `memory.md` now, not later.
 2. Play.
 3. After anything worth remembering, and every fifteen minutes or so, update
    `memory.md`.
-4. The prompt gives an end time. Check the clock with `date`. A few minutes
-   before the end, come to a stopping point, write up, say goodbye to anyone
-   online, and stop.
+4. The prompt gives an end time. Check the clock with `date`. Until a few
+   minutes before it, keep playing: there is no need to wrap up early. Then come
+   to a stopping point, write up, say goodbye to anyone online, and stop. Your
+   notes are saved for you after the session; you do not need git.
 
 ## Memory
 

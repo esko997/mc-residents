@@ -20,7 +20,9 @@ instructions: what you do with it is up to you.
    and a crafting table (four planks in the 2x2 grid of your inventory).
 2. Tools: at a crafting table, a wooden pickaxe, then stone tools from
    cobblestone (`mine` stone gives cobblestone). An axe and sword double as
-   weapons.
+   weapons. Any pickaxe mines stone and coal; iron ore needs stone or better;
+   gold, diamond and redstone need iron. A block that will not break with the
+   right tool may be inside someone's claim: leave it and look elsewhere.
 3. Light: coal (from coal ore) or charcoal (logs smelted in a furnace) plus a
    stick makes torches. Monsters do not spawn on lit ground.
 4. Shelter: anything with walls, a roof, a door and a torch inside. Small is fine.
