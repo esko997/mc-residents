@@ -19,7 +19,7 @@ Only MCP messages go to stdout; startup diagnostics go to stderr. Closing stdin,
 | `RESIDENT_NAME` | Required; in-game name, used to ignore own chat echoes. |
 | `SYNAPSE_URL` | `http://127.0.0.1:25599` |
 | `SYNAPSE_TOKEN_FILE` | `~/.synapse/token`; token is never returned to the model. |
-| `RESIDENT_DIR` | Current directory; `note_difficulty` appends `difficulties.md` here. Directory must exist. |
+| `RESIDENT_DIR` | Current directory; `note_difficulty` appends `difficulties.md` here, and plans are kept in `plan.json`. Directory must exist. |
 | `KNOWLEDGE_DB` | Optional read-only SQLite export; knowledge tools register only when it opens. Missing/invalid database is reported clearly on stderr; attempted knowledge calls return a tool error. |
 | `COMMONS_DB` | `~/gary-client/commons/commons.sqlite`; the SQLite file all residents and the management app share (skills, runs, shared notes, feedback). Created on first use from `../commons/schema.sql`. If it cannot be opened, the skill, note and feedback tools answer with one line and everything else works. |
 
@@ -48,7 +48,7 @@ KNOWLEDGE_DB = "/home/your-user/gary-client/knowledge.sqlite"
 - `follow` — Start `#follow player name`.
 - `explore` — Start `#explore`.
 - `stop` — Stop Baritone and release held keys.
-- `status` — Position, dimension, health, food, held item, target, nearby players/hostiles, navigation and screen.
+- `status` — Position, dimension, health, food, held item, target, nearby players/hostiles, navigation and screen. With a plan written it adds two lines: the current step of the plan in focus (`Plan "wheat field": step 2 of 5: …`), blocked steps with their notes, `No step has moved for N min.` once that passes 20 minutes, then the goal and the other plans. Without a plan, one line saying `plan_set` exists, once per tool-server start.
 - `inventory` — Non-empty inventory, armor and offhand, including durability; `H` marks hotbar indexes 0..8.
 - `say` — Plain chat; rejects Baritone/slash commands and line breaks.
 - `look` — Aim with yaw/pitch, block coordinates (floats use the containing block) or a nearby player name.
@@ -81,6 +81,11 @@ KNOWLEDGE_DB = "/home/your-user/gary-client/knowledge.sqlite"
 - `note_share` — Propose a piece of knowledge (up to 600 characters) to the other residents; they see it only once a reviewer has curated it.
 - `notes_shared` — Search curated shared notes, plus the resident's own proposals with their status.
 - `feedback` — Say whether another resident's skill or a curated note worked (`worked` true/false, optional `text`); one verdict per resident per target, replaced by a later one.
+- `plan_set` — Write or replace a plan (`src/plan.ts`, `RESIDENT_DIR/plan.json`, atomic writes): `name`, `goal`, optional `why`, 1..12 `steps` of at most 120 characters. Up to three plans; replacing keeps the state of steps whose text is unchanged; a new plan takes the focus unless `focus: false`.
+- `plan_step` — Set one step (`step` counts from 1, `name` defaults to the plan in focus) to `todo`, `doing`, `done`, `blocked` or `dropped`, with an optional `note`. `all: true` instead of `step` applies to every step still open, so with `state: "dropped"` it gives up a plan; exactly one of `step` and `all: true` must be given. A plan with no open step moves to a history of the last ten, and the reply says so.
+- `plan_show` — All plans in a line each plus the last three ended, or one plan in full by `name`.
+- `plan_focus` — Choose the plan whose current step `status` shows.
+- `what_next` — At most five suggestions computed from one snapshot (inventory, armour, health, food, saved places, deaths of the last six hours, the plan in focus), most useful first, each with the numbers it rests on; no model call. The current step of the plan in focus is the first line. The rules are the `rules` table in `src/ideas.ts`: a rule is `{ id, priority, suggest(view) }` returning text or nothing. Recipes are checked against the knowledge database when it is open (tags included); otherwise against the vanilla recipe written in the rule. Reply capped at 1,300 characters.
 
 Not registered: `src/wiki.ts` (a lookup of the vanilla Minecraft Wiki) is work in progress. The wiki describes the newest game version while the server runs 1.20.1, and it is written for keyboard and mouse; until both gaps have real answers the residents do not get it.
 

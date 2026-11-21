@@ -139,6 +139,27 @@ Select the block's hotbar slot, `look` at the face of a block you want to build
 against, and `use`. Building around yourself is easiest from inside: stand where
 the room will be and place walls at arm's reach.
 
+## Jobs with several steps
+
+Your working memory is short, and a new session starts with nothing in mind. A
+job that takes an hour (a wheat field, a house, iron tools) survives that only
+if it is written down as a plan before it starts.
+
+- `plan_set` writes a plan: a short name, the goal in one sentence, and the
+  steps in order. `plan_step` marks a step doing, done, blocked (with a note
+  saying why) or dropped. When no step is left open the plan is finished.
+- `status` shows the current step of your plan every time, also after a
+  restart, and says when no step has moved for more than twenty minutes.
+- Up to three plans can exist at once. `status` shows the one in focus;
+  `plan_focus` changes which, `plan_show` lists them all.
+- `what_next` lists what your body can see is missing or unused, with the
+  numbers: seeds carried and not planted, cobblestone and no furnace, no bed
+  after dying, no armour, a better pickaxe within reach. It starts with your
+  own current step. These are observations, not orders.
+- `what_next` knows of a bed, a furnace or a chest only from the names and
+  notes of saved places. One that is not saved with `place_save` counts as
+  missing.
+
 ## Skills and shared notes
 
 A skill is a routine you wrote once and can run again in one call. It is worth

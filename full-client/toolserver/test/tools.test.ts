@@ -283,6 +283,9 @@ describe("reflexes and interactions", () => {
       },
       skill_find: {}, skill_show: { name: "long_routine" }, skill_run: { name: "long_routine" },
       note_share: { topic: "t".repeat(60), text: "x".repeat(600) }, notes_shared: { limit: 8 }, feedback: { skill: "long_routine", worked: true, text: "f".repeat(120) },
+      plan_set: { name: "n".repeat(40), goal: "g".repeat(140), why: "w".repeat(140), steps: Array.from({ length: 12 }, (_, i) => `${i} ${"s".repeat(118)}`.slice(0, 120)) },
+      plan_step: { step: 1, state: "blocked", note: "b".repeat(100) },
+      plan_focus: { name: "n".repeat(40) },
     };
     for (const tool of Object.keys(definitions)) {
       f.state.hotbar = [{ slot: 0, item: tool === "write_sign" ? "minecraft:oak_sign" : "minecraft:bread", count: 2 }];

@@ -8,6 +8,8 @@ import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 import { craft } from "./craft.ts";
 import { createNotes, notesDefinitions, type Notes } from "./notes.ts";
 import { Skills, skillDefinitions, type SkillRun, type ToolReply } from "./skills.ts";
+import { createPlans, planDefinitions, type Plans } from "./plan.ts";
+import { readPlaces, snapshotOf, whatNext } from "./ideas.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -23,7 +25,7 @@ export const definitions = {
   follow: { description: "Start following a named player.", schema: z.object({ player: name }) },
   explore: { description: "Start Baritone exploration.", schema: z.object({}) },
   stop: { description: "Stop Baritone and release held keys.", schema: z.object({}) },
-  status: { description: "Brief body, surroundings, navigation and screen status.", schema: z.object({}) },
+  status: { description: "Brief body, surroundings, navigation and screen status, and the current step of the plan in focus.", schema: z.object({}) },
   inventory: { description: "Non-empty inventory stacks; H marks hotbar (slots 0..8).", schema: z.object({}) },
   say: { description: "Speak plain chat, independently of walking; not commands. Text longer than one chat line (256 characters) is sent as up to three lines.", schema: z.object({ text: z.string().min(1).max(768) }) },
   look: { description: "Look by yaw and/or pitch (an omitted one stays as it is), at a world block (floats use the containing block; aims at its centre and says what is actually in your sights), or at a nearby player by name.", schema: z.union([z.object({ yaw: finite.optional(), pitch: finite.min(-90).max(90).optional() }).strict().refine(a => a.yaw !== undefined || a.pitch !== undefined, "give yaw, pitch or both"), z.object({ x: blockCoordinate, y: blockCoordinate, z: blockCoordinate }).strict(), z.object({ player: name }).strict()]) },
@@ -49,6 +51,8 @@ export const definitions = {
   set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
   ...notesDefinitions,
   ...skillDefinitions,
+  ...planDefinitions,
+  what_next: { description: "For when you are unsure what to do: at most five suggestions worked out from what your body can see (what you carry and wear, health and food, saved places, recent deaths, your plan), each with the numbers it rests on. They name things that are missing or unused; they are not orders. The current step of your plan in focus comes first.", schema: z.object({}).strict() },
 };
 export type ToolName = keyof typeof definitions;
 const knowledgeNames = ["find_item", "recipes", "craft", "uses", "guide"];
@@ -76,10 +80,14 @@ export class Tools {
   lastError?: string;
   /** How long craft waits for the server to show a crafting result or deliver it. */
   craftWaitMs = 2000;
+  /** Wall clock for plans and suggestions: their times are kept on disk and outlive the tool server. */
+  now: () => number = Date.now;
   /** His own notes and places. Deaths are recorded as places so he can judge whether to go back. */
   readonly notes: Notes;
   /** His saved routines and what residents share, in the commons. */
   readonly skills: Skills;
+  /** His jobs of several steps, written down so the current step survives a summarised context and a restart. */
+  readonly plans: Plans;
   constructor(readonly body: Body, readonly knowledge?: Knowledge, private knowledgeError = "KNOWLEDGE_DB is not configured.") {
     const { residentDir, name } = body.config;
     this.notes = createNotes({
@@ -88,6 +96,7 @@ export class Tools {
     });
     body.onDeath = death => this.notes.recordDeath(death.pos, death.dimension);
     this.skills = new Skills(body, body.config.commonsDb, (tool, args, signal, run) => this.run(tool, args, signal, run));
+    this.plans = createPlans({ residentDir, now: () => this.now() });
   }
   close() { this.skills.close(); }
   get registeredNames(): ToolName[] {
@@ -184,6 +193,7 @@ export class Tools {
           `Hostiles: ${nearby.filter(hostileEntity).slice(0, 8).map(e => `${e.type} ${e.distance}m`).join(", ") || "none"}`,
           `Navigation: ${body.navigation?.description ?? "none"}${body.navigation?.reported ? " (arrival/stop reported)" : ""}`,
           `Screen: ${state.screen}`,
+          ...await this.plans.statusLines().catch(error => [`Plan unavailable: ${error instanceof Error ? error.message : "plan.json could not be read"}.`]),
           ...(survivalWarning ? [survivalWarning] : []),
         ].join("\n");
       }
@@ -359,6 +369,14 @@ export class Tools {
       case "note_share": return this.skills.noteShare(args);
       case "notes_shared": return this.skills.notesShared(args);
       case "feedback": return this.skills.feedback(args);
+      case "plan_set": return this.plans.set(args);
+      case "plan_step": return this.plans.step(args);
+      case "plan_show": return this.plans.show(args);
+      case "plan_focus": return this.plans.focus(args);
+      case "what_next": {
+        const [state, saved, plan] = await Promise.all([api.state(true), readPlaces(body.config.residentDir), this.plans.focused().catch(() => undefined)]);
+        return whatNext(snapshotOf(state, { now: this.now(), ...saved, plan, knowledge: this.knowledge }));
+      }
       case "set_reflexes":
         Object.assign(body.reflexes, args);
         return `Reflexes: auto_eat=${body.reflexes.auto_eat}, eat_below=${body.reflexes.eat_below}, when_attacked=${body.reflexes.when_attacked}, surface=${body.reflexes.surface}, escape_fire=${body.reflexes.escape_fire}, avoid_creepers=${body.reflexes.avoid_creepers}, water_bucket=${body.reflexes.water_bucket}.`;
