@@ -1,0 +1,23 @@
+# Gary's own Codex home: only his persona (in his directory) and his body's tools.
+cli_auth_credentials_store = "file"
+model = "gpt-6-luna"
+model_reasoning_effort = "medium"
+# Keep each request small: older history is summarised once it passes this size.
+model_auto_compact_token_limit = 60000
+
+[projects."/home/swatson/gary-client/resident"]
+trust_level = "trusted"
+
+[mcp_servers.body]
+command = "/home/swatson/gary-client/bin/bun"
+args = ["/home/swatson/gary-client/toolserver/src/main.ts"]
+startup_timeout_sec = 30
+# `wait` can hold for two minutes.
+tool_timeout_sec = 180
+default_tools_approval_mode = "approve"
+
+[mcp_servers.body.env]
+CLIENT_LOG = "/home/swatson/gary-client/game/logs/latest.log"
+RESIDENT_NAME = "Gary"
+RESIDENT_DIR = "/home/swatson/gary-client/resident/gary"
+KNOWLEDGE_DB = "/home/swatson/gary-client/knowledge.sqlite"
