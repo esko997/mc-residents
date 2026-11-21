@@ -2,8 +2,11 @@
 cli_auth_credentials_store = "file"
 model = "gpt-6-luna"
 model_reasoning_effort = "medium"
-# Keep each request small: older history is summarised once it passes this size.
-model_auto_compact_token_limit = 60000
+# Older history is summarised once a request passes this size. At 60K the
+# residents lost everything older than about nine minutes (20 summaries in a
+# 3.4-hour run) and with it any momentum on long jobs; 150K keeps roughly
+# half an hour, at about two and a half times the (mostly cached) input.
+model_auto_compact_token_limit = 150000
 
 [projects."/home/swatson/gary-client/resident"]
 trust_level = "trusted"

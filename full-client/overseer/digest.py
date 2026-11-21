@@ -133,7 +133,7 @@ def main():
         except Exception as error:  # the client may be down between sessions
             print(f"\n## Right now\n(state unavailable: {error.__class__.__name__})")
 
-    for name, limit in (("memory.md", 6000), ("places.json", 1500)):
+    for name, limit in (("memory.md", 6000), ("plan.json", 2500), ("places.json", 1500)):
         path = os.path.join(resident_dir, name)
         if os.path.exists(path):
             body = open(path, errors="replace").read()
