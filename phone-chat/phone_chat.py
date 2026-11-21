@@ -44,6 +44,8 @@ PRESENCE = re.compile(r"^(\w{1,32}) (joined|left) the game$")
 entries = deque(maxlen=300)  # {"id", "t", "name", "text"}; name is None for joins and leaves
 entries_lock = threading.Lock()
 next_id = 1
+# Entry ids restart at 1 with the process; the page uses this to notice.
+BOOT = str(time.time_ns())
 
 
 def add_entry(seconds, name, text):
@@ -156,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
             query = self.path.partition("?")[2]
             after = int(query.removeprefix("after=")) if query.removeprefix("after=").isdigit() else 0
             with entries_lock:
-                self.reply(200, [entry for entry in entries if entry["id"] > after])
+                self.reply(200, {"boot": BOOT, "entries": [entry for entry in entries if entry["id"] > after]})
         else:
             self.reply(404, {"error": "Not found."})
 
@@ -251,12 +253,24 @@ PAGE = r"""<!doctype html>
     log.append(line);
   }
 
-  async function poll() {
+  let polling = null, boot = null;
+  // One request at a time: a send and the timer used to fetch the same entries
+  // concurrently and both drew them, so lines appeared twice.
+  function poll() { return polling ??= pollOnce().finally(() => { polling = null; }); }
+  async function pollOnce() {
     try {
       const response = await fetch("log?after=" + after, { cache: "no-store" });
       if (!response.ok) throw new Error(response.status);
-      const fresh = await response.json();
+      const data = await response.json();
+      // A restarted server numbers its entries from 1 again; start the list over
+      // rather than redraw lines already on screen.
+      if (boot !== null && data.boot !== boot) {
+        log.replaceChildren(); after = 0; boot = data.boot;
+        return pollOnce();
+      }
+      boot = data.boot;
       const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+      const fresh = data.entries.filter(entry => entry.id > after);
       for (const entry of fresh) { show(entry); after = entry.id; }
       if (fresh.length && atBottom) log.scrollTop = log.scrollHeight;
       if (missed >= 3) problem.textContent = "";
