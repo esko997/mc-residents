@@ -35,7 +35,7 @@ export class Events {
     const lines = unseen.map(event => {
       const { seq, type, ...fields } = event;
       const text = Object.entries(fields).map(([key, value]) => `${key}=${String(value).replace(/\s+/g, " ")}`).join(" ");
-      return `${seq} ${type}${text ? ` ${text}` : ""}`.slice(0, 91);
+      return `${seq} ${type}${text ? ` ${text}` : ""}`.slice(0, type === "stopped_short" || type === "reflex" ? 160 : 91);
     });
     return `Since last time:${dropped > 0 ? ` (${dropped} older dropped)` : ""}\n${lines.length ? lines.join("\n") : "none"}`;
   }
@@ -65,7 +65,7 @@ export class LogTail {
   private decoder = new TextDecoder();
   private timer?: Timer;
   private reading?: Promise<void>;
-  constructor(private path: string, private ownName: string, private events: Events) {}
+  constructor(private path: string, private ownName: string, private events: Events, private onBaritone?: (reply: string) => void) {}
   async start() {
     // Old chat must not masquerade as a fresh wake-up on resident startup.
     await this.read(true);
@@ -99,7 +99,10 @@ export class LogTail {
       this.partial = lines.pop()!.slice(-16384);
       for (const line of lines) {
         const parsed = parseLogLine(line, this.ownName);
-        if (parsed) this.events.add(parsed.type, parsed.fields);
+        if (parsed) {
+          if (parsed.type === "baritone") this.onBaritone?.(String(parsed.fields.text));
+          this.events.add(parsed.type, parsed.fields);
+        }
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") this.events.add("system", { text: "Client log unreadable." });

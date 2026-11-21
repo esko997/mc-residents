@@ -16,7 +16,7 @@ interface Request { path: string; body: Record<string, unknown> }
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 const text = (result: CallToolResult) => result.content.filter(c => c.type === "text").map(c => c.text).join("\n");
-async function fixture() {
+async function fixture(options: { closeFailures?: number; escapeBlocked?: boolean; eatWorks?: boolean; openWorks?: boolean; swapWorks?: boolean; interactable?: boolean; forceMealScreen?: boolean } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "resident-tools-"));
   const log = join(dir, "latest.log"); await writeFile(log, "");
   let clock = 0;
@@ -39,22 +39,41 @@ async function fixture() {
     if (url.pathname === "/state") data = state;
     else if (url.pathname === "/screenshot") data = { image: "aGVsbG8=" };
     else if (url.pathname === "/gui") {
-      if (body.action === "close" || body.action === "clickButton" || body.key === "ESCAPE") { screen = { screen: "none" }; state.screen = "none"; }
+      if (body.action === "open" && options.openWorks !== false) {
+        screen = { screen: "InventoryScreen", container: { slots: state.inventory!.main.map(s => ({ ...s, slot: s.slot < 9 ? s.slot + 36 : s.slot })), carried: "minecraft:air" } };
+        state.screen = screen.screen;
+      }
+      if (body.action === "clickSlot" && body.mode === "SWAP" && options.swapWorks !== false) {
+        const source = state.inventory!.main.find(s => s.slot === body.slot);
+        if (source) {
+          const slot = body.button as number;
+          const displaced = state.hotbar.find(s => s.slot === slot);
+          state.hotbar = [...state.hotbar.filter(s => s.slot !== slot), { ...source, slot }];
+          state.inventory!.main = [...state.inventory!.main.filter(s => s.slot !== source.slot && s.slot !== slot), { ...source, slot }, ...(displaced ? [{ ...displaced, slot: source.slot }] : [])];
+        }
+      }
+      const close = body.action === "close" && !(options.closeFailures && options.closeFailures-- > 0);
+      if (close || body.action === "clickButton" || (body.key === "ESCAPE" && !options.escapeBlocked)) { screen = { screen: "none" }; state.screen = "none"; }
       data = screen;
     } else if (url.pathname === "/player") {
       if (body.action === "use" && !body.ticks && state.hotbar.some(s => s.item.endsWith("_sign"))) {
         screen = { screen: "SignEditScreen", widgets: [{ index: 0, label: "Done", button: true, active: true, visible: true }] }; state.screen = screen.screen;
       }
       if (body.action === "selectHotbar") state.selectedSlot = body.slot as number;
-      if (body.action === "use" && body.ticks === 40) state.food = Math.min(20, state.food + 6);
-    } else if (url.pathname !== "/chat") return new Response("not found", { status: 404 });
+      if (body.action === "look") state.rotation = { yaw: body.yaw as number, pitch: body.pitch as number };
+      if (body.action === "use" && body.ticks === 40) {
+        if (options.forceMealScreen || (options.interactable && state.rotation.pitch !== -90)) {
+          screen = { screen: "CraftingScreen" }; state.screen = screen.screen;
+        } else if (options.eatWorks !== false) state.food = Math.min(20, state.food + 6);
+      }
+    } else if (url.pathname !== "/chat" && url.pathname !== "/wait") return new Response("not found", { status: 404 });
     return Response.json({ ok: true, data });
   } });
   const api = new Synapse(`http://127.0.0.1:${server.port}`, "test-token");
   const body = new Body({ url: `http://127.0.0.1:${server.port}`, tokenFile: "", log, name: "Gary", residentDir: dir }, api, () => clock);
   const tools = new Tools(body);
   cleanups.push(async () => { await body.close(); server.stop(true); await rm(dir, { recursive: true, force: true }); });
-  return { dir, log, state, requests, body, tools, tick: (ms: number) => { clock += ms; }, setScreen: (value: Screen) => { screen = value; state.screen = value.screen; }, setUnavailable: () => { unavailable = true; } };
+  return { dir, log, state, requests, body, tools, options, tick: (ms: number) => { clock += ms; }, setScreen: (value: Screen) => { screen = value; state.screen = value.screen; }, setUnavailable: () => { unavailable = true; } };
 }
 
 function knowledgeFixture(dir: string) {
@@ -164,7 +183,7 @@ describe("navigation and observation", () => {
   test.each([["south", 0, 10, 0], ["east", 10, 0, -90], ["north", 0, -10, -180], ["west", -10, 0, 90]])("look %s has Minecraft yaw", async (_direction, x, z, yaw) => {
     const f = await fixture(); await f.tools.call("look", { x, y: 65.62, z });
     const look = f.requests.find(r => r.body.action === "look")!.body;
-    expect(look.yaw as number).toBeCloseTo(yaw); expect(Math.abs(look.pitch as number)).toBe(0);
+    expect(look.yaw as number).toBeCloseTo(yaw); expect(look.pitch as number).toBeCloseTo(Math.atan2(0.62, 10) * 180 / Math.PI);
   });
   test("hurt/death/hunger and player arrival/departure", async () => {
     const f = await fixture(); await f.body.poll();
@@ -280,7 +299,7 @@ describe("reflexes and interactions", () => {
     };
     for (const tool of Object.keys(definitions)) {
       f.state.hotbar = [{ slot: 0, item: tool === "write_sign" ? "minecraft:oak_sign" : "minecraft:bread", count: 2 }];
-      f.state.selectedSlot = 0; f.state.lookingAt = { type: "block", block: "minecraft:stone" };
+      f.state.food = 8; f.state.selectedSlot = 0; f.state.lookingAt = { type: "block", block: "minecraft:stone" };
       f.setScreen(tool === "write_sign" || tool === "eat" ? { screen: "none" } : { screen: "InventoryScreen", container: { slots: f.state.inventory!.main, carried: "minecraft:air" } });
       for (let i = 0; i < 20; i++) f.body.events.add("chat", { from: "spesk01", text: "a".repeat(500) });
       const result = await f.tools.call(tool, argumentsByTool[tool] ?? {});
@@ -404,5 +423,153 @@ describe("live-run regressions", () => {
     expect(f.requests.some(r => r.body.action === "release")).toBe(true);
     expect(f.requests.some(r => r.body.action === "move")).toBe(true);
     expect(f.requests.filter(r => r.body.action === "attack")).toHaveLength(attacks);
+  });
+});
+
+describe("body-tool repair regressions", () => {
+  test("float coordinates use the containing block, including negative coordinates", async () => {
+    const f = await fixture();
+    expect((await f.tools.call("go_to", { x: 10.9, y: 64.8, z: -0.2 })).isError).toBe(false);
+    expect(f.requests.at(-1)?.body.text).toBe("#goto 10 64 -1");
+    expect(f.body.navigation?.target).toEqual({ x: 10, y: 64, z: -1 });
+    await f.tools.call("look", { x: 10.9, y: 65.9, z: -0.2 });
+    const look = f.requests.find(r => r.body.action === "look")!.body;
+    expect(look.yaw as number).toBeCloseTo(-Math.atan2(10, -1) * 180 / Math.PI);
+    expect(look.pitch as number).toBeCloseTo(Math.atan2(0.62, Math.hypot(10, 1)) * 180 / Math.PI);
+    expect((await f.tools.call("go_to", { x: Infinity, z: 0 })).isError).toBe(true);
+  });
+  test("open_inventory uses the mod endpoint and verifies the resulting screen", async () => {
+    const f = await fixture();
+    expect(text(await f.tools.call("open_inventory"))).toContain("Opened InventoryScreen.");
+    expect(f.requests.some(r => r.path === "/gui" && r.body.action === "open" && r.body.target === "inventory")).toBe(true);
+    f.setScreen({ screen: "CraftingScreen" });
+    expect(text(await f.tools.call("open_inventory"))).toContain("Close CraftingScreen");
+    expect(f.requests.filter(r => r.body.action === "open")).toHaveLength(1);
+    f.setScreen({ screen: "none" }); f.options.openWorks = false;
+    expect((await f.tools.call("open_inventory")).isError).toBe(true);
+  });
+  test("manual eat swaps off-hotbar food, reports the move, and restores selected slot and aim", async () => {
+    const f = await fixture({ interactable: true }); f.state.food = 6;
+    f.state.rotation = { yaw: 73, pitch: 10 }; f.state.selectedSlot = 2;
+    f.state.inventory!.main = [{ slot: 17, count: 30, item: "minecraft:bread", edible: true }];
+    const result = await f.tools.call("eat", { item: "bread" });
+    expect(result.isError).toBe(false);
+    expect(text(result)).toContain("food 6 -> 12");
+    expect(text(result)).toContain("Moved 30 x minecraft:bread from inventory 17 to H0.");
+    expect(f.requests.find(r => r.body.mode === "SWAP")?.body).toEqual({ action: "clickSlot", slot: 17, button: 0, mode: "SWAP" });
+    expect(f.state.screen).toBe("none"); expect(f.state.selectedSlot).toBe(2);
+    expect(f.state.rotation).toEqual({ yaw: 73, pitch: 10 });
+    const actions = f.requests.filter(r => r.path === "/player" || r.path === "/wait");
+    const use = actions.findIndex(r => r.body.action === "use");
+    expect(actions[use - 2]?.body).toEqual({ action: "look", yaw: 73, pitch: -90 });
+    expect(actions[use - 1]?.path).toBe("/wait");
+    expect(actions.some(r => r.body.action === "release")).toBe(true);
+  });
+  test("auto-eat moves food to a full hotbar, reports displacement and avoids the crafting table", async () => {
+    const f = await fixture({ interactable: true }); f.state.food = 6; f.state.selectedSlot = 4;
+    f.state.hotbar = Array.from({ length: 9 }, (_, slot) => ({ slot, item: "minecraft:stone", count: 64 }));
+    f.state.inventory!.main = [{ slot: 35, item: "minecraft:bread", count: 30 }];
+    await f.body.poll(); expect(f.state.screen).toBe("none");
+    expect(f.requests.find(r => r.body.mode === "SWAP")?.body.button).toBe(4);
+    f.tick(2200); await f.body.poll();
+    const events = f.body.events.consume();
+    expect(events).toContain("Moved 30 x minecraft:bread from inventory 35 to H4");
+    expect(events).toContain("swapped minecraft:stone");
+    expect(f.state.selectedSlot).toBe(4);
+  });
+  test("food movement is not claimed successful when the hotbar read-back disagrees", async () => {
+    const f = await fixture({ swapWorks: false }); f.state.food = 6;
+    f.state.inventory!.main = [{ slot: 9, item: "minecraft:bread", count: 30 }];
+    const result = await f.tools.call("eat");
+    expect(result.isError).toBe(true); expect(text(result)).toContain("was not observed");
+    expect(f.requests.some(r => r.body.action === "use")).toBe(false);
+  });
+  test("close_screen verifies close and falls back to ESCAPE, never trusting the action response", async () => {
+    const f = await fixture({ closeFailures: 1 }); f.setScreen({ screen: "CraftingScreen" });
+    const result = await f.tools.call("close_screen");
+    expect(result.isError).toBe(false); expect(text(result)).toContain("Closed CraftingScreen.");
+    expect(f.requests.filter(r => r.path === "/gui").map(r => r.body)).toEqual([
+      {}, { action: "close" }, {}, { action: "key", key: "ESCAPE" }, {},
+    ]);
+    expect(f.state.screen).toBe("none");
+  });
+  test("close_screen and press_key report a surviving CraftingScreen honestly", async () => {
+    const f = await fixture({ closeFailures: 10, escapeBlocked: true }); f.setScreen({ screen: "CraftingScreen" });
+    const closed = await f.tools.call("close_screen");
+    expect(closed.isError).toBe(true); expect(text(closed)).toContain("CraftingScreen is still open after close and ESCAPE");
+    expect(text(closed)).not.toContain("Closed ");
+    expect(text(await f.tools.call("press_key", { key: "ESCAPE" }))).toContain("screen afterwards: CraftingScreen");
+    f.options.escapeBlocked = false;
+    expect(text(await f.tools.call("press_key", { key: "ESCAPE" }))).toContain("screen afterwards: none");
+  });
+  test("eat refuses an open screen by name, without moving food or using it", async () => {
+    const f = await fixture(); f.setScreen({ screen: "CraftingScreen" }); f.state.food = 6;
+    const result = await f.tools.call("eat");
+    expect(result.isError).toBe(true); expect(text(result)).toContain("Close CraftingScreen before eating");
+    expect(f.requests.some(r => r.body.action === "use" || r.body.action === "open")).toBe(false);
+  });
+  test("manual and automatic meals fail rather than saying ate when food did not increase", async () => {
+    const f = await fixture({ eatWorks: false }); f.state.food = 6;
+    f.state.hotbar = [{ slot: 0, item: "minecraft:bread", count: 30 }];
+    const result = await f.tools.call("eat");
+    expect(result.isError).toBe(true); expect(text(result)).toContain("no food increase observed");
+    expect(text(result)).not.toContain("Ate ");
+    await f.body.poll(); f.tick(2200); await f.body.poll();
+    expect(f.body.events.consume()).toContain("Eating failed: no food increase observed");
+  });
+  test("auto-eat emits one screen-blocking warning after more than 20 seconds, resets when unblocked", async () => {
+    const f = await fixture(); f.state.food = 6; f.setScreen({ screen: "CraftingScreen" });
+    await f.body.poll(); f.tick(20000); await f.body.poll();
+    expect(f.body.events.consume()).not.toContain("blocking meals");
+    f.tick(1); await f.body.poll(); expect(f.body.events.consume()).toContain("CraftingScreen is blocking meals");
+    f.tick(30000); await f.body.poll(); expect(f.body.events.consume()).not.toContain("blocking meals");
+    f.setScreen({ screen: "none" }); await f.body.poll();
+    f.setScreen({ screen: "InventoryScreen" }); await f.body.poll(); f.tick(20001); await f.body.poll();
+    expect(f.body.events.consume()).toContain("InventoryScreen is blocking meals");
+  });
+  test("a meal-opened screen is closed once and suppresses auto-eat for ten seconds", async () => {
+    const f = await fixture({ forceMealScreen: true, closeFailures: 1 }); f.state.food = 6;
+    f.state.hotbar = [{ slot: 0, item: "minecraft:bread", count: 30 }];
+    await f.body.poll(); expect(f.state.screen).toBe("CraftingScreen");
+    await f.body.poll(); expect(f.state.screen).toBe("none");
+    const events = f.body.events.consume();
+    expect(events).toContain("Meal opened CraftingScreen instead of eating");
+    expect(events.match(/reflex/g)).toHaveLength(1);
+    const release = f.requests.findIndex(r => r.body.action === "release");
+    const close = f.requests.findIndex(r => r.body.action === "close");
+    expect(release).toBeLessThan(close);
+    f.tick(9999); await f.body.poll();
+    expect(f.requests.filter(r => r.body.action === "use")).toHaveLength(1);
+    expect(f.body.events.consume()).not.toContain("Meal opened");
+    f.options.forceMealScreen = false; f.tick(1); await f.body.poll();
+    expect(f.requests.filter(r => r.body.action === "use")).toHaveLength(2);
+  });
+  test("manual meal-opened screens are also closed and reported as a failure", async () => {
+    const f = await fixture({ forceMealScreen: true }); f.state.food = 6;
+    f.state.hotbar = [{ slot: 0, item: "minecraft:bread", count: 30 }];
+    const result = await f.tools.call("eat");
+    expect(result.isError).toBe(true); expect(text(result)).toContain("Meal opened CraftingScreen instead of eating");
+    expect(f.state.screen).toBe("none");
+    await f.body.poll(); expect(f.requests.filter(r => r.body.action === "use")).toHaveLength(1);
+  });
+  test("Baritone calculation replies reset the stall timer and the last failure survives consumed events", async () => {
+    const f = await fixture(); await f.tools.call("go_to", { x: 10, z: 0 });
+    f.tick(3900); await appendFile(f.log, "[CHAT] [Baritone] Calculating path...\n"); await f.body.poll();
+    f.body.events.consume(); f.tick(3900); await f.body.poll();
+    expect(f.body.events.consume()).not.toContain("stopped_short");
+    await appendFile(f.log, "[CHAT] [Baritone] No path found: goal unreachable\n"); await f.body.poll(); f.body.events.consume();
+    f.tick(3999); await f.body.poll(); expect(f.body.events.consume()).not.toContain("stopped_short");
+    f.tick(1); await f.body.poll();
+    const events = f.body.events.consume();
+    expect(events).toContain("stopped_short distance=10 baritone=No path found: goal unreachable");
+    await f.tools.call("go_to", { x: 20, z: 0 }); f.tick(4000); await f.body.poll();
+    expect(f.body.events.consume()).toContain("baritone=no reply observed since start");
+  });
+  test("mine documents its unbounded search and rejects an unsupported near radius", async () => {
+    const f = await fixture();
+    expect(definitions.mine.description).toContain("known and nearby chunks and may walk far");
+    expect((await f.tools.call("mine", { block: "tall_grass", count: 6, near: 10 })).isError).toBe(true);
+    await f.tools.call("mine", { block: "tall_grass", count: 6 }); f.tick(4000); await f.body.poll();
+    expect(f.body.events.consume()).toContain("distance=unknown (no fixed destination)");
   });
 });

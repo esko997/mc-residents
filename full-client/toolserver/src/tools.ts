@@ -7,31 +7,34 @@ import { hostileEntity, nonempty, playerEntity, type Stack } from "./synapse.ts"
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 
 const finite = z.number().finite();
+// Block coordinates use the containing block, including at negative positions.
+const blockCoordinate = finite.transform(Math.floor);
 const name = z.string().regex(/^\w{1,16}$/, "Use an in-game player name.");
 const itemId = z.string().regex(/^(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+$/, "Use an item or block registry id.").transform(id => id.includes(":") ? id : `minecraft:${id}`);
 const hold = { hold_ticks: z.number().int().min(1).max(200).optional() };
 const key = z.enum(["ENTER", "ESCAPE", "BACKSPACE", "TAB", "UP", "DOWN", "LEFT", "RIGHT", "DELETE"]);
 export const definitions = {
   wait: { description: "Wait for chat, danger, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short"])).optional() }) },
-  go_to: { description: "Start Baritone travel; returns immediately. Arrival is an event.", schema: z.object({ x: z.number().int(), z: z.number().int(), y: z.number().int().optional() }) },
-  mine: { description: "Start Baritone mining; bare block names mean minecraft:.", schema: z.object({ block: itemId, count: z.number().int().positive().optional() }) },
+  go_to: { description: "Start Baritone travel; coordinates use the containing block (floats accepted). Returns immediately; arrival is an event.", schema: z.object({ x: blockCoordinate, z: blockCoordinate, y: blockCoordinate.optional() }) },
+  mine: { description: "Start Baritone mining; searches known and nearby chunks and may walk far. No radius limit. Bare block names mean minecraft:.", schema: z.object({ block: itemId, count: z.number().int().positive().optional() }).strict() },
   follow: { description: "Start following a named player.", schema: z.object({ player: name }) },
   explore: { description: "Start Baritone exploration.", schema: z.object({}) },
   stop: { description: "Stop Baritone and release held keys.", schema: z.object({}) },
   status: { description: "Brief body, surroundings, navigation and screen status.", schema: z.object({}) },
   inventory: { description: "Non-empty inventory stacks; H marks hotbar (slots 0..8).", schema: z.object({}) },
   say: { description: "Speak plain chat, independently of walking; not commands.", schema: z.object({ text: z.string().min(1).max(256) }) },
-  look: { description: "Look by yaw/pitch, world coordinates, or nearby player name.", schema: z.union([z.object({ yaw: finite, pitch: finite.min(-90).max(90) }).strict(), z.object({ x: finite, y: finite, z: finite }).strict(), z.object({ player: name }).strict()]) },
+  look: { description: "Look by yaw/pitch, world block coordinates (floats use the containing block), or nearby player name.", schema: z.union([z.object({ yaw: finite, pitch: finite.min(-90).max(90) }).strict(), z.object({ x: blockCoordinate, y: blockCoordinate, z: blockCoordinate }).strict(), z.object({ player: name }).strict()]) },
   use: { description: "Right-click; optionally hold use 1..200 ticks (20 ticks/s).", schema: z.object(hold) },
   attack: { description: "Left-click; optionally hold attack to mine by hand.", schema: z.object(hold) },
   select_hotbar: { description: "Select hotbar slot 0..8.", schema: z.object({ slot: z.number().int().min(0).max(8) }) },
-  eat: { description: "Eat food from hotbar, optionally a specific item id; report food before/after.", schema: z.object({ item: itemId.optional() }) },
+  eat: { description: "Eat inventory food, moving it to the hotbar if needed; refuses open screens and reports observed food change.", schema: z.object({ item: itemId.optional() }) },
+  open_inventory: { description: "Open your own inventory to inspect or move stacks; refuses to replace another screen.", schema: z.object({}) },
   screen: { description: "Read screen title, non-empty indexed slots, buttons and text boxes.", schema: z.object({}) },
   click_slot: { description: "Click a container menu slot; indexes come from screen, not inventory.", schema: z.object({ slot: z.number().int().min(-999), button: z.number().int().min(0).max(8).optional(), mode: z.enum(["PICKUP", "QUICK_MOVE", "SWAP", "CLONE", "THROW", "QUICK_CRAFT", "PICKUP_ALL"]).optional() }) },
   click_button: { description: "Press a screen button by label or widget index.", schema: z.union([z.object({ label: z.string().min(1) }).strict(), z.object({ index: z.number().int().nonnegative() }).strict()]) },
   type_text: { description: "Type characters into the open screen (including sign/book editors).", schema: z.object({ text: z.string().max(8192) }) },
-  press_key: { description: "Press a named key once on the open screen.", schema: z.object({ key }) },
-  close_screen: { description: "Close the current screen.", schema: z.object({}) },
+  press_key: { description: "Press a named key once and report the screen open afterwards.", schema: z.object({ key }) },
+  close_screen: { description: "Close the current screen, verify, and try ESCAPE if still open; report the actual result.", schema: z.object({}) },
   picture: { description: "See the client framebuffer as an image.", schema: z.object({}) },
   write_sign: { description: "Place selected sign on the looked-at block, write up to four lines, finish.", schema: z.object({ lines: z.array(z.string().max(90).refine(s => !/[\r\n]/.test(s), "One line per entry.")).min(1).max(4) }) },
   find_item: { description: "Search modpack item ids and display names.", schema: z.object({ query: z.string().min(1).max(200) }) },
@@ -43,7 +46,7 @@ export const definitions = {
 };
 export type ToolName = keyof typeof definitions;
 const knowledgeNames = ["find_item", "recipes", "uses", "guide"];
-const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "click_slot", "click_button", "type_text", "press_key", "write_sign", "stop"];
+const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "click_button", "type_text", "press_key", "write_sign", "stop"];
 function stackText(stack: Stack, mark = "") {
   const durability = stack.durability === undefined ? "" : ` (${stack.durability}/${stack.maxDurability})`;
   return `${mark}${stack.slot}: ${stack.count} x ${stack.item}${durability}`;
@@ -155,12 +158,11 @@ export class Tools {
       case "select_hotbar": await api.player({ action: "selectHotbar", slot: args.slot }); return `Selected H${args.slot}.`;
       case "eat": {
         const before = await api.state();
-        const stack = await body.beginEating(before, args.item);
+        const meal = await body.beginEating(before, args.item);
         await Bun.sleep(2200);
-        const after = await api.state();
-        await api.player({ action: "selectHotbar", slot: before.selectedSlot });
-        return `Ate ${stack.item}; food ${before.food} -> ${after.food}${after.food <= before.food ? " (no increase observed)" : ""}.`;
+        return `Ate ${await body.finishEating(meal)}`;
       }
+      case "open_inventory": return `Opened ${(await body.openInventory()).screen}.`;
       case "screen": {
         const screen = await api.gui();
         const lines = [`${screen.screen}${screen.title ? `: ${screen.title}` : ""}`];
@@ -177,8 +179,16 @@ export class Tools {
       case "click_slot": await api.gui({ action: "clickSlot", ...args }); return `Clicked slot ${args.slot}.`;
       case "click_button": await api.gui({ action: "clickButton", ...args }); return "Pressed button.";
       case "type_text": await api.gui({ action: "keys", text: args.text }); return "Typed text.";
-      case "press_key": await api.gui({ action: "key", key: args.key }); return `Pressed ${args.key}.`;
-      case "close_screen": await api.gui({ action: "close" }); return "Closed screen.";
+      case "press_key": {
+        await api.gui({ action: "key", key: args.key });
+        const after = await api.gui();
+        return `Pressed ${args.key}; screen afterwards: ${after.screen}.`;
+      }
+      case "close_screen": {
+        const { before, after } = await body.closeScreen();
+        if (after !== "none") throw new Error(`${after} is still open after close and ESCAPE.`);
+        return before === "none" ? "No screen open." : `Closed ${before}.`;
+      }
       case "picture": return { text: "Client view.", image: await api.picture() };
       case "write_sign": {
         const state = await api.state();
