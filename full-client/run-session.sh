@@ -26,6 +26,14 @@ SYNAPSE_URL=http://127.0.0.1:25599
 # shellcheck source=/dev/null
 [ -f "$base/instances/$name.env" ] && . "$base/instances/$name.env"
 home=$base/resident/$persona
+# Each harness reads its own persona file. Started with the wrong model, a
+# resident would play with no persona at all (Margo moved from Claude Code to
+# Codex; her old start command named a Claude model), so refuse instead.
+case $model in claude:*) persona_file=CLAUDE.md ;; *) persona_file=AGENTS.md ;; esac
+if [ ! -f "$home/$persona_file" ]; then
+  echo "$name is not set up for model $model: $home has no $persona_file" >&2
+  exit 2
+fi
 unit="gary-client@$name.service"
 log=$GAME_DIR/logs/latest.log
 mkdir -p "$base/sessions"
