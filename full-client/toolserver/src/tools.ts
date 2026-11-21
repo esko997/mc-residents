@@ -86,7 +86,11 @@ export class Tools {
       if (typeof value === "string") text = value;
       else { text = value.text; image = value.image; }
     } catch (error) {
-      const message = error instanceof z.ZodError ? error.issues.map(i => `${i.path.join(".") || "input"}: ${i.message}`).join("; ") : error instanceof Error ? error.message : "Tool failed.";
+      // A bare "Invalid input" (from a union such as look's three forms) tells
+      // the model nothing; the description says which shapes are accepted.
+      const message = error instanceof z.ZodError
+        ? `${error.issues.map(i => `${i.path.join(".") || "input"}: ${i.message}`).join("; ")}. ${name}: ${definitions[name as ToolName]?.description ?? ""}`
+        : error instanceof Error ? error.message : "Tool failed.";
       this.lastError = message.replace(/\s+/g, " ").slice(0, 400);
       text = `Error: ${this.lastError}`; isError = true;
     }
