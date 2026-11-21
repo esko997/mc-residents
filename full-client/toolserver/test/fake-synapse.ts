@@ -1,9 +1,9 @@
 import { afterEach } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Body } from "../src/body.ts";
-import { Synapse, nonempty, type Screen, type Stack, type State } from "../src/synapse.ts";
+import { Synapse, nonempty, type BlockSearch, type Screen, type Stack, type State } from "../src/synapse.ts";
 import { Tools } from "../src/tools.ts";
 
 export interface Request { path: string; body: Record<string, unknown> }
@@ -41,6 +41,16 @@ export interface FakeOptions {
   quickMoveResultWorks?: boolean;
   /** Clicks on these menu slots are ignored. */
   deadSlots?: number[];
+  /** The blocks Baritone's mine job is heading for; its `#proc` lists them as the job's goal. An empty list is a
+   * job that knows no such block and explores. Default: one block beside where the job began. */
+  mineTargets?: [number, number, number][];
+  /** The world as the client holds it: every block id its registry knows, with where such blocks stand. An id that
+   * is not a key names no block, and `GET /blocks` refuses it as Synapse does. */
+  blocks?: Record<string, [number, number, number][]>;
+  /** Chunk columns ("x,z" in chunk coordinates) the client does not hold: `GET /blocks` sees nothing in them. */
+  unloadedChunks?: string[];
+  /** Baritone's settings file, `<game dir>/baritone/settings.txt`, as `name value` lines. `#set` rewrites its line, as Baritone does. */
+  baritoneSettings?: string;
 }
 export interface Fixture {
   dir: string; log: string; state: State; requests: Request[]; body: Body; tools: Tools; options: FakeOptions;
@@ -195,7 +205,10 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(
 // and commands arrive through the real Synapse client rather than mocked methods.
 export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
   const dir = await mkdtemp(join(tmpdir(), "resident-body-"));
-  const log = join(dir, "latest.log"); await writeFile(log, "");
+  // The game directory: the client log is in its logs/, Baritone's settings in its baritone/.
+  const log = join(dir, "logs", "latest.log"), settingsFile = join(dir, "baritone", "settings.txt");
+  await mkdir(join(dir, "logs")); await writeFile(log, "");
+  if (options.baritoneSettings !== undefined) { await mkdir(join(dir, "baritone")); await writeFile(settingsFile, options.baritoneSettings); }
   let clock = 0;
   const state: State = {
     pos: { x: 0, y: 64, z: 0 }, eye: { x: 0, y: 65.62, z: 0 }, dimension: "minecraft:overworld",
@@ -221,6 +234,21 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
   };
   let unavailable = false;
   const baritone = { active: options.baritoneBusy === true, paused: false };
+  /** The job Baritone was last given, and the block he stood in then. */
+  let job = { command: "", feet: [0, 0, 0] };
+  // Baritone 1.10.1 prints its replies to chat, which the client writes to its log; a command is echoed first.
+  const reply = (...lines: string[]) => appendFile(log, lines.map(line => `[12:00:00] [Render thread/INFO]: [CHAT] [Baritone] ${line}\n`).join(""));
+  const xyz = ([x, y, z]: number[]) => `{x=${x},y=${y},z=${z}}`;
+  /** `#proc`: the process in control and its last command, as ProcCommand prints them. */
+  const process = () => {
+    if (!baritone.active) return ["No process in control"];
+    if (baritone.paused) return ["Class: baritone.command.defaults.ExecutionControlCommands$1", "Priority: 1.000000", "Temporary: true", "Display name: Pause/Resume Commands", "Last command: REQUEST_PAUSE null"];
+    const mined = /^#mine (?:\d+ )?(\S+)/.exec(job.command)?.[1];
+    if (!mined) return ["Class: baritone.process.CustomGoalProcess", "Priority: 3.000000", "Temporary: false", "Display name: Custom Goal", `Last command: SET_GOAL_AND_PATH GoalBlock${xyz(job.feet)}`];
+    const targets = options.mineTargets ?? [[job.feet[0]! + 1, job.feet[1]!, job.feet[2]!]];
+    const goal = targets.length ? `GoalComposite[${targets.map(target => `GoalTwoBlocks${xyz(target)}`).join(", ")}]` : `GoalRunAwayFromMaintainY y=11, [BetterBlockPos${xyz(job.feet)}]`;
+    return ["Class: baritone.process.MineProcess", "Priority: 0.000000", "Temporary: false", `Display name: Mine BlockOptionalMetaLookup{[BlockOptionalMeta{block=Block{${mined}}}]}`, `Last command: REVALIDATE_GOAL_AND_PATH ${goal}`];
+  };
   // Baritone sets the view on every client tick while it works, whatever was looked at in between.
   const steer = () => { if (options.steering && baritone.active && !baritone.paused) state.rotation = { ...options.steering }; };
   const requests: Request[] = [];
@@ -233,6 +261,36 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
     let data: unknown = {};
     if (url.pathname === "/state") data = state.rotation.pitch === -90 ? { ...state, lookingAt: options.overhead ?? { type: "miss" } } : state;
     else if (url.pathname === "/screenshot") data = { image: "aGVsbG8=" };
+    else if (url.pathname === "/blocks") {
+      // The contract of Synapse's endpoint, worked out the plain way: every block measured, then sorted.
+      const refuse = (message: string) => Response.json({ ok: false, error: { code: "BAD_REQUEST", message } }, { status: 400 });
+      const ranged = (name: string, fallback: number, max: number) => {
+        const raw = url.searchParams.get(name), value = raw === null ? fallback : /^-?\d+$/.test(raw) ? Number(raw) : NaN;
+        return value >= 1 && value <= max ? value : undefined;
+      };
+      const id = url.searchParams.get("block") ?? "", radius = ranged("radius", 32, 96), limit = ranged("limit", 8, 32);
+      if (!id) return refuse("block is required, e.g. /blocks?block=minecraft:diamond_ore.");
+      if (radius === undefined) return refuse("radius must be 1..96.");
+      if (limit === undefined) return refuse("limit must be 1..32.");
+      const block = id.includes(":") ? id : `minecraft:${id}`, placed = options.blocks?.[block];
+      if (!placed) return refuse(`Unknown block id '${id}': no block is registered under it (an item that is not a block cannot be searched for).`);
+      const origin: BlockSearch["origin"] = [Math.floor(state.pos.x), Math.floor(state.pos.y), Math.floor(state.pos.z)];
+      const unloaded = new Set(options.unloadedChunks);
+      /** Blocks from `at` to the nearest block of a chunk on one axis. */
+      const gap = (at: number, chunk: number) => Math.max(chunk * 16 - at, at - (chunk * 16 + 15), 0);
+      let chunksInRadius = 0, chunksLoaded = 0;
+      for (let chunkX = Math.floor((origin[0] - radius) / 16); chunkX <= Math.floor((origin[0] + radius) / 16); chunkX++) {
+        for (let chunkZ = Math.floor((origin[2] - radius) / 16); chunkZ <= Math.floor((origin[2] + radius) / 16); chunkZ++) {
+          if (gap(origin[0], chunkX) ** 2 + gap(origin[2], chunkZ) ** 2 > radius ** 2) continue;
+          chunksInRadius++;
+          if (!unloaded.has(`${chunkX},${chunkZ}`)) chunksLoaded++;
+        }
+      }
+      const squared = (at: number[]) => (at[0]! - origin[0]) ** 2 + (at[1]! - origin[1]) ** 2 + (at[2]! - origin[2]) ** 2;
+      const seen = placed.filter(at => squared(at) <= radius ** 2 && !unloaded.has(`${Math.floor(at[0] / 16)},${Math.floor(at[2] / 16)}`))
+        .sort((a, b) => squared(a) - squared(b) || a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+      data = { block, dimension: state.dimension, origin, radius, limit, positions: seen.slice(0, limit), truncated: seen.length > limit, chunksLoaded, chunksInRadius } satisfies BlockSearch;
+    }
     else if (url.pathname === "/gui" && !body.action && options.guiReadFailures && options.guiReadFailures-- > 0) {
       return Response.json({ ok: false, error: { message: "read failed" } }, { status: 500 });
     }
@@ -280,7 +338,19 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
       }
     } else if (url.pathname === "/chat") {
       const text = String(body.text);
-      if (/^#(goto|mine|explore|follow)\b/.test(text)) baritone.active = true;
+      if (/^#(goto|mine|explore|follow)\b/.test(text)) {
+        baritone.active = true;
+        job = { command: text, feet: [Math.floor(state.pos.x), Math.floor(state.pos.y), Math.floor(state.pos.z)] };
+      }
+      else if (text === "#proc") await reply("> proc", ...process());
+      else if (text.startsWith("#set ")) {
+        const [, name, value] = text.split(" "), written = Number.isInteger(Number(value)) ? Number(value).toFixed(1) : value!;
+        const lines = (await readFile(settingsFile, "utf8").catch(() => "")).split("\n").filter(Boolean);
+        const old = lines.find(line => line.startsWith(`${name} `))?.slice(name!.length + 1) ?? "0.1";
+        await mkdir(join(dir, "baritone"), { recursive: true });
+        await writeFile(settingsFile, [...lines.filter(line => !line.startsWith(`${name} `)), `${name} ${written}`].join("\n") + "\n");
+        await reply(`> ${text.slice(1)}`, `Successfully set ${name} to ${written}`, `Old value: ${old}`);
+      }
       else if (text === "#pause") baritone.paused = true;
       else if (text === "#resume") baritone.paused = false;
       else if (text === "#stop") { baritone.active = false; baritone.paused = false; }

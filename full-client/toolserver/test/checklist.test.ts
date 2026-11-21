@@ -856,7 +856,8 @@ test("I01 a meal straight after a fight, the trip resumed and a crafting table i
   expect(events).toContain("ate minecraft:bread, food 15 -> 20");
   expect(events).not.toContain("Meal opened"); expect(events).not.toContain("stopped_short");
   expect(guiActions(f)).toHaveLength(0);
-  expect(chats(f)).toEqual(["#mine minecraft:stone", "#pause", "#resume", "#pause", "#resume"]);
+  // The trip is a mine job: once it is going again the body asks Baritone where it is heading (#proc).
+  expect(chats(f)).toEqual(["#mine minecraft:stone", "#pause", "#resume", "#proc", "#pause", "#resume"]);
   expect(f.state.selectedSlot).toBe(4);
 });
 
@@ -1032,4 +1033,117 @@ test("more long chat than a tool result holds drops the oldest lines whole, coun
   expect(shown).toEqual(said.slice(3).map((line, index) => `${index + 4} chat from=Margo text=${line}`));
   // The dropped lines are gone for good, as the count said; nothing is shown twice.
   expect(toolText(await f.tools.call("status"))).toContain("Since last time:\nnone");
+});
+
+const carry = (f: Fixture, items: Record<string, number>) => { f.state.inventory!.main = Object.entries(items).map(([item, count], slot) => ({ slot, item, count })); };
+const lift = "#set avoidBreakingMultiplier 1", keep = "#set avoidBreakingMultiplier 0.01";
+/** A client whose Baritone avoids breaking chests, as its settings file says. */
+const avoidingChests = () => fakeFixture({ baritoneSettings: "avoidBreakingMultiplier 0.01\nblocksToAvoidBreaking chest,furnace\n" });
+
+test("R09 a mine count is not reached by other pickups: stone is counted in cobblestone, whatever else came in", async () => {
+  const f = await fixture(); carry(f, { "minecraft:cobblestone": 10 });
+  await f.tools.call("mine", { block: "stone", count: 2 });
+  // Seven items came in on the way, and one of them is what stone drops.
+  f.tick(1000); carry(f, { "minecraft:cobblestone": 11, "minecraft:flint": 1, "minecraft:dirt": 3, "minecraft:wheat_seeds": 2 }); await f.body.poll();
+  expect(f.baritone.active).toBe(true); expect(f.body.events.consume()).not.toContain("arrived");
+  f.tick(1000); carry(f, { "minecraft:cobblestone": 12, "minecraft:flint": 1, "minecraft:dirt": 3, "minecraft:wheat_seeds": 2 }); await f.body.poll();
+  expect(f.baritone.active).toBe(false);
+  expect(f.body.events.consume()).toBe("Since last time:\n1 arrived goal=mine 2 minecraft:stone collected=2 x minecraft:cobblestone, 1 x minecraft:flint, 3 x minecraft:dirt and 1 more kinds");
+});
+
+test("R09 a mine count is exact: what the block drops in vanilla and the block's own item, together", async () => {
+  const f = await fixture();
+  await f.tools.call("mine", { block: "deepslate_iron_ore", count: 3 });
+  f.tick(1000); carry(f, { "minecraft:cobbled_deepslate": 40, "minecraft:raw_iron": 2 }); await f.body.poll();
+  expect(f.baritone.active).toBe(true);
+  // The third comes in as the block itself, as under Silk Touch.
+  f.tick(1000); carry(f, { "minecraft:cobbled_deepslate": 40, "minecraft:raw_iron": 2, "minecraft:deepslate_iron_ore": 1 }); await f.body.poll();
+  expect(f.baritone.active).toBe(false);
+  expect(f.body.events.consume()).toContain("arrived goal=mine 3 minecraft:deepslate_iron_ore collected=2 x minecraft:raw_iron, 1 x minecraft:deepslate_iron_ore, 40 x minecraft:cobbled_deepslate");
+});
+
+test("R09 a block whose drop is not known is counted by its own item alone, and the end of the job says so", async () => {
+  const f = await fakeFixture({ mineTargets: [[3, 64, 0]] });
+  await f.tools.call("mine", { block: "create:zinc_ore", count: 2, radius: 8 });
+  // Five raw zinc is very likely what it dropped, and nothing here knows that: the count stays at none.
+  f.tick(500); carry(f, { "create:raw_zinc": 5, "minecraft:cobblestone": 9 }); await f.body.poll(); await f.body.poll();
+  expect(f.baritone.active).toBe(true); expect(f.body.events.consume()).toBe("Since last time:\nnone");
+  // The job is still bounded: the next one Baritone knows is 40 blocks off, and the radius ends it.
+  f.options.mineTargets = [[40, 64, 0]];
+  f.tick(3000); await f.body.poll(); await f.body.poll();
+  expect(f.baritone.active).toBe(false);
+  expect(f.body.events.consume()).toBe("Since last time:\n1 navigation_stopped goal=mine 2 create:zinc_ore collected=5 x create:raw_zinc, 9 x minecraft:cobblestone counted=0 of 2 (only create:zinc_ore itself is counted; what it drops is not known) reason=no create:zinc_ore left within 8 blocks of where you started (0,64,0) nearest=40,64,0, 40 blocks from where you started you=0,64,0");
+});
+
+test("N08 a mine job carried past its radius before Baritone said anything claims nothing about what is left", async () => {
+  const f = await fixture(); await f.tools.call("mine", { block: "stone", radius: 5 });
+  moveTo(f, 6, 64, 0); await f.body.poll();
+  expect(f.baritone.active).toBe(false); expect(f.body.navigation).toBeUndefined();
+  const events = f.body.events.consume();
+  expect(events).toContain("navigation_stopped goal=mine minecraft:stone collected=nothing reason=you were more than 5 blocks from where you started (0,64,0) before Baritone said where it was heading; whether any minecraft:stone is left near there is not known you=6,64,0");
+  expect(events).not.toContain("left within");
+});
+
+test("S05 Baritone ending a mine job itself puts the breaking cost back without a stall report; one early no-process answer does not", async () => {
+  const f = await avoidingChests(); await f.tools.call("mine", { block: "chest", radius: 8 });
+  expect(chats(f)).toEqual([lift, "#mine minecraft:chest"]);
+  // Asked before the job's first tick, Baritone has no process in control yet.
+  f.baritone.active = false; f.tick(500); await f.body.poll();
+  f.baritone.active = true; await f.body.poll();
+  // Asked again half a second later it has: the job is still watched, its cost still lifted.
+  f.tick(500); moveTo(f, 1, 64, 0); await f.body.poll(); await f.body.poll();
+  expect(chats(f)).toEqual([lift, "#mine minecraft:chest", "#proc", "#proc"]);
+  // Now Baritone gives the job up. He walks on, so no stall is reported; its second answer ends the watch and the cost.
+  f.baritone.active = false;
+  f.tick(3000); moveTo(f, 2, 64, 0); await f.body.poll();
+  f.tick(250); moveTo(f, 3, 64, 0); await f.body.poll();
+  expect(chats(f)).not.toContain(keep);
+  f.tick(500); moveTo(f, 4, 64, 0); await f.body.poll();
+  f.tick(250); moveTo(f, 5, 64, 0); await f.body.poll();
+  expect(chats(f)).toEqual([lift, "#mine minecraft:chest", "#proc", "#proc", "#proc", "#proc", keep]);
+  // Where he goes afterwards is his own business: nothing more is asked, stopped or set.
+  for (let step = 0; step < 6; step++) { f.tick(1000); moveTo(f, 10 + step * 5, 64, 0); await f.body.poll(); }
+  expect(chats(f)).toHaveLength(7);
+  const events = f.body.events.consume();
+  expect(events).not.toContain("stopped_short"); expect(events).not.toContain("No process in control");
+});
+
+test("S05 a stall report on a mine job Baritone is still working leaves its breaking cost lifted and its radius in force", async () => {
+  const f = await avoidingChests(); await f.tools.call("mine", { block: "chest", radius: 8 });
+  f.tick(4000); await f.body.poll();
+  expect(f.body.events.consume()).toContain("stopped_short");
+  // A hard block outlasts the stall clock. Baritone still has the job and cannot finish it at the avoiding cost.
+  f.tick(3000); await f.body.poll(); await f.body.poll();
+  expect(f.baritone.active).toBe(true); expect(chats(f)).not.toContain(keep);
+  // It walks on and out of the radius: stopped there, and only then is the cost put back, once.
+  f.tick(1000); moveTo(f, 9, 64, 0); await f.body.poll();
+  expect(chats(f).slice(-2)).toEqual(["#stop", keep]); expect(f.baritone.active).toBe(false);
+  expect(f.body.events.consume()).toContain("navigation_stopped goal=mine minecraft:chest collected=nothing reason=the way to the next minecraft:chest led more than 8 blocks from where you started (0,64,0) nearest=1,64,0, 1 blocks from where you started you=9,64,0");
+  await f.body.poll(); f.tick(3000); await f.body.poll();
+  expect(chats(f).filter(sent => sent === keep)).toHaveLength(1);
+});
+
+test("N04 death stops a mine job that outlived its stall report, and its breaking cost goes back", async () => {
+  const f = await avoidingChests(); await f.body.poll();
+  await f.tools.call("mine", { block: "chest" });
+  f.tick(4000); await f.body.poll();
+  expect(f.body.events.consume()).toContain("stopped_short");
+  f.tick(1000); f.state.health = 0; await f.body.poll();
+  expect(chats(f).slice(-2)).toEqual(["#stop", keep]); expect(f.baritone.active).toBe(false);
+  expect(f.body.navigation).toBeUndefined();
+  expect(f.body.events.consume()).toContain("navigation_stopped goal=mine minecraft:chest reason=you died");
+});
+
+test("S05 a trip that could not be sent leaves the mine job before it watched: its radius holds and its cost follows the job", async () => {
+  const f = await avoidingChests(); await f.tools.call("mine", { block: "chest", radius: 8 });
+  const chat = f.body.api.chat.bind(f.body.api);
+  f.body.api.chat = text => text.startsWith("#goto") ? Promise.reject(new Error("Synapse did not answer.")) : chat(text);
+  expect((await f.tools.call("go_to", { x: 50, z: 0 })).isError).toBe(true);
+  // The cost went back for the trip that never started. Baritone is still at the chest, which needs it lifted.
+  expect(chats(f)).toEqual([lift, "#mine minecraft:chest", keep]);
+  expect(f.body.navigation?.description).toBe("mine minecraft:chest");
+  await f.body.poll();
+  expect(chats(f).at(-1)).toBe(lift);
+  moveTo(f, 9, 64, 0); await f.body.poll();
+  expect(chats(f).slice(-2)).toEqual(["#stop", keep]); expect(f.baritone.active).toBe(false);
 });

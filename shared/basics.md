@@ -111,6 +111,14 @@ its own food supply, so that hunger and nights stop being emergencies.
   probably trying to break a block it may not (claims, spawn) or cannot find a
   way. Repeating the same `go_to` will not help. Try a nearer open spot first,
   or `follow` someone who can walk out, then carry on from there.
+- `mine` is local gathering: it stops if its route or next target goes beyond
+  the radius around where you started (default 32 blocks, maximum 96).
+  `find_block` searches the client-loaded terrain without moving or digging;
+  finding a block does not mean there is a safe route to it. Travel deliberately
+  toward a chosen resource, then mine nearby.
+- A mine count measures gained target items or known vanilla drops, not blocks
+  broken. Unknown modded drops may not count: check inventory and `stop` when
+  you have enough. Do not send mining trips through buildings.
 
 ## Crafting with your body
 

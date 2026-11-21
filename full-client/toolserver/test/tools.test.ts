@@ -11,7 +11,7 @@ import { Events, parseLogLine } from "../src/events.ts";
 import { openKnowledge } from "../src/knowledge/index.ts";
 import { Synapse } from "../src/synapse.ts";
 import { Tools, definitions } from "../src/tools.ts";
-import { fixture } from "./fake-synapse.ts";
+import { fixture, type Fixture } from "./fake-synapse.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
@@ -263,10 +263,12 @@ describe("reflexes and interactions", () => {
   test("all tool text stays below 1500 characters with full inventory and event burst", async () => {
     const commonsDir = await mkdtemp(join(tmpdir(), "resident-commons-"));
     cleanups.push(() => rm(commonsDir, { recursive: true, force: true }));
-    const f = await fixture({ commonsDb: join(commonsDir, "commons.sqlite") }); f.state.inventory!.main = Array.from({ length: 36 }, (_, slot) => ({ slot, count: 64, item: `mekanism:very_long_modded_material_stack_${slot}` }));
+    // Twenty far positions: with limit 16, the longest list find_block can give.
+    const flax = Array.from({ length: 20 }, (_, i): [number, number, number] => [-40 - i, 44, -40 - i]);
+    const f = await fixture({ commonsDb: join(commonsDir, "commons.sqlite"), blocks: { "supplementaries:wild_flax": flax } }); f.state.inventory!.main = Array.from({ length: 36 }, (_, slot) => ({ slot, count: 64, item: `mekanism:very_long_modded_material_stack_${slot}` }));
     await writeFile(join(f.dir, "memory.md"), Array.from({ length: 60 }, (_, i) => `- bread note ${i} ${"n".repeat(200)}`).join("\n"));
     const argumentsByTool: Record<string, unknown> = {
-      wait: { seconds: 1 }, go_to: { x: 10, z: 10 }, mine: { block: "minecraft:stone" },
+      wait: { seconds: 1 }, go_to: { x: 10, z: 10 }, mine: { block: "minecraft:stone" }, find_block: { block: "supplementaries:wild_flax", radius: 96, limit: 16 },
       follow: { player: "Levi" }, say: { text: "hello" }, look: { yaw: 0, pitch: 0 },
       use: { hold_ticks: 10 }, attack: { hold_ticks: 10 }, select_hotbar: { slot: 0 },
       eat: { item: "minecraft:bread" }, click_slot: { slot: 0 }, click_button: { index: 0 },
@@ -580,10 +582,413 @@ describe("body-tool repair regressions", () => {
     await f.tools.call("go_to", { x: 20, z: 0 }); f.tick(4000); await f.body.poll();
     expect(f.body.events.consume()).toContain("baritone=no reply observed since start");
   });
-  test("mine rejects an unsupported near radius and reports no fixed destination", async () => {
+  test("mine rejects an unknown argument and a radius over 96, and reports no fixed destination", async () => {
     const f = await fixture();
     expect((await f.tools.call("mine", { block: "tall_grass", count: 6, near: 10 })).isError).toBe(true);
-    await f.tools.call("mine", { block: "tall_grass", count: 6 }); f.tick(4000); await f.body.poll();
+    const tooFar = await f.tools.call("mine", { block: "tall_grass", radius: 97 });
+    expect(tooFar.isError).toBe(true); expect(text(tooFar)).toContain("radius: Number must be less than or equal to 96");
+    expect(text(tooFar)).toContain("within radius blocks (default 32, max 96)");
+    expect(f.requests.filter(r => r.path === "/chat")).toHaveLength(0);
+    expect(text(await f.tools.call("mine", { block: "tall_grass", count: 6 }))).toContain("Started #mine 6 minecraft:tall_grass, kept within 32 blocks of here.");
+    f.tick(4000); await f.body.poll();
     expect(f.body.events.consume()).toContain("distance=unknown (no fixed destination)");
+  });
+});
+
+const chats = (f: Fixture) => f.requests.filter(r => r.path === "/chat").map(r => r.body.text);
+const stopLines = (events: string) => events.split("\n").filter(line => line.includes(" navigation_stopped "));
+
+describe("mine stays near where it began", () => {
+  test("a body carried past the radius is stopped at once, with what it collected", async () => {
+    const f = await fixture();
+    f.state.pos = { x: 104.5, y: 116, z: -200.3 };
+    f.state.inventory!.main = [{ slot: 0, item: "minecraft:oak_log", count: 2 }, { slot: 1, item: "minecraft:bread", count: 4 }];
+    await f.tools.call("mine", { block: "oak_log", count: 8, radius: 10 });
+    // Ten blocks out is still inside the radius.
+    f.state.pos = { x: 114.5, y: 116, z: -200.3 }; await f.body.poll();
+    expect(f.baritone.active).toBe(true); expect(f.body.events.consume()).not.toContain("navigation_stopped");
+    // Three logs and their sticks came in on the way; a bread was eaten.
+    f.state.inventory!.main = [{ slot: 0, item: "minecraft:oak_log", count: 5 }, { slot: 1, item: "minecraft:bread", count: 3 }, { slot: 9, item: "minecraft:stick", count: 1 }];
+    f.state.pos = { x: 115, y: 116, z: -200.3 }; await f.body.poll();
+    expect(chats(f)).toEqual(["#mine 8 minecraft:oak_log", "#stop"]);
+    expect(f.baritone.active).toBe(false); expect(f.body.navigation).toBeUndefined();
+    expect(f.body.events.consume()).toContain("counted=3 of 8");
+    // Said once: nothing more follows, and no stall is reported for the job the body ended itself.
+    f.tick(5000); await f.body.poll(); await f.body.poll();
+    const later = f.body.events.consume();
+    expect(later).not.toContain("navigation_stopped"); expect(later).not.toContain("stopped_short");
+    expect(chats(f)).toHaveLength(2);
+    expect(text(await f.tools.call("status"))).toContain("Navigation: none");
+  });
+  test("the default radius is 32 blocks, measured in three dimensions", async () => {
+    const f = await fixture(); await f.tools.call("mine", { block: "stone" });
+    f.state.pos = { x: 0, y: 64 - 32, z: 0 }; await f.body.poll();
+    expect(f.baritone.active).toBe(true);
+    f.state.pos = { x: 4, y: 64 - 32, z: 0 }; await f.body.poll();
+    expect(f.baritone.active).toBe(false);
+  });
+  test("a wake-up waiting for arrival is woken when the body stops the job", async () => {
+    const f = await fixture(); await f.tools.call("mine", { block: "stone", radius: 5 });
+    f.state.pos = { x: 6, y: 64, z: 0 }; await f.body.poll();
+    expect(text(await f.tools.call("wait", { seconds: 1, for: ["arrived", "stopped_short"] }))).toContain("Waking event received.");
+  });
+  test("the nearest block Baritone is heading for lies past the radius: stopped before any walk, and it is named", async () => {
+    // Margo's one wild flax: the only ones Baritone knew were 150 and 200 blocks off.
+    const f = await fixture({ mineTargets: [[200, 70, 0], [150, 64, 0]] });
+    await f.tools.call("mine", { block: "supplementaries:wild_flax", count: 1 });
+    f.tick(499); await f.body.poll(); expect(chats(f)).toEqual(["#mine 1 supplementaries:wild_flax"]);
+    f.tick(1); await f.body.poll(); expect(chats(f).at(-1)).toBe("#proc");
+    await f.body.poll();
+    expect(chats(f)).toEqual(["#mine 1 supplementaries:wild_flax", "#proc", "#stop"]);
+    expect(f.baritone.active).toBe(false);
+    const events = f.body.events.consume();
+    expect(stopLines(events)).toEqual([
+      "1 navigation_stopped goal=mine 1 supplementaries:wild_flax collected=nothing reason=no supplementaries:wild_flax left within 32 blocks of where you started (0,64,0) nearest=150,64,0, 150 blocks from where you started you=0,64,0",
+    ]);
+    // Baritone's answer to the body's question is read by the body and is no news for the resident.
+    expect(events).not.toContain("baritone");
+  });
+  test("Baritone knows no such block and has begun to explore: stopped, and the place it runs from is no target", async () => {
+    const f = await fixture({ mineTargets: [] });
+    await f.tools.call("mine", { block: "diamond_ore", radius: 96 });
+    f.tick(500); await f.body.poll(); await f.body.poll();
+    expect(chats(f)).toEqual(["#mine minecraft:diamond_ore", "#proc", "#stop"]);
+    expect(f.body.events.consume()).toContain("collected=nothing reason=no minecraft:diamond_ore left within 96 blocks of where you started (0,64,0) nearest=none known in the loaded chunks you=0,64,0");
+  });
+  test("while the nearest block is inside the radius the job goes on, asked again every three seconds", async () => {
+    const f = await fixture({ mineTargets: [[20, 64, 0], [300, 64, 0]] });
+    await f.tools.call("mine", { block: "stone" });
+    for (let second = 0; second < 7; second++) { f.tick(1000); f.state.pos.x += 1; await f.body.poll(); }
+    expect(chats(f)).toEqual(["#mine minecraft:stone", "#proc", "#proc", "#proc"]);
+    expect(f.baritone.active).toBe(true);
+    expect(f.body.events.consume()).toBe("Since last time:\nnone");
+    // The near ones are gone; what is left is 300 blocks from the start.
+    f.options.mineTargets = [[300, 64, 0]];
+    f.tick(3000); f.state.pos.x += 1; await f.body.poll(); await f.body.poll();
+    expect(f.baritone.active).toBe(false);
+    expect(f.body.events.consume()).toContain("nearest=300,64,0, 300 blocks from where you started you=8,64,0");
+  });
+  test("a block known inside the radius whose path leaves it is not called none left", async () => {
+    const f = await fixture({ mineTargets: [[20, 64, 0]] });
+    await f.tools.call("mine", { block: "stone" });
+    f.tick(500); await f.body.poll(); await f.body.poll();
+    f.state.pos = { x: 0, y: 64, z: 40 }; await f.body.poll();
+    expect(f.body.events.consume()).toContain("reason=the way to the next minecraft:stone led more than 32 blocks from where you started (0,64,0) nearest=20,64,0, 20 blocks from where you started you=0,64,40");
+  });
+  test("asking Baritone where it is heading is no sign of life: a stalled job is still reported after four seconds", async () => {
+    const f = await fixture(); await f.tools.call("mine", { block: "stone" });
+    f.tick(3999); await f.body.poll(); expect(chats(f).at(-1)).toBe("#proc");
+    f.tick(1); await f.body.poll();
+    const events = f.body.events.consume();
+    expect(events).toContain("stopped_short distance=unknown (no fixed destination) baritone=no reply observed since start");
+    expect(events).not.toContain("Last command");
+  });
+  test("after a stall report the radius still holds while Baritone has a job", async () => {
+    // A hard block outlasts the four-second stall clock; Baritone is still at work and walks on afterwards.
+    const f = await fixture(); await f.tools.call("mine", { block: "obsidian", radius: 8 });
+    f.tick(4000); await f.body.poll();
+    expect(f.body.events.consume()).toContain("stopped_short");
+    f.tick(1000); f.state.pos = { x: 9, y: 64, z: 0 }; await f.body.poll();
+    expect(chats(f).at(-1)).toBe("#stop"); expect(f.baritone.active).toBe(false);
+    expect(f.body.events.consume()).toContain("navigation_stopped goal=mine minecraft:obsidian collected=nothing reason=the way to the next minecraft:obsidian led more than 8 blocks from where you started (0,64,0)");
+  });
+  test("when Baritone says twice that it has no job left, the radius and the asking end with it", async () => {
+    const f = await fixture(); await f.tools.call("mine", { block: "stone", count: 2, radius: 8 });
+    f.tick(500); await f.body.poll();
+    f.baritone.active = false; // It has its two and is done.
+    f.tick(3000); await f.body.poll();
+    f.tick(1000); await f.body.poll();
+    const events = f.body.events.consume();
+    expect(events).toContain("stopped_short"); expect(events).not.toContain("No process in control");
+    // Where he goes afterwards is his own business.
+    for (let second = 0; second < 10; second++) { f.tick(1000); f.state.pos.x += 5; await f.body.poll(); }
+    expect(f.body.events.consume()).not.toContain("navigation_stopped");
+  });
+  test("other trips are not asked about and have no radius", async () => {
+    const f = await fixture({ mineTargets: [] }); await f.tools.call("go_to", { x: 500, z: 0 });
+    for (let second = 0; second < 5; second++) { f.tick(1000); f.state.pos.x += 60; await f.body.poll(); }
+    expect(chats(f)).toEqual(["#goto 500 0"]);
+    expect(f.body.events.consume()).not.toContain("navigation_stopped");
+  });
+});
+
+describe("mine ends at its count by the body's own counting", () => {
+  // On this client Baritone logs "Currently have 0 valid items" while holding what it mined: its count never ends the job.
+  const carry = (f: Fixture, items: Record<string, number>) => { f.state.inventory!.main = Object.entries(items).map(([item, count], slot) => ({ slot, item, count })); };
+  test("the block's own item is counted, not what else was picked up; then Baritone is stopped and arrival reported", async () => {
+    const f = await fixture(); carry(f, { "minecraft:oak_log": 2 });
+    await f.tools.call("mine", { block: "oak_log", count: 3 });
+    f.tick(1000); carry(f, { "minecraft:oak_log": 4, "minecraft:stick": 1 }); await f.body.poll();
+    expect(f.baritone.active).toBe(true); expect(f.body.events.consume()).not.toContain("arrived");
+    f.tick(1000); carry(f, { "minecraft:oak_log": 5, "minecraft:stick": 1 }); await f.body.poll();
+    expect(chats(f)).toEqual(["#mine 3 minecraft:oak_log", "#proc", "#stop"]);
+    expect(f.baritone.active).toBe(false);
+    expect(f.body.events.consume()).toBe("Since last time:\n1 arrived goal=mine 3 minecraft:oak_log collected=3 x minecraft:oak_log, 1 x minecraft:stick");
+    expect(text(await f.tools.call("status"))).toContain("Navigation: mine 3 minecraft:oak_log (arrival/stop reported)");
+    // Done is done: no stall is reported for it and Baritone is not asked again.
+    for (let second = 0; second < 8; second++) { f.tick(1000); f.state.pos.x += 10; await f.body.poll(); }
+    expect(chats(f)).toHaveLength(3); expect(f.body.events.consume()).toBe("Since last time:\nnone");
+  });
+  test("a block that drops something else is counted in that drop alone, and the line says what else came in", async () => {
+    const f = await fixture(); carry(f, { "minecraft:cobblestone": 10 });
+    await f.tools.call("mine", { block: "stone", count: 2 });
+    f.tick(1000); carry(f, { "minecraft:cobblestone": 11 }); await f.body.poll();
+    expect(f.baritone.active).toBe(true);
+    // Flint from gravel on the way is not stone: the count stays at one.
+    f.tick(1000); carry(f, { "minecraft:cobblestone": 11, "minecraft:flint": 1 }); await f.body.poll();
+    expect(f.baritone.active).toBe(true);
+    f.tick(1000); carry(f, { "minecraft:cobblestone": 12, "minecraft:flint": 1 }); await f.body.poll();
+    expect(f.baritone.active).toBe(false);
+    // A wait for arrival is woken by it and shows the line.
+    const woken = text(await f.tools.call("wait", { seconds: 1, for: ["arrived"] }));
+    expect(woken).toBe("Waking event received.\n\nSince last time:\n1 arrived goal=mine 2 minecraft:stone collected=2 x minecraft:cobblestone, 1 x minecraft:flint");
+  });
+  test("what he was holding before the job began is no gain, even on a reading taken before it", async () => {
+    const f = await fixture(); carry(f, { "minecraft:oak_planks": 4 }); await f.body.poll();
+    // Crafted a moment before the call: the body's last reading still shows the planks.
+    carry(f, { "minecraft:stick": 8 });
+    await f.tools.call("mine", { block: "stone", count: 2 });
+    f.tick(500); await f.body.poll();
+    expect(f.baritone.active).toBe(true);
+    f.tick(500); await f.body.poll();
+    expect(f.baritone.active).toBe(true); expect(f.body.events.consume()).not.toContain("arrived");
+  });
+  test("without a count nothing ends the job but the radius", async () => {
+    const f = await fixture(); await f.tools.call("mine", { block: "stone" });
+    for (let second = 1; second <= 5; second++) { f.tick(1000); f.state.pos.x += 1; carry(f, { "minecraft:cobblestone": second * 4 }); await f.body.poll(); }
+    expect(f.baritone.active).toBe(true); expect(f.body.events.consume()).toBe("Since last time:\nnone");
+  });
+});
+
+describe("mine of a block Baritone avoids breaking", () => {
+  const lift = "#set avoidBreakingMultiplier 1", keep = "#set avoidBreakingMultiplier 0.01";
+  // Vanilla ids are written without their namespace, as Baritone writes them.
+  const settings = "allowBreak true\navoidBreakingMultiplier 0.01\nblocksToAvoidBreaking oak_planks,chest,furnace,crafting_table,quark:oak_chest\n";
+  test("the cost is lifted before #mine and stays lifted through a stall report while Baritone has the job; its answers to #set are no news", async () => {
+    const f = await fixture({ baritoneSettings: settings });
+    await f.tools.call("mine", { block: "chest", count: 1 });
+    expect(chats(f)).toEqual([lift, "#mine 1 minecraft:chest"]);
+    f.tick(4000); await f.body.poll();
+    expect(chats(f)).toEqual([lift, "#mine 1 minecraft:chest", "#proc"]);
+    await f.body.poll(); f.tick(5000); await f.body.poll();
+    expect(chats(f)).not.toContain(keep);
+    const events = f.body.events.consume();
+    // Neither an event nor the "last reply" of the job.
+    expect(events).toContain("stopped_short distance=unknown (no fixed destination) baritone=no reply observed since start");
+    expect(events).not.toContain("Successfully set"); expect(events).not.toContain("Old value");
+  });
+  test.each(["minecraft:crafting_table", "quark:oak_chest"])("%s is on the list whichever way its id is written", async block => {
+    const f = await fixture({ baritoneSettings: settings });
+    await f.tools.call("mine", { block });
+    expect(chats(f)).toEqual([lift, `#mine ${block}`]);
+  });
+  test("a block that is not on the list, or no settings file, changes nothing", async () => {
+    for (const f of [await fixture({ baritoneSettings: settings }), await fixture()]) {
+      await f.tools.call("mine", { block: "oak_log" });
+      f.tick(4000); await f.body.poll(); await f.tools.call("stop"); await f.body.poll();
+      expect(chats(f).filter(sent => String(sent).startsWith("#set"))).toHaveLength(0);
+    }
+  });
+  const endings: Record<string, (f: Fixture) => Promise<unknown>> = {
+    "the stop tool": async f => { await f.tools.call("stop"); await f.body.poll(); },
+    "the radius": async f => { f.state.pos = { x: 40, y: 64, z: 0 }; await f.body.poll(); },
+    "its count": async f => { f.tick(1000); f.state.inventory!.main = [{ slot: 0, item: "minecraft:chest", count: 2 }]; await f.body.poll(); },
+    "death": async f => { f.state.health = 0; await f.body.poll(); },
+    "another trip": f => f.tools.call("go_to", { x: 5, z: 0 }),
+    "shutdown": f => f.body.close(),
+  };
+  test.each(Object.keys(endings))("the cost is put back when the job ends by %s", async ending => {
+    const f = await fixture({ baritoneSettings: settings });
+    await f.tools.call("mine", { block: "chest", count: 2 });
+    await f.body.poll();
+    expect(chats(f)).not.toContain(keep);
+    await endings[ending]!(f);
+    expect(chats(f).filter(sent => sent === lift)).toHaveLength(1);
+    expect(chats(f)).toContain(keep);
+    // A trip that replaces the job starts with the cost already back.
+    if (ending === "another trip") expect(chats(f).slice(-2)).toEqual([keep, "#goto 5 0"]);
+    if (ending !== "shutdown") { await f.body.poll(); f.tick(3000); await f.body.poll(); expect(chats(f).filter(sent => sent === keep)).toHaveLength(1); }
+  });
+  test("one listed block mined after another keeps the cost lifted in between", async () => {
+    const f = await fixture({ baritoneSettings: settings });
+    await f.tools.call("mine", { block: "chest" }); await f.body.poll();
+    await f.tools.call("mine", { block: "furnace" }); await f.body.poll();
+    expect(chats(f)).toEqual([lift, "#mine minecraft:chest", "#mine minecraft:furnace"]);
+  });
+  test("a tool server killed in the middle of such a job: the next one puts the cost back when it starts", async () => {
+    // Baritone wrote the lifted value to its settings file, as it does for every #set.
+    const f = await fixture({ baritoneSettings: "avoidBreakingMultiplier 1.0\nblocksToAvoidBreaking chest\n" });
+    await f.body.start();
+    expect(chats(f)).toEqual([keep]);
+    const untouched = await fixture({ baritoneSettings: settings });
+    await untouched.body.start();
+    expect(chats(untouched)).toEqual([]);
+  });
+});
+
+describe("find_block", () => {
+  const blockRequests = (f: Fixture) => f.requests.filter(r => r.path === "/blocks");
+  const unreached = "This is where the blocks are as your client sees them now; whether you can get to one is not checked.";
+  test("a natural block in the loaded chunks: nearest first with distance and direction, by one read that moves nothing", async () => {
+    const f = await fixture({ blocks: { "minecraft:iron_ore": [[112, 119, -205], [104, 116, -190], [300, 70, -190], [104, 120, -201], [90, 116, -201], [104, 116, -140], [110, 116, -260], [104, 116, -202]] } });
+    f.state.pos = { x: 104.5, y: 116, z: -200.3 };
+    await f.tools.call("go_to", { x: 400, z: -200 });
+    const before = f.requests.length;
+    // Three of the eight are more than 32 blocks off; a bare name means minecraft:.
+    expect(text(await f.tools.call("find_block", { block: "iron_ore" }))).toStartWith([
+      "minecraft:iron_ore: 5 within 32 blocks of you (104,116,-201), nearest first; every chunk in that radius was searched (21):",
+      "104,116,-202, 1 block north",
+      "104,120,-201, 4 blocks straight up",
+      "112,119,-205, 9 blocks north-east, 3 up",
+      "104,116,-190, 11 blocks south",
+      "90,116,-201, 14 blocks west",
+      `${unreached}\n\n`,
+    ].join("\n"));
+    // No chat to Baritone, no key, no screen, not even a state read: the trip under way is untouched.
+    expect(f.requests.slice(before).map(r => r.path)).toEqual(["/blocks"]);
+    expect(f.baritone).toEqual({ active: true, paused: false }); expect(f.body.navigation?.description).toBe("goto 400 -200");
+  });
+  test("the radius is a sphere that includes its surface: a block one farther, across or up, is not listed", async () => {
+    const f = await fixture({ blocks: { "minecraft:oak_log": [[40, 60, -30], [0, 64, 90], [0, 96, 0], [0, 97, 0], [33, 64, 0]] } });
+    expect(text(await f.tools.call("find_block", { block: "oak_log", radius: 31 }))).toStartWith(
+      "No minecraft:oak_log within 31 blocks of you (0,64,0); every chunk in that radius was searched (16). A larger radius (max 96) looks farther.\n\n");
+    expect(text(await f.tools.call("find_block", { block: "oak_log" }))).toStartWith(
+      `minecraft:oak_log: 1 within 32 blocks of you (0,64,0), nearest first; every chunk in that radius was searched (18):\n0,96,0, 32 blocks straight up\n${unreached}\n\n`);
+    expect(text(await f.tools.call("find_block", { block: "oak_log", radius: 51 }))).toStartWith([
+      "minecraft:oak_log: 4 within 51 blocks of you (0,64,0), nearest first; every chunk in that radius was searched (48):",
+      "0,96,0, 32 blocks straight up", "0,97,0, 33 blocks straight up", "33,64,0, 33 blocks east", "40,60,-30, 50 blocks north-east, 4 down", unreached,
+    ].join("\n"));
+    expect(text(await f.tools.call("find_block", { block: "oak_log", radius: 96 }))).toContain("\n40,60,-30, 50 blocks north-east, 4 down\n0,64,90, 90 blocks south\n");
+  });
+  test("below zero on every axis the containing block is the origin and distances stay right", async () => {
+    const f = await fixture({ blocks: { "minecraft:deepslate_diamond_ore": [[-16, -64, -33], [2, -60, -17], [-1, -59, -17], [-1, -60, -50]] } });
+    f.state.pos = { x: -0.3, y: -60, z: -16.01 };
+    expect(text(await f.tools.call("find_block", { block: "minecraft:deepslate_diamond_ore" }))).toStartWith([
+      "minecraft:deepslate_diamond_ore: 3 within 32 blocks of you (-1,-60,-17), nearest first; every chunk in that radius was searched (18):",
+      "-1,-59,-17, 1 block straight up",
+      "2,-60,-17, 3 blocks east",
+      "-16,-64,-33, 22 blocks north-west, 4 down",
+      unreached,
+    ].join("\n"));
+  });
+  test("more matches than the limit: the nearest are listed and the reply says there are more", async () => {
+    const f = await fixture({ blocks: { "minecraft:stone": Array.from({ length: 10 }, (_, i): [number, number, number] => [10 - i, 64, 0]) } });
+    const eight = text(await f.tools.call("find_block", { block: "stone" }));
+    expect(eight).toStartWith("minecraft:stone: the 8 nearest within 32 blocks of you (0,64,0), there are more; every chunk in that radius was searched (18):\n1,64,0, 1 block east\n2,64,0, 2 blocks east\n");
+    expect(eight).toContain(`\n8,64,0, 8 blocks east\n${unreached}`); expect(eight).not.toContain("9,64,0");
+    expect(text(await f.tools.call("find_block", { block: "stone", limit: 2 }))).toStartWith(
+      `minecraft:stone: the 2 nearest within 32 blocks of you (0,64,0), there are more; every chunk in that radius was searched (18):\n1,64,0, 1 block east\n2,64,0, 2 blocks east\n${unreached}`);
+    const all = text(await f.tools.call("find_block", { block: "stone", limit: 16 }));
+    expect(all).toStartWith("minecraft:stone: 10 within 32 blocks of you (0,64,0), nearest first;"); expect(all).toContain("\n10,64,0, 10 blocks east\n");
+  });
+  test("no match where every chunk is loaded is told apart from chunks that were never searched", async () => {
+    const f = await fixture({ blocks: { "minecraft:diamond_ore": [], "minecraft:wheat": [[20, 64, 0], [-5, 64, 0]], "minecraft:carrots": [[20, 64, 0]] } });
+    expect(text(await f.tools.call("find_block", { block: "diamond_ore" }))).toStartWith(
+      "No minecraft:diamond_ore within 32 blocks of you (0,64,0); every chunk in that radius was searched (18). A larger radius (max 96) looks farther.\n\n");
+    expect(text(await f.tools.call("find_block", { block: "diamond_ore", radius: 96 }))).toStartWith(
+      "No minecraft:diamond_ore within 96 blocks of you (0,64,0); every chunk in that radius was searched (134). 96 is the largest radius: to look farther, go there first.\n\n");
+    // The chunk east of his own (blocks 16..31) is not in the client: what stands there is not seen, and the reply says so.
+    f.options.unloadedChunks = ["1,0"];
+    expect(text(await f.tools.call("find_block", { block: "wheat" }))).toStartWith(
+      `minecraft:wheat: 1 within 32 blocks of you (0,64,0), nearest first; only 17 of the 18 chunks in that radius are loaded in your client; the rest was not searched:\n-5,64,0, 5 blocks west\n${unreached}`);
+    expect(text(await f.tools.call("find_block", { block: "carrots" }))).toStartWith(
+      "No minecraft:carrots in the loaded chunks within 32 blocks of you (0,64,0), but only 17 of the 18 chunks in that radius are loaded in your client; the rest was not searched.\n\n");
+    f.state.pos = { x: 8, y: 64, z: 8 }; f.options.unloadedChunks = ["0,0"];
+    expect(text(await f.tools.call("find_block", { block: "wheat", radius: 4 }))).toStartWith(
+      "Nothing was searched: no chunk within 4 blocks of you (8,64,8) is loaded in your client (1 in that radius).\n\n");
+  });
+  test("an id that names no block is Synapse's error; a malformed id or a radius or limit out of range never reaches it", async () => {
+    const f = await fixture({ blocks: { "minecraft:diamond_ore": [[1, 64, 0]] } });
+    const item = await f.tools.call("find_block", { block: "diamond" });
+    expect(item.isError).toBe(true);
+    expect(text(item)).toStartWith("Error: Synapse: Unknown block id 'minecraft:diamond': no block is registered under it (an item that is not a block cannot be searched for).\n\n");
+    expect(blockRequests(f)).toHaveLength(1);
+    for (const args of [{ block: "Diamond Ore" }, { block: "diamond_ore", radius: 97 }, { block: "diamond_ore", radius: 0 }, { block: "diamond_ore", limit: 17 }, { block: "diamond_ore", limit: 0 }, { block: "diamond_ore", near: true }]) {
+      expect((await f.tools.call("find_block", args)).isError).toBe(true);
+    }
+    expect(blockRequests(f)).toHaveLength(1);
+    expect((await f.tools.call("find_block", { block: "diamond_ore", radius: 96, limit: 16 })).isError).toBe(false);
+  });
+  test("out of a world the search fails with Synapse's reason instead of an empty list", async () => {
+    const f = await fixture({ blocks: { "minecraft:stone": [[1, 64, 0]] } }); f.setUnavailable();
+    const result = await f.tools.call("find_block", { block: "stone" });
+    expect(result.isError).toBe(true); expect(text(result)).toStartWith("Error: Synapse: No player in world.");
+  });
+});
+
+describe("meals and idle screens", () => {
+  const bread = { slot: 0, item: "minecraft:bread", count: 3 };
+  /** The reflex lines of an event tail, without their sequence numbers. */
+  const reflexLines = (events: string) => events.split("\n").filter(line => line.includes(" reflex ")).map(line => line.replace(/^\d+ reflex text=/, ""));
+  test("at food 6 or less a screen untouched for 30 s with an empty cursor is closed for the meal, in one line", async () => {
+    const f = await fixture(); f.state.food = 5; f.state.hotbar = [bread];
+    f.setScreen({ screen: "FurnaceScreen" }); await f.body.poll();
+    f.tick(29999); await f.body.poll();
+    expect(f.state.screen).toBe("FurnaceScreen");
+    expect(reflexLines(f.body.events.consume())).toEqual(["FurnaceScreen is blocking meals; close it to eat (food 5)."]);
+    f.tick(1); await f.body.poll();
+    expect(f.state.screen).toBe("none");
+    expect(f.requests.filter(r => r.body.action === "use" && r.body.ticks === 40)).toHaveLength(1);
+    f.tick(2200); await f.body.poll();
+    expect(reflexLines(f.body.events.consume())).toEqual(["closed FurnaceScreen (no action for 30 s) to eat; ate minecraft:bread, food 5 -> 11."]);
+  });
+  test("a stack on the cursor keeps the screen open and the meal blocked, however long", async () => {
+    const f = await fixture(); f.state.food = 5;
+    f.setMenu("CraftingScreen", [{ ...bread, slot: 37 }], { item: "minecraft:oak_planks", count: 4 });
+    await f.body.poll();
+    for (let second = 0; second < 90; second++) { f.tick(1000); await f.body.poll(); }
+    expect(f.state.screen).toBe("CraftingScreen"); expect(f.menu()?.carried).toEqual({ item: "minecraft:oak_planks", count: 4 });
+    expect(f.requests.some(r => r.body.action === "close" || r.body.key === "ESCAPE" || r.body.action === "use")).toBe(false);
+    expect(reflexLines(f.body.events.consume())).toEqual(["CraftingScreen is blocking meals; close it to eat (food 5)."]);
+    // Once the stack is put down, the screen has gone untouched long enough.
+    await f.tools.call("click_slot", { slot: 20 });
+    f.tick(29999); await f.body.poll(); expect(f.state.screen).toBe("CraftingScreen");
+    f.tick(1); await f.body.poll(); expect(f.state.screen).toBe("none");
+    f.tick(2200); await f.body.poll();
+    expect(f.body.events.consume()).toContain("reflex text=closed CraftingScreen (no action for 30 s) to eat; ate minecraft:bread, food 5 -> 11.");
+    expect(f.state.inventory!.main.find(s => s.item === "minecraft:oak_planks")?.count).toBe(4);
+  });
+  const screenActions: Record<string, object> = { screen: {}, click_slot: { slot: 3 }, type_text: { text: "a" }, use: {}, craft: { item: "stick" } };
+  test.each(Object.keys(screenActions))("%s within the last 30 s keeps the screen open", async tool => {
+    const f = await fixture(); f.state.food = 5; f.state.hotbar = [bread];
+    f.setScreen({ screen: "FurnaceScreen" }); await f.body.poll();
+    f.tick(25000); await f.body.poll();
+    await f.tools.call(tool, screenActions[tool]);
+    f.tick(29999); await f.body.poll();
+    expect(f.state.screen).toBe("FurnaceScreen"); expect(f.requests.some(r => r.body.action === "close")).toBe(false);
+    f.tick(1); await f.body.poll();
+    expect(f.state.screen).toBe("none");
+  });
+  test("above food 6, or with nothing to eat, the screen stays as it is", async () => {
+    const f = await fixture(); f.state.food = 7; f.state.hotbar = [bread];
+    f.setScreen({ screen: "FurnaceScreen" }); await f.body.poll();
+    f.tick(60000); await f.body.poll();
+    expect(f.state.screen).toBe("FurnaceScreen");
+    f.state.food = 6; f.state.hotbar = []; f.state.inventory!.main = [];
+    f.tick(60000); await f.body.poll(); f.tick(1000); await f.body.poll();
+    expect(f.state.screen).toBe("FurnaceScreen"); expect(f.requests.some(r => r.body.action === "close")).toBe(false);
+  });
+  test("a screen that will not close is tried once in 30 s and the meal stays blocked", async () => {
+    const f = await fixture({ closeFailures: 99, escapeBlocked: true }); f.state.food = 4; f.state.hotbar = [bread];
+    f.setScreen({ screen: "FurnaceScreen" }); await f.body.poll();
+    f.tick(30000); await f.body.poll();
+    for (let second = 0; second < 29; second++) { f.tick(1000); await f.body.poll(); }
+    expect(f.requests.filter(r => r.body.action === "close")).toHaveLength(1);
+    expect(f.state.screen).toBe("FurnaceScreen"); expect(f.requests.some(r => r.body.action === "use")).toBe(false);
+    expect(reflexLines(f.body.events.consume())).toEqual(["FurnaceScreen is blocking meals; close it to eat (food 4)."]);
+  });
+  test("the death screen is never closed for a meal", async () => {
+    const f = await fixture(); f.state.food = 3; f.state.hotbar = [bread];
+    f.setScreen({ screen: "DeathScreen" }); await f.body.poll();
+    f.tick(60000); await f.body.poll();
+    expect(f.requests.some(r => r.path === "/gui" && r.body.action !== undefined)).toBe(false);
+    expect(f.state.screen).toBe("DeathScreen");
+  });
+  test("a refused meal after the closing still names the screen, in the one line", async () => {
+    const f = await fixture({ overhead: { type: "block", block: "minecraft:oak_trapdoor", blockPos: [0, 66, 0] } });
+    f.state.food = 5; f.state.hotbar = [bread];
+    f.setScreen({ screen: "FurnaceScreen" }); await f.body.poll();
+    f.tick(30000); await f.body.poll();
+    expect(reflexLines(f.body.events.consume()).at(-1)).toBe("closed FurnaceScreen (no action for 30 s) to eat; Meal not started: minecraft:oak_trapdoor is directly overhead and the meal would use it instead. Nothing was used. Auto-eat retries in 10 s.");
   });
 });

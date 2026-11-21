@@ -1,8 +1,35 @@
-import { Events, LogTail, pauseReply } from "./events.ts";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { Events, LogTail, pauseReply, procReply, setReply } from "./events.ts";
 import { angles, hostileEntity, nonempty, playerEntity, type Config, type Entity, type Position, type Stack, type State, Synapse } from "./synapse.ts";
 
 /** A destination. `y` is present only when the goal names a height, as in `#goto x y z`. */
 export interface Goal { x: number; z: number; y?: number }
+/** A mine job watched by the body. Baritone has no radius of its own: `#mine` walks to the nearest block it
+ * knows in the loaded chunks, however far, and explores at random when it knows none. Nor does its own count
+ * end the job on this client: it logs "Currently have 0 valid items" while holding what it mined. */
+export interface MineLimit {
+  block: string; radius: number;
+  /** The job is done when this many of the `counted` items came in; without it, when none is left within the radius. */
+  count?: number;
+  /** The items a count is kept in: the block's own, and what a vanilla block is known to drop instead. No other
+   * pickup counts, so a block whose drop is not known ends by the radius, never by a count it did not reach. */
+  counted: string[];
+  /** Item counts carried when the job began, to say what it collected, and how many full state reads the
+   * body had made by then: only a later read shows what the job brought in. */
+  had: Record<string, number>; reads: number;
+  /** Body clock for the next `#proc`, which asks Baritone where it is heading. */
+  probeAt: number;
+  /** From the latest `#proc` answer: the block Baritone is heading for that is nearest to the start, with its
+   * distance from there; "none" when it knows no such block and explores. Unset until an answer is read. */
+  nearest?: { pos: Position; distance: number } | "none";
+  /** Baritone answered the last `#proc` with no process in control. The first such answer is only asked again
+   * (it can come before the job's first tick); the second ends the watch. */
+  idle?: true;
+  /** The block is on Baritone's blocksToAvoidBreaking list: avoidBreakingMultiplier is 1 for as long as this
+   * job may be running. */
+  relaxed?: true;
+}
 export interface Navigation {
   description: string; target?: Goal; follow?: string;
   /** Where he stood when the command was given. */
@@ -11,6 +38,9 @@ export interface Navigation {
   lastPos: Position; lastMoved: number; lastStep: number; lastView: string; lastReply?: string; reported: boolean;
   /** Arrival at a fixed destination was reported: Baritone has nothing left to do for this command. */
   arrived?: true;
+  /** A mine job Baritone may still be running, whatever has been reported of it (a stall report does not end
+   * it). Dropped when the body stops the job or Baritone says twice that it has none. */
+  limit?: MineLimit;
 }
 /** `pos` is the block he last stood in alive; `at` is the body clock (ms) when the death was seen. */
 export interface Death { pos: Position; dimension: string; at: number }
@@ -26,6 +56,8 @@ interface Meal {
   moved?: string; automatic: boolean; finished?: boolean; failure?: string;
   /** Baritone was paused for this meal and is resumed when the meal is released. */
   paused?: true;
+  /** The body closed an idle screen for this meal: the start of the one reflex line that reports both. */
+  closed?: string;
 }
 /** The body declined to start a meal; nothing was used. */
 class MealRefused extends Error {}
@@ -66,6 +98,59 @@ const blockOf = (p: Position): Position => ({ x: Math.floor(p.x), y: Math.floor(
 // underground destination must not report arrival from the surface.
 const remaining = (pos: Position, goal: Goal) => Math.hypot(pos.x - goal.x, pos.z - goal.z, goal.y === undefined ? 0 : pos.y - goal.y);
 const entityPosition = (entity: Entity): Position => ({ x: entity.pos[0], y: entity.pos[1], z: entity.pos[2] });
+/** How many of each item he carries: main inventory with hotbar, and offhand. */
+function carried(state: State) {
+  const counts: Record<string, number> = {};
+  for (const stack of [...(state.inventory?.main ?? state.hotbar), ...(state.inventory ? [state.inventory.offhand] : [])]) {
+    if (nonempty(stack)) counts[stack.item] = (counts[stack.item] ?? 0) + stack.count;
+  }
+  return counts;
+}
+const blockText = (p: Position) => `${p.x},${p.y},${p.z}`;
+type Gain = readonly [string, number];
+/** What the inventory holds more of than in `had`, item by item. */
+const gains = (state: State, had: Record<string, number>): Gain[] =>
+  Object.entries(carried(state)).map(([item, count]) => [item, count - (had[item] ?? 0)] as const).filter(([, count]) => count > 0);
+/** What a vanilla 1.20.1 block gives instead of itself, or beside itself, when broken without Silk Touch. A mine
+ * count is kept in these and in the block's own item. A block that is not here (leaves, every modded block) is
+ * counted by its own item alone: what else came in on the way is no evidence of what it drops. */
+const vanillaDrops: Record<string, string[]> = Object.fromEntries(([
+  ["stone", "cobblestone"], ["deepslate", "cobbled_deepslate"],
+  ["grass_block dirt_path farmland mycelium podzol", "dirt"], ["crimson_nylium warped_nylium", "netherrack"],
+  ["coal_ore deepslate_coal_ore", "coal"], ["iron_ore deepslate_iron_ore", "raw_iron"], ["copper_ore deepslate_copper_ore", "raw_copper"],
+  ["gold_ore deepslate_gold_ore", "raw_gold"], ["nether_gold_ore gilded_blackstone", "gold_nugget"],
+  ["redstone_ore deepslate_redstone_ore", "redstone"], ["lapis_ore deepslate_lapis_ore", "lapis_lazuli"],
+  ["diamond_ore deepslate_diamond_ore", "diamond"], ["emerald_ore deepslate_emerald_ore", "emerald"], ["nether_quartz_ore", "quartz"],
+  ["gravel", "flint"], ["clay", "clay_ball"], ["glowstone", "glowstone_dust"], ["snow snow_block", "snowball"], ["melon", "melon_slice"],
+  ["sea_lantern", "prismarine_crystals"], ["amethyst_cluster", "amethyst_shard"], ["bookshelf", "book"], ["cobweb", "string"],
+  ["grass tall_grass fern large_fern", "wheat_seeds"], ["dead_bush", "stick"],
+  ["carrots", "carrot"], ["potatoes", "potato"], ["beetroots", "beetroot"], ["sweet_berry_bush", "sweet_berries"], ["cocoa", "cocoa_beans"],
+  ["cave_vines cave_vines_plant", "glow_berries"], ["kelp_plant", "kelp"], ["chorus_plant", "chorus_fruit"],
+  ["brown_mushroom_block", "brown_mushroom"], ["red_mushroom_block", "red_mushroom"],
+] as const).flatMap(([blocks, item]) => blocks.split(" ").map(block => [`minecraft:${block}`, [`minecraft:${item}`]] as [string, string[]])));
+/** How many of the counted items came in. */
+const tally = (gained: Gain[], counted: string[]) => gained.reduce((sum, [item, count]) => sum + (counted.includes(item) ? count : 0), 0);
+/** "3 x minecraft:oak_log, 1 x minecraft:stick", at most three kinds, those that count first. */
+function gainText(gained: Gain[], counted: string[]) {
+  const ordered = [...gained].sort((a, b) => Number(counted.includes(b[0])) - Number(counted.includes(a[0])));
+  return ordered.slice(0, 3).map(([item, count]) => `${count} x ${item}`).join(", ") + (ordered.length > 3 ? ` and ${ordered.length - 3} more kinds` : "") || "nothing";
+}
+/** For a job that ended short of its count with something picked up: how far the count got, and, when the
+ * block's drop is not known and none of its own item came in, that only that item was counted. */
+function countText(gained: Gain[], limit: MineLimit) {
+  if (limit.count === undefined || !gained.length) return undefined;
+  const have = tally(gained, limit.counted);
+  return `${have} of ${limit.count}${have || vanillaDrops[limit.block] ? "" : ` (only ${limit.block} itself is counted; what it drops is not known)`}`;
+}
+/** Baritone breaks a block on its blocksToAvoidBreaking list only at a cost (avoidBreakingMultiplier 0.01), and
+ * then `#mine` of such a block finds no path to it. The cost is lifted while a mine job that asks for one may be
+ * running. The setting is one for all of Baritone: while it is lifted, every other listed block in that job's
+ * way is as cheap to break as the one asked for. */
+const avoidBreaking = (value: string) => `#set avoidBreakingMultiplier ${value}`;
+/** How often a mine job kept near its start asks Baritone where it is heading, and how soon after it began. */
+const probe = { first: 500, every: 3000 };
+/** Auto-eat closes a screen in its way only this hungry, and only after this long without a screen action. */
+const idleScreen = { food: 6, ms: 30_000 };
 const foods: Record<string, true> = Object.fromEntries((
   "apple golden_apple enchanted_golden_apple bread baked_potato carrot golden_carrot beetroot melon_slice sweet_berries glow_berries dried_kelp cookie pumpkin_pie mushroom_stew rabbit_stew beetroot_soup cooked_beef cooked_porkchop cooked_chicken cooked_mutton cooked_rabbit cooked_cod cooked_salmon beef porkchop chicken mutton rabbit cod salmon tropical_fish potato honey_bottle"
 ).split(" ").map(item => [`minecraft:${item}`, true]));
@@ -86,6 +171,18 @@ export class Body {
   private players = new Map<string, Entity>();
   private eating?: Meal;
   private mealsBlocked?: { since: number; reported: boolean };
+  /** The screen the poller last saw and since when (body clock). */
+  private screenSeen?: { screen: string; since: number };
+  /** When the resident last acted on a screen through a tool (body clock). */
+  private lastScreenAction = -Infinity;
+  /** No look at the cursor of an idle screen before this (body clock): once a second, 30 s after a close that failed. */
+  private nextIdleCheck = 0;
+  /** An idle screen was closed for a meal in this reflex pass: the start of the line that reports it. */
+  private closedForMeal?: string;
+  /** The `#proc` answer being read is the mine job's that is kept near. */
+  private procMine = false;
+  /** Wall-clock time of the last `#proc` sent. */
+  private probeSent = 0;
   /** A hazard is present but a screen would not close; reported once per episode. */
   private rescueBlocked = false;
   private nextMeal = 0;
@@ -105,18 +202,40 @@ export class Body {
   private stopShorts?: { description: string; start: Position; count: number };
   private manual = 0;
   private stopped = false;
+  /** avoidBreakingMultiplier is 1 in Baritone. It is so only while a mine job of a listed block may be running:
+   * every poll puts it right, either way. */
+  private lifted = false;
+  /** What avoidBreakingMultiplier goes back to: the settings file's value when it was last lifted. */
+  private kept = "0.01";
+  /** Full state reads so far. */
+  private fullReads = 0;
   constructor(readonly config: Config, readonly api: Synapse, private now = Date.now) {
     this.tail = new LogTail(config.log, config.name, this.events, reply => {
+      if (setReply.test(reply) || this.readProc(reply)) return true;
       if (this.navigation && !this.navigation.reported) {
         // "Paused" and "Resumed" answer the body's own reflexes; they say nothing about why a trip ended.
         if (!pauseReply.test(reply)) this.navigation.lastReply = reply;
         this.navigation.lastMoved = this.now();
       }
+      return false;
     });
   }
   async start() {
+    // Baritone writes every `#set` to its settings file. A tool server killed in the middle of a mine job that
+    // had the cost lifted left it so; the first poll puts it back.
+    const settings = await this.baritoneSettings();
+    if (settings.blocksToAvoidBreaking && Number(settings.avoidBreakingMultiplier) === 1) this.lifted = true;
     await this.tail.start(); await this.poll();
     this.pollTimer = setInterval(() => { void this.poll(); }, 250);
+  }
+  /** Baritone's settings as its file has them (`name value` lines; it rewrites the file itself). The game
+   * directory is the parent of the `logs` directory the client log is in. Empty when the file cannot be read. */
+  private async baritoneSettings(): Promise<Record<string, string>> {
+    const text = await readFile(join(dirname(dirname(this.config.log)), "baritone", "settings.txt"), "utf8").catch(() => "");
+    return Object.fromEntries(text.split(/\r?\n/).filter(line => line && !line.startsWith("#")).map(line => {
+      const space = line.indexOf(" ");
+      return space < 0 ? [line, ""] : [line.slice(0, space), line.slice(space + 1).trim()];
+    }));
   }
   async poll() {
     if (this.stopped) return;
@@ -151,7 +270,7 @@ export class Body {
     this.state = { ...state, inventory: this.state?.inventory }; this.error = undefined;
     if (this.now() - this.lastFull >= 1000 || hurt) {
       const full = await this.api.state(true);
-      this.lastFull = this.now(); this.entities = full.nearbyEntities ?? [];
+      this.lastFull = this.now(); this.fullReads++; this.entities = full.nearbyEntities ?? [];
       this.state = { ...state, inventory: full.inventory };
       const players = new Map<string, Entity>();
       for (const entity of this.entities.filter(playerEntity)) {
@@ -165,8 +284,17 @@ export class Body {
     }
     await this.tail.read();
     this.rememberGround(this.state);
-    this.checkNavigation(state);
-    await this.reflex(this.state, hurt);
+    if (this.screenSeen?.screen !== state.screen) this.screenSeen = { screen: state.screen, since: this.now() };
+    // A `#proc`, `#stop` or `#set` that fails is tried again on the next poll and must not cost this poll its reflexes.
+    const failures: unknown[] = [];
+    await this.checkNavigation(state).catch(error => failures.push(error));
+    await this.reflex(this.state, hurt).catch(error => failures.push(error));
+    // The cost is lifted exactly while a mine job that needs it may be running. However that job ended (its count,
+    // the radius, Baritone giving up, a stop, death, a rescue, another command), it is back within this poll. A
+    // stall report alone does not put it back: Baritone is then still at work on the block.
+    const relaxed = this.navigation?.limit?.relaxed === true;
+    if (this.lifted !== relaxed) await this.api.chat(avoidBreaking(relaxed ? "1" : this.kept)).then(() => { this.lifted = relaxed; }, error => failures.push(error));
+    if (failures.length) throw failures[0];
   }
   private rememberGround(state: State) {
     if (state.health <= 0 || state.onGround !== true || state.inWater !== false || state.inLava !== false || state.onFire !== false) return;
@@ -197,17 +325,99 @@ export class Body {
   private restartStallClock() {
     if (this.navigation) this.navigation.lastMoved = this.navigation.lastStep = this.now();
   }
-  private checkNavigation(state: State) {
+  /** Baritone 1.10.1 answers `#proc` with five lines (Class, Priority, Temporary, Display name, Last command),
+   * or with one when no process is in control. "Display name" is "Mine <filter>" for a mine job, the filter
+   * naming the block, and "Last command" ends in its goal: every block it is heading for as `{x=..,y=..,z=..}`,
+   * or a GoalRunAway from where it stands when it knows no such block and explores. Anything else (a pause, no
+   * goal yet) says nothing. Every such line is the body's own reading: no event, and no sign of life. */
+  private readProc(reply: string) {
+    const line = procReply.exec(reply);
+    if (!line) return false;
+    const nav = this.navigation, limit = nav?.limit;
+    if (!line[1]) {
+      // Baritone has finished or given up: no job is left to keep near, and none that needs the cost lifted.
+      // One such answer is not yet that: read before the job's first tick, it would leave the job without a radius.
+      if (limit?.idle) nav!.limit = undefined;
+      else if (limit) { limit.idle = true; limit.probeAt = Math.min(limit.probeAt, this.now() + probe.first); }
+    } else if (line[1] === "Class") { if (limit) limit.idle = undefined; }
+    else if (line[1] === "Display name") this.procMine = limit !== undefined && line[2]!.startsWith("Mine ") && line[2]!.includes(limit.block);
+    else if (line[1] === "Last command") {
+      if (this.procMine && nav && limit) {
+        const goal = line[2]!;
+        const heading = [...goal.matchAll(/\{x=(-?\d+),y=(-?\d+),z=(-?\d+)\}/g)]
+          .map(([, x, y, z]) => { const pos = { x: Number(x), y: Number(y), z: Number(z) }; return { pos, distance: distance(pos, blockOf(nav.start)) }; })
+          .sort((a, b) => a.distance - b.distance);
+        if (goal.includes("GoalRunAway")) limit.nearest = "none";
+        else if (heading.length) limit.nearest = heading[0];
+      }
+      this.procMine = false;
+    }
+    return true;
+  }
+  /** The resident acted on a screen through a tool; an idle screen is one without this for 30 s. */
+  screenTouched() { this.lastScreenAction = this.now(); }
+  /** Watches a mine job and ends it (true) when it has collected its count, or when the body or the nearest
+   * block Baritone is heading for is past the radius; otherwise asks Baritone where it is heading when that is due. */
+  private async watchMine(nav: Navigation, limit: MineLimit, state: State) {
+    // The inventory is read once a second, and only a reading later than the job's start is compared. Only the
+    // counted items count: sticks, saplings and whatever else was picked up on the way end no job.
+    if (limit.count !== undefined && this.state?.inventory && this.fullReads > limit.reads) {
+      const gained = gains(this.state, limit.had);
+      if (tally(gained, limit.counted) >= limit.count) {
+        await this.api.chat("#stop");
+        nav.reported = nav.arrived = true; nav.limit = undefined; this.stopShorts = undefined;
+        this.events.add("arrived", { goal: nav.description, collected: gainText(gained, limit.counted) });
+        return true;
+      }
+    }
+    const strayed = distance(state.pos, nav.start) > limit.radius;
+    if (strayed || limit.nearest === "none" || (limit.nearest && limit.nearest.distance > limit.radius)) { await this.endMine(nav, limit, state); return true; }
+    if (this.now() >= limit.probeAt) { limit.probeAt = this.now() + probe.every; this.probeSent = Date.now(); await this.api.chat("#proc"); }
+    return false;
+  }
+  /** Stops a mine job that left its radius and says what it collected. A `#stop` that fails is tried again on the next poll. */
+  private async endMine(nav: Navigation, limit: MineLimit, state: State) {
+    const { nearest } = limit;
+    await this.api.chat("#stop");
+    nav.reported = true; nav.limit = undefined;
+    if (this.navigation === nav) this.navigation = undefined;
+    // The job is stopped either way; an inventory that cannot be read is said so.
+    const gained = await this.api.state(true).then(full => gains(full, limit.had), () => undefined);
+    const counted = gained && countText(gained, limit);
+    const start = blockText(blockOf(nav.start));
+    this.events.add("navigation_stopped", {
+      goal: nav.description, collected: gained ? gainText(gained, limit.counted) : "unknown (inventory unreadable)",
+      ...(counted ? { counted } : {}),
+      // Only what Baritone said is claimed. A block it knows inside the radius whose path leaves it is not "none
+      // left"; and a body past the radius before Baritone answered at all says nothing of what is left.
+      reason: nearest === undefined
+        ? `you were more than ${limit.radius} blocks from where you started (${start}) before Baritone said where it was heading; whether any ${limit.block} is left near there is not known`
+        : nearest !== "none" && nearest.distance <= limit.radius
+          ? `the way to the next ${limit.block} led more than ${limit.radius} blocks from where you started (${start})`
+          : `no ${limit.block} left within ${limit.radius} blocks of where you started (${start})`,
+      ...(nearest === "none" ? { nearest: "none known in the loaded chunks" } : nearest ? { nearest: `${blockText(nearest.pos)}, ${Math.round(nearest.distance)} blocks from where you started` } : {}),
+      you: blockText(blockOf(state.pos)),
+    });
+  }
+  private async checkNavigation(state: State) {
     const nav = this.navigation;
-    if (!nav || nav.reported) return;
+    if (!nav) return;
+    const held = this.combat || this.fleeing || this.rescue?.paused || this.eating?.paused;
+    if (nav.reported) {
+      // A stall was reported, but Baritone may still be at work (a hard block outlasts the stall clock) and
+      // walk on afterwards: the radius holds until Baritone says it has no job.
+      if (nav.limit && !held) await this.watchMine(nav, nav.limit, state);
+      return;
+    }
     // Sampled even while a reflex has the body, so the view it leaves behind is not taken for Baritone's work.
     const view = viewOf(state), turned = view !== nav.lastView;
     nav.lastView = view;
-    if (this.combat || this.fleeing || this.rescue?.paused || this.eating?.paused) return;
+    if (held) return;
     if (nav.follow) {
       const player = this.entities.find(e => playerEntity(e) && e.name === nav.follow);
       if (player) nav.target = { x: player.pos[0], z: player.pos[2] };
     }
+    if (nav.limit && await this.watchMine(nav, nav.limit, state)) return;
     const now = this.now();
     if (Math.hypot(state.pos.x - nav.lastPos.x, state.pos.y - nav.lastPos.y, state.pos.z - nav.lastPos.z) > 0.15) {
       nav.lastPos = { ...state.pos }; nav.lastMoved = nav.lastStep = now;
@@ -246,22 +456,46 @@ export class Body {
       nav.reported = true;
     }
   }
-  async navigate(command: string, target?: Goal, follow?: string) {
-    const state = await this.api.state();
+  /** `mine` has the body watch the job: see MineLimit. */
+  async navigate(command: string, target?: Goal, follow?: string, mine?: { block: string; radius: number; count?: number }) {
+    const state = await this.api.state(mine !== undefined);
+    const settings: Record<string, string | undefined> = mine ? await this.baritoneSettings() : {};
+    const relaxed = mine !== undefined && settings.blocksToAvoidBreaking?.split(",").map(id => id.trim().toLowerCase()).map(id => id.includes(":") ? id : `minecraft:${id}`).includes(mine.block) === true;
     // Baritone accepts a command on the death screen and nothing moves; the body's stall timer then called that a stop.
     if (state.health <= 0) throw new Error("You are dead; no trip can start before you respawn.");
+    // The answer to a `#proc` sent a moment ago would be taken for this job's: let it arrive, then drain.
+    const answer = this.probeSent + 300 - Date.now();
+    if (answer > 0) await Bun.sleep(answer);
     await this.tail.read(); // Drain old replies before assigning a new navigation.
     // A rescue that is still cleaning up may be about to send #stop for the
     // navigation it interrupted; that must not land after this command.
     while (this.rescueCleanup) await this.rescueCleanup;
     const description = command.slice(1), last = this.stopShorts;
     if (last && (last.description !== description || Math.hypot(state.pos.x - last.start.x, state.pos.z - last.start.z) > 8)) this.stopShorts = undefined;
-    const now = this.now();
-    this.navigation = { description, target, follow, start: { ...state.pos }, lastPos: { ...state.pos }, lastMoved: now, lastStep: now, lastView: viewOf(state), reported: false };
+    const now = this.now(), previous = this.navigation;
+    this.navigation = {
+      description, target, follow, start: { ...state.pos }, lastPos: { ...state.pos }, lastMoved: now, lastStep: now, lastView: viewOf(state), reported: false,
+      ...(mine ? { limit: {
+        ...mine, counted: [mine.block, ...(vanillaDrops[mine.block] ?? [])], had: carried(state), reads: this.fullReads, probeAt: now + probe.first,
+        ...(relaxed ? { relaxed: true as const } : {}),
+      } } : {}),
+    };
+    let sent = false;
     try {
-      await this.api.chat(command);
+      // Before the command, so that a trip never starts with the cost lifted, nor a mine of a listed block with it kept.
+      if (this.lifted !== relaxed) {
+        const written = settings.avoidBreakingMultiplier;
+        if (relaxed && written && Number.isFinite(Number(written)) && Number(written) !== 1) this.kept = written;
+        await this.api.chat(avoidBreaking(relaxed ? "1" : this.kept)); this.lifted = relaxed;
+      }
+      await this.api.chat(command); sent = true;
       if (this.combat || this.fleeing || this.rescue?.paused) await this.api.chat("#pause");
-    } catch (error) { this.navigation = undefined; throw error; }
+    } catch (error) {
+      // A command that was not sent leaves Baritone at what it was doing: a mine job goes on being watched, with
+      // its radius and its cost. One that was sent is under way, and is watched as well.
+      if (!sent) this.navigation = previous?.limit ? previous : undefined;
+      throw error;
+    }
   }
   async lookAt(target: Position, state?: State) {
     state ??= await this.api.state();
@@ -357,6 +591,8 @@ export class Body {
   /** Lets go of the food and puts slot and view back. `resume: false` leaves a Baritone the meal paused to the caller. */
   private async releaseMeal(meal: Meal, resume = true) {
     meal.finished = true;
+    // Every end of a meal comes through here; one that reports itself has taken `closed` first.
+    if (meal.closed) { this.events.add("reflex", { text: `${meal.closed}the meal was cut short` }); meal.closed = undefined; }
     if (this.eating === meal) this.eating = undefined;
     try {
       await this.api.player({ action: "release" });
@@ -725,13 +961,21 @@ export class Body {
       await this.api.player({ action: "release" });
     }
     await this.finishCombat(false);
-    const live = nav !== undefined && !nav.reported;
+    // A mine job outlives its stall report: that one too is still Baritone's and would set off again.
+    const live = nav !== undefined && (!nav.reported || nav.limit !== undefined);
     // Baritone's stop also drops the pause a reflex set. A trip left alive would set off again from the respawn
     // point, and left to the stall timer it was reported four seconds later as stopped short.
     if ((paused || live) && !this.stopped) await this.api.chat("#stop");
     if (live) this.events.add("navigation_stopped", { goal: nav.description, reason: "you died" });
   }
   private async reflex(state: State, hurt: boolean) {
+    try { await this.react(state, hurt); }
+    finally {
+      // The screen is closed but a rescue, a fight or an error came before the meal: the closing is still said.
+      if (this.closedForMeal) { this.events.add("reflex", { text: `${this.closedForMeal}the meal has not started` }); this.closedForMeal = undefined; }
+    }
+  }
+  private async react(state: State, hurt: boolean) {
     const dead = state.health <= 0 || state.screen === deathScreen;
     const needsMeal = this.reflexes.auto_eat && (state.food < this.reflexes.eat_below || (state.health < 14 && state.food < 20));
     const blocked = needsMeal && !dead && state.screen !== "none";
@@ -761,6 +1005,24 @@ export class Body {
         this.events.add("reflex", { text: `in danger but ${closed.after} will not close; rescue blocked` });
       }
     } else if (state.screen === "none") this.rescueBlocked = false;
+    // A screen left open kept him from eating: live, a furnace screen blocked meals at food 5 for four minutes.
+    // Closing it is safe only when nothing is on the cursor (a carried stack would be thrown on the ground) and
+    // he is not in the middle of using it.
+    const idle = this.now() - Math.max(this.screenSeen?.since ?? -Infinity, this.lastScreenAction);
+    if (blocked && state.screen !== "none" && state.food <= idleScreen.food && idle >= idleScreen.ms && !this.manual && !this.stopped
+      && this.now() >= this.nextMeal && this.now() >= this.nextIdleCheck && this.food(state)) {
+      this.nextIdleCheck = this.now() + 1000;
+      const lastAction = this.lastScreenAction;
+      const shown = await this.api.gui();
+      // A tool call that arrived during that read is an action too.
+      if (shown.screen === state.screen && (shown.container?.carried ?? "minecraft:air") === "minecraft:air" && this.lastScreenAction === lastAction && !this.manual) {
+        const closed = await this.closeScreen();
+        if (closed.after === "none") {
+          this.closedForMeal = `closed ${closed.before} (no action for ${Math.round(idle / 1000)} s) to eat; `;
+          state = { ...state, screen: "none" };
+        } else this.nextIdleCheck = this.now() + idleScreen.ms;
+      }
+    }
     if (state.screen !== "none" || dead || this.manual || this.stopped) {
       if (this.rescue) {
         const screen = state.screen !== "none";
@@ -784,8 +1046,10 @@ export class Body {
     if (this.fleeing) return;
     if (this.eating) {
       if (this.now() >= this.eating.doneAt) {
-        try { this.events.add("reflex", { text: `ate ${await this.finishEating(this.eating, state)}` }); }
-        catch (error) { this.events.add("reflex", { text: error instanceof Error ? error.message : "Eating failed." }); }
+        const closed = this.eating.closed ?? "";
+        this.eating.closed = undefined;
+        try { this.events.add("reflex", { text: `${closed}ate ${await this.finishEating(this.eating, state)}` }); }
+        catch (error) { this.events.add("reflex", { text: `${closed}${error instanceof Error ? error.message : "Eating failed."}` }); }
         // The snapshot still has the meal's upward aim and food slot. Observe
         // restored controls before another automatic meal captures its baseline.
         state = await this.api.state();
@@ -829,13 +1093,18 @@ export class Body {
       return;
     }
     if (needsMeal && !this.eating && this.now() >= this.nextMeal && this.food(state)) {
-      try { await this.beginEating(state, undefined, true); }
-      catch (error) {
+      try {
+        const meal = await this.beginEating(state, undefined, true);
+        meal.closed = this.closedForMeal; this.closedForMeal = undefined;
+      } catch (error) {
         if (!(error instanceof MealRefused)) throw error;
         // Said once and tried again in ten seconds. Thrown on to poll(), a refusal became a system line on
         // every poll, and "Close DeathScreen before eating." when he died between two reads.
         this.nextMeal = this.now() + 10000;
-        if (!(error instanceof DeadError)) this.events.add("reflex", { text: `Meal not started: ${error.message} Auto-eat retries in 10 s.` });
+        if (!(error instanceof DeadError)) {
+          this.events.add("reflex", { text: `${this.closedForMeal ?? ""}Meal not started: ${error.message} Auto-eat retries in 10 s.` });
+          this.closedForMeal = undefined;
+        }
       }
     }
   }
@@ -848,6 +1117,7 @@ export class Body {
     await Promise.allSettled([
       ...(cleaningRescue ? [] : [this.api.player({ action: "release" })]),
       this.api.chat("#stop"),
+      ...(this.lifted ? [this.api.chat(avoidBreaking(this.kept))] : []),
     ]);
   }
 }

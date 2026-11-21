@@ -21,7 +21,8 @@ const key = z.enum(["ENTER", "ESCAPE", "BACKSPACE", "TAB", "UP", "DOWN", "LEFT",
 export const definitions = {
   wait: { description: "Wait for chat, danger, rescue reflexes, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short", "navigation_stopped", "reflex"])).optional() }) },
   go_to: { description: "Start Baritone travel; coordinates use the containing block (floats accepted). Leave y out unless you know the exact height of a block you can stand on: a guessed height is the commonest reason a trip stops short. Returns immediately; arrival is an event.", schema: z.object({ x: blockCoordinate, z: blockCoordinate, y: blockCoordinate.optional() }) },
-  mine: { description: "Start Baritone mining: walk to the nearest blocks of this kind and break them to collect them; may walk far, no radius limit. It breaks ANY matching block, including ones players placed (chests, doors, machines), so use it for natural blocks such as logs, stone and ores, never for things someone built. With the tree-chopping mod a log takes several chops; mining a log handles that. Bare block names mean minecraft:.", schema: z.object({ block: itemId, count: z.number().int().positive().optional() }).strict() },
+  mine: { description: "Start Baritone mining of blocks near you: it walks to the nearest blocks of this kind within radius blocks (default 32, max 96) of where you stand now and breaks them to collect them. With count it stops when that many have come into your inventory (an arrived event says what was collected); without it, or when none is left that near, it stops with a navigation_stopped event that says what was collected and the nearest one Baritone knows farther off. To see where they are first, without moving: find_block (same radius). To look farther: a larger radius, or go there first. It breaks ANY matching block, including ones players placed (chests, doors, machines), so use it for natural blocks such as logs, stone and ores, never for things someone built. With the tree-chopping mod a log takes several chops; mining a log handles that. Bare block names mean minecraft:.", schema: z.object({ block: itemId, count: z.number().int().positive().optional(), radius: z.number().int().min(1).max(96).optional() }).strict() },
+  find_block: { description: "Where the nearest blocks of a kind are, without moving, loading or breaking anything: up to limit (default 8, max 16) within radius blocks of you (default 32, max 96; a sphere around the block you stand in), nearest first, each with distance and direction. Any block can be asked for, natural ones too (ores, logs, crops, water), by its block id: diamond_ore, not the item diamond; an id that is no block is an error. Bare names mean minecraft:. It reads the chunks your client has loaded in this dimension as they are now, and says when part of the radius is not loaded: that part was not searched, so none found there means not looked at. It does not check that you can get to a block.", schema: z.object({ block: itemId, radius: z.number().int().min(1).max(96).optional(), limit: z.number().int().min(1).max(16).optional() }).strict() },
   follow: { description: "Start following a named player.", schema: z.object({ player: name }) },
   explore: { description: "Start Baritone exploration.", schema: z.object({}) },
   stop: { description: "Stop Baritone and release held keys.", schema: z.object({}) },
@@ -57,6 +58,16 @@ export const definitions = {
 export type ToolName = keyof typeof definitions;
 const knowledgeNames = ["find_item", "recipes", "craft", "uses", "guide"];
 const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "stop"];
+/** The resident's own actions on a screen. While one of these was called in the last 30 s, auto-eat leaves an open screen alone. */
+const screenTools = ["use", "open_inventory", "screen", "click_slot", "click_button", "craft", "type_text", "press_key", "close_screen", "write_sign"];
+const compass = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+/** "9 blocks north-east, 3 up": north is -z, east is +x. */
+function bearing(dx: number, dy: number, dz: number) {
+  const blocks = Math.round(Math.hypot(dx, dy, dz)), count = `${blocks} block${blocks === 1 ? "" : "s"}`;
+  if (!dx && !dz) return dy ? `${count} straight ${dy > 0 ? "up" : "down"}` : "where you stand";
+  const across = compass[(Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) + 8) % 8]!;
+  return `${count} ${across}${dy ? `, ${Math.abs(dy)} ${dy > 0 ? "up" : "down"}` : ""}`;
+}
 function stackText(stack: Stack, mark = "") {
   const durability = stack.durability === undefined ? "" : ` (${stack.durability}/${stack.maxDurability})`;
   return `${mark}${stack.slot}: ${stack.count} x ${stack.item}${durability}`;
@@ -121,7 +132,9 @@ export class Tools {
       // The runtime-selected schema and its tool name are a correlated pair.
       const command = [name, parsed] as Command;
       const run = () => this.execute(command, signal, skill);
-      const value = takeoverTools.includes(name) ? await this.body.manualAction(run) : await run();
+      const onScreen = screenTools.includes(name);
+      if (onScreen) this.body.screenTouched();
+      const value = await (takeoverTools.includes(name) ? this.body.manualAction(run) : run()).finally(() => { if (onScreen) this.body.screenTouched(); });
       if (typeof value === "string") text = value;
       else { text = value.text; image = value.image; isError = value.isError === true; }
     } catch (error) {
@@ -154,8 +167,30 @@ export class Tools {
         return `Started ${command}.`;
       }
       case "mine": {
-        const command = `#mine ${args.count === undefined ? "" : `${args.count} `}${args.block}`;
-        await body.navigate(command); return `Started ${command}.`;
+        const command = `#mine ${args.count === undefined ? "" : `${args.count} `}${args.block}`, radius = args.radius ?? 32;
+        await body.navigate(command, undefined, undefined, { block: args.block, radius, count: args.count });
+        return `Started ${command}, kept within ${radius} blocks of here.`;
+      }
+      case "find_block": {
+        const radius = args.radius ?? 32;
+        const found = await api.blocks(args.block, radius, args.limit ?? 8);
+        const [x, y, z] = found.origin, loaded = found.chunksLoaded, chunks = found.chunksInRadius;
+        const around = `within ${radius} block${radius === 1 ? "" : "s"} of you (${x},${y},${z})`;
+        if (!loaded) return `Nothing was searched: no chunk ${around} is loaded in your client (${chunks} in that radius).`;
+        // Chunks the client does not hold were not read: say so before the list, which a long reply cuts from the end.
+        const searched = loaded < chunks
+          ? `only ${loaded} of the ${chunks} chunks in that radius ${loaded === 1 ? "is" : "are"} loaded in your client; the rest was not searched`
+          : `every chunk in that radius was searched (${chunks})`;
+        if (!found.positions.length) {
+          if (loaded < chunks) return `No ${found.block} in the loaded chunks ${around}, but ${searched}.`;
+          return `No ${found.block} ${around}; ${searched}. ${radius < 96 ? "A larger radius (max 96) looks farther." : "96 is the largest radius: to look farther, go there first."}`;
+        }
+        const count = found.truncated ? `the ${found.positions.length} nearest ${around}, there are more` : `${found.positions.length} ${around}, nearest first`;
+        return [
+          `${found.block}: ${count}; ${searched}:`,
+          ...found.positions.map(([bx, by, bz]) => `${bx},${by},${bz}, ${bearing(bx - x, by - y, bz - z)}`),
+          "This is where the blocks are as your client sees them now; whether you can get to one is not checked.",
+        ].join("\n");
       }
       case "follow": await body.navigate(`#follow player ${args.player}`, undefined, args.player); return `Following ${args.player}.`;
       case "explore": await body.navigate("#explore"); return "Exploring.";

@@ -28,6 +28,18 @@ export interface Screen {
   container?: { slots: Stack[]; carried: string; carriedStack?: Omit<Stack, "slot"> };
   screenWidth?: number; screenHeight?: number;
 }
+/** Synapse's answer to `GET /blocks`: the nearest blocks of one kind in the chunks the client has loaded. */
+export interface BlockSearch {
+  block: string; dimension: string;
+  /** The block the player stood in; distances are measured from it, between block coordinates. */
+  origin: [number, number, number]; radius: number; limit: number;
+  /** Nearest first; ties by x, then y, then z. */
+  positions: [number, number, number][];
+  /** More matches lie within the radius than `positions` holds. */
+  truncated: boolean;
+  /** Chunk columns the radius touches, and how many of them the client holds; only those were searched. */
+  chunksLoaded: number; chunksInRadius: number;
+}
 export interface Config {
   url: string; tokenFile: string; log: string; residentDir: string;
   name: string; knowledgeDb?: string;
@@ -76,6 +88,10 @@ export class Synapse {
   gui(body?: object) { return this.request<Screen>("/gui", body); }
   chat(text: string) { return this.request("/chat", { text }); }
   state(full = false) { return this.request<State>(`/state?mode=${full ? "full" : "summary"}`); }
+  /** Reads loaded chunks only: nothing moves, loads or breaks. radius 1..96, limit 1..32; an id that names no block is an error. */
+  blocks(block: string, radius: number, limit: number) {
+    return this.request<BlockSearch>(`/blocks?block=${encodeURIComponent(block)}&radius=${radius}&limit=${limit}`);
+  }
   async picture(): Promise<string> {
     const data = await this.request<{ image: string }>("/screenshot?format=base64");
     return data.image;
