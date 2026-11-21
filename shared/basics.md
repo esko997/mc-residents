@@ -73,6 +73,11 @@ the slots. Slot numbers in the common screens:
   you.
 - `recipes` gives any item's pattern as rows of letters; `find_item` turns a
   name into an id. Machines from mods have their own slots: read `screen`.
+- To give someone an item, stand a block or two from them, `look` at them,
+  open your inventory and `click_slot` the stack with mode `THROW` (button 1
+  throws all of it, button 0 one item). A thrown item can be picked up by
+  anyone after two seconds, you included: if it lands at your feet it comes
+  straight back, so throw toward them and step back if they are slow.
 
 ## Building
 
