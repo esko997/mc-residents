@@ -72,6 +72,8 @@ const serverRecipes: FakeRecipe[] = [
   { shaped: [[[mc("milk_bucket")], [mc("milk_bucket")], [mc("milk_bucket")]], [[mc("sugar")], [mc("egg")], [mc("sugar")]], [[mc("wheat")], [mc("wheat")], [mc("wheat")]]], output: { item: mc("cake"), count: 1 } },
   { shapeless: [tags["minecraft:oak_logs"]!], output: { item: mc("oak_planks"), count: 4 } },
   { shapeless: [[mc("iron_ingot")], [mc("flint")]], output: { item: mc("flint_and_steel"), count: 1 } },
+  // Quark hands out a chest of the wood it is made from.
+  { shaped: [[[mc("spruce_planks")], [mc("spruce_planks")], [mc("spruce_planks")]], [[mc("spruce_planks")], null, [mc("spruce_planks")]], [[mc("spruce_planks")], [mc("spruce_planks")], [mc("spruce_planks")]]], output: { item: "quark:spruce_chest", count: 1 } },
 ];
 async function crafter(options: FakeOptions = {}, waitMs = 2000) {
   const f = await fixture({ recipes: serverRecipes, ...options });
@@ -121,6 +123,15 @@ describe("craft", () => {
     expect(text(result)).toContain("Crafted 1 x minecraft:furnace (recipe minecraft:furnace) using 8 x minecraft:cobblestone; you now have 1.");
     expect(text(result)).toContain("CraftingScreen stays open");
     expect(menu(f)).toEqual({ screen: "CraftingScreen", cursor: undefined, grid: [], inventory: { [mc("cobblestone")]: 1, [mc("dirt")]: 2, [mc("furnace")]: 1 } });
+  });
+  test("a mod's own version of the item is taken and named, as the game made it", async () => {
+    const { f, tools } = await crafter();
+    carry(f, [0, 8, mc("spruce_planks")]);
+    f.state.lookingAt = { type: "block", block: mc("crafting_table"), blockPos: [1, 64, 1] };
+    await tools.call("use", {});
+    const result = await tools.call("craft", { item: "chest" });
+    expect(text(result)).toContain("Crafted 1 x quark:spruce_chest (this server's own minecraft:chest for those materials; it does the same job) (recipe minecraft:chest) using 8 x minecraft:spruce_planks; you now have 1.");
+    expect(menu(f)?.inventory).toEqual({ "quark:spruce_chest": 1 });
   });
   test("an ingredient with alternatives uses the one you have (charcoal torches)", async () => {
     const { f, tools } = await crafter();
