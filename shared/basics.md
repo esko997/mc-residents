@@ -39,6 +39,8 @@ instructions: what you do with it is up to you.
 - Berries, apples (from oak leaves), carrots and potatoes from villages.
 - Rotten flesh and spider eyes are poor food and can make you ill.
 - Your body eats on its own when hungry, if food is in your inventory.
+- Hunger alone cannot kill you here (the world is on Easy): it stops at half
+  health. Low health still makes everything else more dangerous.
 
 ## Danger
 
@@ -52,6 +54,13 @@ instructions: what you do with it is up to you.
   night and in caves. Armour (iron is a good start) makes all of it easier.
 - Dying drops everything where you died. Go back for it soon; it vanishes
   after about five minutes.
+
+## Getting unstuck
+
+- If `go_to` stops short again and again from the same place, Baritone is
+  probably trying to break a block it may not (claims, spawn) or cannot find a
+  way. Repeating the same `go_to` will not help. Try a nearer open spot first,
+  or `follow` someone who can walk out, then carry on from there.
 
 ## Crafting with your body
 
