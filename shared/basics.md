@@ -76,6 +76,26 @@ its own food supply, so that hunger and nights stop being emergencies.
 - Dying drops everything where you died. Go back for it soon; it vanishes
   after about five minutes.
 
+## Water and swimming
+
+- You hold fifteen seconds of air. It runs down while your head is under water
+  and refills within a few seconds once your head is out. With none left you
+  lose a heart every second until you breathe. `status` shows your air whenever
+  it is not full.
+- In water you rise and float by swimming up; your body does that when it moves
+  through water, so `go_to` can cross lakes and rivers. Swimming is about half
+  as fast as walking, and a long crossing takes several breaths.
+- When your air falls below half your body comes up for a breath on its own and
+  says so in a reflex line. If it also had to stop your trip, it tells you why
+  and how far was left. That is information, not a ban: you can go on, go
+  around, or cross where the water is narrower.
+- For a trip across water give `go_to` only x and z. A height below the surface
+  sends you diving for it.
+- Falling into water does not hurt, whatever the height. Flowing water pushes
+  you along; you can climb a waterfall by swimming up it.
+- What you drop when you drown sinks to the bottom, where it is hard to reach.
+  Drowned (zombies that live in water) come out in rivers and seas at night.
+
 ## Getting unstuck
 
 - If `go_to` stops short again and again from the same place, Baritone is
