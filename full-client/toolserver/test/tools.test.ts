@@ -453,6 +453,16 @@ describe("body-tool repair regressions", () => {
     expect(text(await f.tools.call("click_slot", { slot: 37 }))).toContain("Cursor now holds minecraft:wooden_pickaxe; put it in a slot before closing.");
     expect(text(await f.tools.call("close_screen"))).toContain("The minecraft:wooden_pickaxe on your cursor was dropped on the ground in front of you");
   });
+  test("a failed read-back after a click or before a close never turns the action into an error", async () => {
+    const f = await fixture({ guiReadFailures: 1 }); f.setScreen({ screen: "InventoryScreen", container: { slots: [], carried: "minecraft:air" } });
+    const clicked = await f.tools.call("click_slot", { slot: 37 });
+    expect(clicked.isError).toBe(false); expect(text(clicked)).toContain("Clicked slot 37 (cursor read-back unavailable).");
+    expect(f.requests.filter(r => r.body.action === "clickSlot")).toHaveLength(1);
+    f.options.guiReadFailures = 1;
+    const closed = await f.tools.call("close_screen");
+    expect(closed.isError).toBe(false); expect(text(closed)).toContain("Closed InventoryScreen.");
+    expect(f.state.screen).toBe("none");
+  });
   test("close_screen and press_key report a surviving CraftingScreen honestly", async () => {
     const f = await fixture({ closeFailures: 10, escapeBlocked: true }); f.setScreen({ screen: "CraftingScreen" });
     const closed = await f.tools.call("close_screen");

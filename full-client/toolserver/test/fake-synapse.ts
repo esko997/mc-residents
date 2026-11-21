@@ -10,6 +10,8 @@ export interface Request { path: string; body: Record<string, unknown> }
 export interface FakeOptions {
   closeFailures?: number; escapeBlocked?: boolean; eatWorks?: boolean; openWorks?: boolean;
   swapWorks?: boolean; interactable?: boolean; forceMealScreen?: boolean;
+  /** Fail this many plain /gui reads (no action) with a 500. */
+  guiReadFailures?: number;
   rotation?: State["rotation"]; selectedSlot?: number;
 }
 export interface Fixture {
@@ -46,6 +48,9 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
     let data: unknown = {};
     if (url.pathname === "/state") data = state;
     else if (url.pathname === "/screenshot") data = { image: "aGVsbG8=" };
+    else if (url.pathname === "/gui" && !body.action && options.guiReadFailures && options.guiReadFailures-- > 0) {
+      return Response.json({ ok: false, error: { message: "read failed" } }, { status: 500 });
+    }
     else if (url.pathname === "/gui") {
       if (body.action === "open" && options.openWorks !== false) {
         screen = { screen: "InventoryScreen", container: { slots: state.inventory!.main.map(s => ({ ...s, slot: s.slot < 9 ? s.slot + 36 : s.slot })), carried: "minecraft:air" } };

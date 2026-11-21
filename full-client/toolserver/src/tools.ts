@@ -182,13 +182,15 @@ export class Tools {
         await api.player({ action: tool, ...(args.hold_ticks === undefined ? {} : { ticks: args.hold_ticks }) });
         if (args.hold_ticks) return `Holding ${tool} for ${args.hold_ticks} ticks.`;
         if (!before) return "Attacked.";
-        // A bare "Used." left Margo right-clicking for an hour without knowing
-        // she was facing air or a wall, not her crafting table.
-        await Bun.sleep(300);
-        const after = await api.state();
+        // A bare "Used." left Margo right-clicking across sessions without
+        // knowing what she faced; she concluded crafting tables never open.
         const held = before.hotbar.find(s => s.slot === before.selectedSlot && s.item !== "minecraft:air")?.item ?? "empty hand";
         const at = before.lookingAt;
         const target = at.type === "block" ? `${at.block}${at.blockPos ? ` at ${at.blockPos.join(",")}` : ""}` : at.type === "entity" ? at.entity : "nothing in reach (air, or more than about 4.5 blocks away)";
+        await Bun.sleep(300);
+        // The use already happened; a failed read-back must not become an error.
+        const after = await api.state().catch(() => undefined);
+        if (!after) return `Used ${held} on ${target} (screen read-back unavailable).`;
         const screen = after.screen !== "none" && after.screen !== before.screen ? `${after.screen} opened` : "no screen opened";
         return `Used ${held} on ${target}; ${screen}.`;
       }
@@ -215,7 +217,11 @@ export class Tools {
       }
       case "click_slot": {
         await api.gui({ action: "clickSlot", ...args });
-        const carried = (await api.gui()).container?.carried;
+        // The click already happened: a failed read-back must not turn it into
+        // an error the model would answer by clicking again.
+        const shown = await api.gui().catch(() => undefined);
+        if (!shown) return `Clicked slot ${args.slot} (cursor read-back unavailable).`;
+        const carried = shown.container?.carried;
         return `Clicked slot ${args.slot}.${carried && carried !== "minecraft:air" ? ` Cursor now holds ${carried}; put it in a slot before closing.` : ""}`;
       }
       case "click_button": await api.gui({ action: "clickButton", ...args }); return "Pressed button.";
@@ -228,7 +234,8 @@ export class Tools {
       case "close_screen": {
         // Closing with a stack on the cursor throws it on the ground; Margo
         // lost track of her pickaxe that way and thought it had vanished.
-        const carried = (await api.gui()).container?.carried;
+        // Best effort: this read must never stop a screen closing (rescues close screens too).
+        const carried = (await api.gui().catch(() => undefined))?.container?.carried;
         const { before, after } = await body.closeScreen();
         if (after !== "none") throw new Error(`${after} is still open after close and ESCAPE.`);
         if (before === "none") return "No screen open.";
