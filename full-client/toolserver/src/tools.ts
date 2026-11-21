@@ -20,7 +20,7 @@ const hold = { hold_ticks: z.number().int().min(1).max(200).optional() };
 const key = z.enum(["ENTER", "ESCAPE", "BACKSPACE", "TAB", "UP", "DOWN", "LEFT", "RIGHT", "DELETE"]);
 export const definitions = {
   wait: { description: "Wait for chat, danger, rescue reflexes, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short", "navigation_stopped", "reflex"])).optional() }) },
-  go_to: { description: "Start Baritone travel; coordinates use the containing block (floats accepted). Returns immediately; arrival is an event.", schema: z.object({ x: blockCoordinate, z: blockCoordinate, y: blockCoordinate.optional() }) },
+  go_to: { description: "Start Baritone travel; coordinates use the containing block (floats accepted). Leave y out unless you know the exact height of a block you can stand on: a guessed height is the commonest reason a trip stops short. Returns immediately; arrival is an event.", schema: z.object({ x: blockCoordinate, z: blockCoordinate, y: blockCoordinate.optional() }) },
   mine: { description: "Start Baritone mining: walk to the nearest blocks of this kind and break them to collect them; may walk far, no radius limit. It breaks ANY matching block, including ones players placed (chests, doors, machines), so use it for natural blocks such as logs, stone and ores, never for things someone built. With the tree-chopping mod a log takes several chops; mining a log handles that. Bare block names mean minecraft:.", schema: z.object({ block: itemId, count: z.number().int().positive().optional() }).strict() },
   follow: { description: "Start following a named player.", schema: z.object({ player: name }) },
   explore: { description: "Start Baritone exploration.", schema: z.object({}) },
@@ -305,6 +305,7 @@ export class Tools {
         // Best effort: this read must never stop a screen closing (rescues close screens too).
         const carried = (await api.gui().catch(() => undefined))?.container?.carried;
         const { before, after } = await body.closeScreen();
+        if (after === "DeathScreen") throw new Error("You are dead. The death screen does not close; click_button with index 0 is its Respawn button.");
         if (after !== "none") throw new Error(`${after} is still open after close and ESCAPE.`);
         if (before === "none") return "No screen open.";
         return `Closed ${before}.${carried && carried !== "minecraft:air" ? ` The ${carried} on your cursor was dropped on the ground in front of you; walk over it to pick it up.` : ""}`;
