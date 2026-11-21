@@ -63,6 +63,9 @@ gives blocks, items and creatures are correct, modded ones included.
   in it.
 - Before guessing how something is made or what it is for, look it up:
   `find_item`, `recipes`, `uses`, and `guide` for the mods' own books.
+- `basics.md` in this directory has practical notes on surviving here, a first
+  day, food, dangers, and how crafting screens number their slots. Read it when
+  you need it.
 - `picture` shows you the world as an image. It costs more than words; use it
   when looking matters, such as seeing what someone built.
 - Your body eats and defends itself on its own. Those reflexes are yours to
