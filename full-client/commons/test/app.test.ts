@@ -200,11 +200,11 @@ test("the picture is the client's PNG, fetched at most every 15 seconds, and the
   expect(stale.headers.get("X-Picture-At")).toBe(String(clock - 60_000));
 });
 
-test("Keep curates a verified skill and writes the review; the two questions stay separate in the listing", async () => {
+test("a verified skill is new until someone keeps it; the two questions stay separate in the listing", async () => {
   start();
   const ids = seed();
   const before = (await api("commons")).skills.find(skill => skill.id === ids.sticks)!;
-  expect(before).toMatchObject({ name: "make_sticks", author: "Gary", status: "verified", version: 2, expect: { gain: { "minecraft:stick": 4 } }, params: { count: "how many" } });
+  expect(before).toMatchObject({ name: "make_sticks", author: "Gary", status: "verified", group: "new", version: 2, expect: { gain: { "minecraft:stick": 4 } }, params: { count: "how many" } });
   // Did it work: this version 3 of 4 passed; counting the old version too, 3 of 5.
   expect(before.runs).toEqual({ current: { total: 4, passed: 3, unchecked: 0 }, all: { total: 5, passed: 3, unchecked: 0 } });
   // Is it worth having: Margo (under either spelling of her name in the runs) is one resident other than the author.
@@ -212,73 +212,211 @@ test("Keep curates a verified skill and writes the review; the two questions sta
   expect(before.otherUsers).toBe(1);
   expect(before.recentRuns[0]).toMatchObject({ resident: "margo", ok: true, checkOk: true });
   expect(before.recentRuns.find(run => !run.ok)).toMatchObject({ error: "timed out after 60 s", checkOk: null });
+  // New: the verified skill and the proposed note. The draft is its author's business.
   expect((await api("commons")).pending).toBe(2);
   expect((await api("residents")).pending).toBe(2);
 
   clock += 5000;
-  const response = await post("review", { kind: "skill", id: ids.sticks, verdict: "keep", reviewer: "  Sam ", text: "", version: 2 });
+  const response = await post("review", { kind: "skill", id: ids.sticks, action: "keep", reviewer: "  Sam ", text: "", updatedAt: before.updatedAt });
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject({ ok: true, status: "curated" });
   expect(statusOf("skills", ids.sticks)).toBe("curated");
-  expect(reviewRows()).toEqual([{ kind: "skill", target_id: ids.sticks, reviewer: "Sam", verdict: "keep", text: "", at: clock }]);
+  // Skill reviews say which version they are about, as the caretaker's do.
+  expect(reviewRows()).toEqual([{ kind: "skill", target_id: ids.sticks, reviewer: "Sam", verdict: "keep", text: "v2", at: clock }]);
   const after = (await api("commons")).skills.find(skill => skill.id === ids.sticks);
-  expect(after).toMatchObject({ status: "curated", updatedAt: clock, reviews: [{ reviewer: "Sam", verdict: "keep" }] });
+  expect(after).toMatchObject({ status: "curated", group: "kept", updatedAt: clock, reviews: [{ reviewer: "Sam", verdict: "keep", current: true }] });
   expect((await api("commons")).pending).toBe(1);
+  expect((await api("residents")).pending).toBe(1);
 });
 
-test("Reject needs a reason; with one it rejects and the reason is stored as one plain line", async () => {
+test("with accept-first on, a proposed note is made visible at the next tick and stays new until someone looks", async () => {
   start();
   const ids = seed();
-  const refused = await post("review", { kind: "skill", id: ids.sticks, verdict: "reject", reviewer: "Sam", text: "   " });
+  clock += 10_000;
+  await app!.watcher.sample();
+  expect(statusOf("shared_notes", ids.note)).toBe("curated");
+  expect(reviewRows()).toEqual([{ kind: "note", target_id: ids.note, reviewer: "auto", verdict: "keep", text: "accepted automatically; nobody has looked at it yet", at: clock }]);
+  // A second tick finds nothing left to accept.
+  await app!.watcher.sample();
+  expect(reviewRows().length).toBe(1);
+  let note = (await api("commons")).notes[0];
+  expect(note).toMatchObject({ status: "curated", group: "new", updatedAt: clock });
+  expect((await api("residents")).pending).toBe(2);
+
+  // The caretaker's script writes its review straight into the database; it counts as a look, under its name.
+  clock += 60_000;
+  app!.db.query("INSERT INTO reviews (kind, target_id, reviewer, verdict, text, at) VALUES ('note', ?, 'caretaker', 'comment', 'Which chest? There are two.', ?)").run(ids.note, clock);
+  note = (await api("commons")).notes[0];
+  expect(note.group).toBe("kept");
+  expect(note.reviews.map(row => `${row.reviewer} ${row.verdict} ${row.current}`)).toEqual(["caretaker comment true", "auto keep true"]);
+  expect((await api("residents")).pending).toBe(1);
+});
+
+test("with accept-first off, a proposed note waits for a person's keep", async () => {
+  start({ COMMONS_AUTO_ACCEPT: "off" });
+  const ids = seed();
+  await app!.watcher.sample();
+  expect(statusOf("shared_notes", ids.note)).toBe("proposed");
+  expect(reviewRows()).toEqual([]);
+  // A comment is not a decision: it is still waiting.
+  expect((await post("review", { kind: "note", id: ids.note, action: "comment", reviewer: "Sam", text: "Which chest?" })).status).toBe(200);
+  expect((await api("commons")).notes[0]).toMatchObject({ status: "proposed", group: "new" });
+  expect((await post("review", { kind: "note", id: ids.note, action: "keep", reviewer: "Sam" })).status).toBe(200);
+  expect((await api("commons")).notes[0]).toMatchObject({ status: "curated", group: "kept" });
+  expect(reviewRows().map(row => `${row.kind} ${row.verdict} ${row.text}`)).toEqual(["note comment Which chest?", "note keep "]);
+});
+
+test("a look counts for the revision it saw: a skill its author saves again is new again", async () => {
+  start();
+  const ids = seed();
+  clock += 1000;
+  await post("review", { kind: "skill", id: ids.sticks, action: "comment", reviewer: "Sam", text: "Fine for oak." });
+  // A comment changes nothing about the skill, and is still a look.
+  expect((await api("commons")).skills.find(skill => skill.id === ids.sticks)).toMatchObject({ status: "verified", group: "kept", updatedAt: clock - 3_601_000 });
+  // The author saves new code (the tool server: version up, draft), runs it, and it is verified again.
+  clock += 60_000;
+  app!.db.query("UPDATE skills SET code = 'new code', version = 3, status = 'verified', updated_at = ? WHERE id = ?").run(clock, ids.sticks);
+  const again = (await api("commons")).skills.find(skill => skill.id === ids.sticks)!;
+  expect(again.group).toBe("new");
+  expect(again.reviews).toMatchObject([{ reviewer: "Sam", text: "v2: Fine for oak.", current: false }]);
+  expect((await api("residents")).pending).toBe(2);
+});
+
+test("Remove needs a reason the author will read; Restore brings a removed item back", async () => {
+  start();
+  const ids = seed();
+  const refused = await post("review", { kind: "skill", id: ids.sticks, action: "remove", reviewer: "Sam", text: "   " });
   expect(refused.status).toBe(400);
-  expect(await refused.json()).toEqual({ error: "A rejection needs a reason, so its author learns something from it." });
+  expect(await refused.json()).toEqual({ error: "Removing needs a reason: its author is shown it and learns from it." });
   expect(statusOf("skills", ids.sticks)).toBe("verified");
   expect(reviewRows()).toEqual([]);
 
-  const done = await post("review", { kind: "skill", id: ids.sticks, verdict: "reject", reviewer: "Sam", text: "Crafts planks\n  first, wasting logs." });
-  expect(done.status).toBe(200);
-  expect(statusOf("skills", ids.sticks)).toBe("rejected");
-  expect(reviewRows()).toEqual([{ kind: "skill", target_id: ids.sticks, reviewer: "Sam", verdict: "reject", text: "Crafts planks first, wasting logs.", at: clock }]);
+  clock += 1000;
+  expect((await post("review", { kind: "skill", id: ids.sticks, action: "remove", reviewer: "Sam", text: "Crafts planks\n  first, wasting logs." })).status).toBe(200);
+  expect((await api("commons")).skills.find(skill => skill.id === ids.sticks)).toMatchObject({ status: "rejected", group: "removed", updatedAt: clock });
+  // The reason is stored as one plain line.
+  expect(reviewRows()).toEqual([{ kind: "skill", target_id: ids.sticks, reviewer: "Sam", verdict: "reject", text: "v2: Crafts planks first, wasting logs.", at: clock }]);
+  expect((await api("residents")).pending).toBe(1);
+
+  clock += 1000;
+  const restored = await post("review", { kind: "skill", id: ids.sticks, action: "restore", reviewer: "Sam", text: "I misread it." });
+  expect(await restored.json()).toMatchObject({ ok: true, status: "curated" });
+  expect((await api("commons")).skills.find(skill => skill.id === ids.sticks)).toMatchObject({ status: "curated", group: "kept", updatedAt: clock });
+  expect(reviewRows()[1]).toEqual({ kind: "skill", target_id: ids.sticks, reviewer: "Sam", verdict: "keep", text: "v2: restored: I misread it.", at: clock });
+
+  // A skill that never passed its check must not come back visible to everyone: it returns to its author as a draft.
+  await post("review", { kind: "skill", id: ids.draft, action: "remove", reviewer: "Sam", text: "Digging straight down kills." });
+  expect(statusOf("skills", ids.draft)).toBe("rejected");
+  expect(await (await post("review", { kind: "skill", id: ids.draft, action: "restore", reviewer: "Sam" })).json()).toMatchObject({ status: "draft" });
+  // Notes go back to visible.
+  await post("review", { kind: "note", id: ids.note, action: "remove", reviewer: "Sam", text: "The chest is empty now." });
+  expect(await (await post("review", { kind: "note", id: ids.note, action: "restore", reviewer: "Sam" })).json()).toMatchObject({ status: "curated" });
+  expect((await api("commons")).notes[0].reviews.map(row => `${row.verdict} ${row.text}`)).toEqual(["keep restored", "reject The chest is empty now."]);
 });
 
-test("shared notes are reviewed the same way, and a comment changes no status", async () => {
+test("Edit changes a note's topic and text, records which, and nothing else", async () => {
   start();
   const ids = seed();
-  expect((await api("commons")).notes).toMatchObject([{ id: ids.note, author: "Margo", topic: "food", text: "Bread is in the cabin chest.", status: "proposed", reviews: [] }]);
-  expect((await post("review", { kind: "note", id: ids.note, verdict: "comment", reviewer: "Sam", text: "Which chest?" })).status).toBe(200);
-  expect(statusOf("shared_notes", ids.note)).toBe("proposed");
-  expect((await post("review", { kind: "note", id: ids.note, verdict: "keep", reviewer: "Sam" })).status).toBe(200);
-  expect(statusOf("shared_notes", ids.note)).toBe("curated");
-  expect(reviewRows().map(row => `${row.kind} ${row.verdict} ${row.text}`)).toEqual(["note comment Which chest?", "note keep "]);
-  // A decision can be changed later; the history keeps both.
-  expect((await post("review", { kind: "note", id: ids.note, verdict: "reject", reviewer: "Sam", text: "The chest is empty now." })).status).toBe(200);
-  expect(statusOf("shared_notes", ids.note)).toBe("rejected");
-  expect((await api("commons")).notes[0].reviews.map(row => row.verdict)).toEqual(["reject", "keep", "comment"]);
+  clock += 1000;
+  const edit = (fields: object, text = "") => post("review", { kind: "note", id: ids.note, action: "edit", reviewer: "Sam", text, fields });
+  const response = await edit({ topic: "food", text: "  Bread is in the chest left of the cabin door.  " }, "said which chest");
+  expect(await response.json()).toMatchObject({ ok: true, status: "proposed", changed: ["text"] });
+  expect((await api("commons")).notes[0]).toMatchObject({ topic: "food", text: "Bread is in the chest left of the cabin door.", status: "proposed", updatedAt: clock, author: "Margo" });
+  expect(reviewRows()).toEqual([{ kind: "note", target_id: ids.note, reviewer: "Sam", verdict: "comment", text: "edited: text; said which chest", at: clock }]);
+
+  expect(await (await edit({ topic: "bread", text: "Bread is in the chest right of the cabin door." })).json()).toMatchObject({ changed: ["topic", "text"] });
+  expect(reviewRows()[1].text).toBe("edited: topic, text");
+  const refused = async (fields: object, error: string) => {
+    const reply = await edit(fields);
+    expect([reply.status, (await reply.json() as { error: string }).error]).toEqual([400, error]);
+  };
+  await refused({ topic: "bread", text: "Bread is in the chest right of the cabin door." }, "Nothing was changed.");
+  await refused({ text: "short" }, "The text must be 10 to 600 characters; this is 5.");
+  await refused({ text: "x".repeat(601) }, "The text must be 10 to 600 characters; this is 601.");
+  await refused({ topic: " a " }, "The topic must be 3 to 60 characters; this is 1.");
+  await refused({ author: "Sam", status: "curated" }, "Nothing was changed.");
+  expect(reviewRows().length).toBe(2);
+  expect((await api("commons")).notes[0]).toMatchObject({ topic: "bread", author: "Margo", status: "proposed" });
 });
 
-test("verdicts that must not go through are refused with the reason, and change nothing", async () => {
+test("Edit changes a skill's description, params and check, never its code; a new check makes it a draft again", async () => {
+  start();
+  const ids = seed();
+  const edit = (fields: object, id = ids.sticks) => post("review", { kind: "skill", id, action: "edit", reviewer: "Sam", fields });
+  const sticks = async () => (await api("commons")).skills.find(skill => skill.id === ids.sticks)!;
+  clock += 1000;
+  // The page sends every field; the check typed with other spacing and key order is the same check.
+  expect(await (await edit({
+    description: "Turn any logs carried into sticks.", params: '{ "count": "how many sticks, default 4" }', expect: '{"gain": {"minecraft:stick": 4}}',
+  })).json()).toMatchObject({ status: "verified", changed: ["description", "params"] });
+  expect(await sticks()).toMatchObject({
+    description: "Turn any logs carried into sticks.", params: { count: "how many sticks, default 4" }, version: 2, status: "verified", group: "kept",
+    code: "await tools.craft({item:'stick'});", updatedAt: clock,
+  });
+  expect(reviewRows()[0]).toMatchObject({ verdict: "comment", text: "v2: edited: description, params", at: clock });
+
+  // A different check: the passes on record proved the old one, so the skill goes back to its author as a new version.
+  clock += 1000;
+  expect(await (await edit({ expect: '{"lose": {"oak_log": 1}, "gain": {"stick": 8}, "near": {"x": 1, "z": 2, "within": 6}}' })).json()).toMatchObject({ status: "draft", changed: ["expect"] });
+  expect(await sticks()).toMatchObject({ version: 3, status: "draft", group: "draft", expect: { gain: { "minecraft:stick": 8 }, lose: { "minecraft:oak_log": 1 }, near: { x: 1, z: 2, within: 6 } } });
+  // Stored exactly as the tool server writes it, so the same check saved by its author compares equal there.
+  expect(app!.db.query<{ expect_json: string }, [number]>("SELECT expect_json FROM skills WHERE id = ?").get(ids.sticks)!.expect_json)
+    .toBe('{"gain":{"minecraft:stick":8},"lose":{"minecraft:oak_log":1},"near":{"x":1,"z":2,"within":6}}');
+  expect(reviewRows()[1].text).toBe("v3: edited: expect");
+  // An empty check field means no check.
+  expect(await (await edit({ expect: "" })).json()).toMatchObject({ status: "draft", changed: ["expect"] });
+  expect((await sticks()).expect).toBeNull();
+
+  const refused = async (fields: object, error: unknown) => {
+    const reply = await edit(fields);
+    expect<unknown[]>([reply.status, (await reply.json() as { error: string }).error]).toEqual([400, error]);
+  };
+  await refused({ code: "while (true) {}" }, "Nothing was changed.");
+  await refused({ params: "{count: how many}" }, expect.stringMatching(/^params is not valid JSON: /));
+  await refused({ params: '["count"]' }, "params must be a JSON object in braces.");
+  await refused({ params: '{"count": 4}' }, "params: the meaning of count must be text of at most 120 characters.");
+  await refused({ expect: '{"gain": {"minecraft:stick": 0}}' }, "expect.gain: the count of minecraft:stick must be a whole number from 1 to 2304.");
+  await refused({ expect: '{"gain": {"Sticks!": 4}}' }, 'expect.gain: "Sticks!" is not an item id such as minecraft:stick.');
+  await refused({ expect: '{"items": {"minecraft:stick": 4}}' }, 'expect has an unknown key "items". It may hold gain, lose, near and screen.');
+  await refused({ expect: "{}" }, "expect needs at least one of gain, lose, near or screen. Leave the field empty for no check.");
+  await refused({ expect: '{"near": {"x": 1, "within": 6}}' }, 'expect.near must be {"x": number, "z": number, "within": blocks up to 128}, with "y" optional.');
+  await refused({ description: "too short" }, "The description must be 10 to 300 characters; this is 9.");
+  expect((await sticks()).code).toBe("await tools.craft({item:'stick'});");
+  expect(reviewRows().length).toBe(3);
+});
+
+test("actions that must not go through are refused with the reason, and change nothing", async () => {
   start();
   const ids = seed();
   const refuse = async (body: object, status: number, error: string) => {
     const response = await post("review", body);
     expect([response.status, (await response.json() as { error: string }).error]).toEqual([status, error]);
   };
-  await refuse({ kind: "skill", id: ids.draft, verdict: "keep", reviewer: "Sam" }, 409, "A draft cannot be kept: it has not passed its own check yet. Reject it or leave a comment.");
-  // The author edited the skill (version 3) while the reviewer was reading version 2.
-  app!.db.query("UPDATE skills SET version = 3, status = 'draft' WHERE id = ?").run(ids.sticks);
-  await refuse({ kind: "skill", id: ids.sticks, verdict: "reject", reviewer: "Sam", text: "bad", version: 2 }, 409, "This skill changed while you were reading it (now version 3). Read the new code, then decide.");
-  await refuse({ kind: "skill", id: 999, verdict: "reject", reviewer: "Sam", text: "bad" }, 404, "There is no skill with id 999.");
-  await refuse({ kind: "note", id: ids.note, verdict: "keep", reviewer: "" }, 400, "Say who is reviewing: a name of 1 to 40 characters.");
-  await refuse({ kind: "note", id: ids.note, verdict: "curated", reviewer: "Sam" }, 400, "verdict must be keep, reject or comment.");
-  await refuse({ kind: "place", id: 1, verdict: "keep", reviewer: "Sam" }, 400, "kind must be skill or note.");
-  await refuse({ kind: "note", id: ids.note, verdict: "reject", reviewer: "Sam", text: "x".repeat(601) }, 400, "The reason is 601 characters; the limit is 600.");
+  await refuse({ kind: "skill", id: ids.draft, action: "keep", reviewer: "Sam" }, 409, "A draft cannot be kept: it has not passed its own check yet. Remove it or leave a comment.");
+  await refuse({ kind: "skill", id: ids.sticks, action: "restore", reviewer: "Sam" }, 409, "This skill is not removed; there is nothing to restore.");
+  // It changed (here: its author saved version 3) after the page showed it.
+  const seen = (await api("commons")).skills.find(skill => skill.id === ids.sticks)!.updatedAt;
+  app!.db.query("UPDATE skills SET version = 3, status = 'draft', updated_at = ? WHERE id = ?").run(clock, ids.sticks);
+  await refuse({ kind: "skill", id: ids.sticks, action: "remove", reviewer: "Sam", text: "bad", updatedAt: seen }, 409, "This skill changed while you were reading it (it is now version 3). Read it again, then decide.");
+  const noteSeen = (await api("commons")).notes[0].updatedAt;
+  clock += 10_000;
+  await app!.watcher.sample();   // accepted automatically meanwhile
+  await refuse({ kind: "note", id: ids.note, action: "edit", reviewer: "Sam", fields: { topic: "bread" }, updatedAt: noteSeen }, 409, "This note changed while you were reading it. Read it again, then decide.");
+  await refuse({ kind: "skill", id: 999, action: "remove", reviewer: "Sam", text: "bad" }, 404, "There is no skill with id 999.");
+  await refuse({ kind: "note", id: ids.note, action: "keep", reviewer: "" }, 400, "Say who is reviewing: a name of 1 to 40 characters.");
+  await refuse({ kind: "note", id: ids.note, action: "keep", reviewer: "Auto" }, 400, '"auto" is the name automatic acceptance signs with. Type your own name.');
+  await refuse({ kind: "note", id: ids.note, action: "curated", reviewer: "Sam" }, 400, "action must be keep, remove, restore, comment or edit.");
+  await refuse({ kind: "note", id: ids.note, action: "comment", reviewer: "Sam", text: " " }, 400, "Write the comment first.");
+  await refuse({ kind: "place", id: 1, action: "keep", reviewer: "Sam" }, 400, "kind must be skill or note.");
+  await refuse({ kind: "note", id: ids.note, action: "remove", reviewer: "Sam", text: "x".repeat(601) }, 400, "The reason is 601 characters; the limit is 600.");
   const notJson = await app!.fetch(new Request(`http://commons.test/${TOKEN}/api/review`, { method: "POST", body: "keep it" }));
   expect(notJson.status).toBe(400);
-  expect(reviewRows()).toEqual([]);
-  expect([statusOf("skills", ids.draft), statusOf("skills", ids.sticks), statusOf("shared_notes", ids.note)]).toEqual(["draft", "draft", "proposed"]);
-  // A draft can still be rejected.
-  expect((await post("review", { kind: "skill", id: ids.draft, verdict: "reject", reviewer: "Sam", text: "Digging straight down kills." })).status).toBe(200);
-  expect(statusOf("skills", ids.draft)).toBe("rejected");
+  expect(reviewRows().map(row => row.reviewer)).toEqual(["auto"]);
+  expect([statusOf("skills", ids.draft), statusOf("skills", ids.sticks), statusOf("shared_notes", ids.note)]).toEqual(["draft", "draft", "curated"]);
+  // Removed things cannot be kept or removed twice.
+  await post("review", { kind: "note", id: ids.note, action: "remove", reviewer: "Sam", text: "The chest is empty now." });
+  await refuse({ kind: "note", id: ids.note, action: "keep", reviewer: "Sam" }, 409, "This note was removed. Use Restore to bring it back.");
+  await refuse({ kind: "note", id: ids.note, action: "remove", reviewer: "Sam", text: "again" }, 409, "This note is already removed.");
 });
 
 test("a skill without an expectation reports its runs as unchecked rather than as passed checks", async () => {
@@ -318,7 +456,7 @@ test("residents' own verdicts are a third figure, apart from run results and rev
 test("the journal gets a line for verdicts and failures, never the token", async () => {
   start();
   const ids = seed();
-  await post("review", { kind: "note", id: ids.note, verdict: "keep", reviewer: "Sam" });
+  await post("review", { kind: "note", id: ids.note, action: "keep", reviewer: "Sam" });
   await get(`/${TOKEN}/api/nothing`);
   await get(`/${TOKEN}/api/residents`);
   await get("/guess/api/residents");

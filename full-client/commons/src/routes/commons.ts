@@ -1,8 +1,9 @@
 // Commons panel: the review queue for skills and shared notes, and the caretaker's notes.
 import { join } from "node:path";
-import { commonsOverview, review, type NoteView, type SkillView } from "../db.ts";
+import { commonsOverview, type NoteView, type SkillView } from "../db.ts";
 import { record } from "../json.ts";
 import { caretakerNotes, type CaretakerEntry } from "../notes.ts";
+import { review } from "../reviews.ts";
 import { json, refuse, type Context, type Routes } from "./context.ts";
 
 export interface CommonsReply {

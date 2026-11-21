@@ -4,7 +4,7 @@
   --deepslate: #1b1e23; --basalt: #252a31; --seam: #39404a; --seam-soft: #2d333b;
   --parchment: #ece4d2; --lichen: #a3ab9b;
   --redstone: #e5645a; --moss: #8cbf70; --glow: #e8c25a;
-  --c0: #e2924a; --c1: #58c2b4; --c2: #b48be0; --c3: #7aa6f2; --shared: #ece4d2;
+  --c0: #e2924a; --c1: #58c2b4; --c2: #b48be0; --c3: #7aa6f2; --shared: #ece4d2; --caretaker: #ee8fbb;
   --who: var(--lichen);
   --ui: "Trebuchet MS", "Fira Sans", "Segoe UI", system-ui, sans-serif;
   --data: ui-monospace, "JetBrains Mono", "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
@@ -32,9 +32,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .fine { font-size: .8125rem; color: var(--lichen); max-width: 68ch; }
 .empty { color: var(--lichen); padding: 18px 0; max-width: 60ch; }
 
-#tabs { display: flex; background: var(--basalt); border-top: 2px solid var(--seam); padding-bottom: env(safe-area-inset-bottom); }
-#tabs button { flex: 1 1 auto; min-width: 0; background: none; border: 0; border-top: 3px solid transparent; margin-top: -2px; white-space: nowrap;
-               padding: 12px 5px 13px; font-size: .8125rem; font-weight: 700; color: var(--lichen); cursor: pointer; }
+#tabs { display: flex; background: var(--basalt); border-top: 2px solid var(--seam); padding-bottom: env(safe-area-inset-bottom); overflow-x: auto; scrollbar-width: none; }
+#tabs button { flex: 1 0 auto; background: none; border: 0; border-top: 3px solid transparent; margin-top: -2px; white-space: nowrap;
+               padding: 12px 7px 13px; font-size: .8125rem; font-weight: 700; color: var(--lichen); cursor: pointer; }
 #tabs button[aria-current="page"] { color: var(--parchment); border-top-color: var(--glow); }
 #tabs .badge { display: inline-block; min-width: 1.4em; margin-left: 4px; padding: 0 5px; border-radius: 2px;
                background: var(--glow); color: #2a2206; font-size: .75rem; }
@@ -140,7 +140,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #15181c; borde
 .three { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 10px; margin: 10px 0; }
 .three > div { border: 1px solid var(--seam); background: var(--seam-soft); padding: 8px 10px; min-width: 0; }
 .three h3 { font-size: .8125rem; color: var(--lichen); font-weight: 400; }
-.three b { display: block; font-size: 1rem; margin: 2px 0; }
+.three > div > b { display: block; font-size: 1rem; margin: 2px 0; }
 .three p, .three li { font-size: .8125rem; color: var(--lichen); overflow-wrap: anywhere; }
 .reviews li { font-size: .875rem; padding: 4px 0; border-top: 1px solid var(--seam-soft); overflow-wrap: anywhere; }
 .verdict textarea { display: block; width: 100%; min-height: 3.2em; background: #15181c; border: 2px solid var(--seam); border-radius: 2px; padding: 8px 10px; margin: 10px 0 8px; resize: vertical; }
@@ -156,8 +156,54 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #15181c; borde
 .caretaker li { padding: 8px 0; border-top: 1px solid var(--seam-soft); font-size: .875rem; max-width: 78ch; }
 .caretaker .when { color: var(--lichen); font-size: .8125rem; }
 
+.reviews li.past { color: var(--lichen); }
+.grouped { margin-top: 10px; }
+.editor { display: grid; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--seam); }
+.editor label { display: grid; gap: 4px; font-size: .8125rem; color: var(--lichen); }
+.editor input, .editor textarea { color: var(--parchment); background: #15181c; border: 2px solid var(--seam); border-radius: 2px; padding: 8px 10px; width: 100%; margin: 0; font-size: 1rem; }
+.editor textarea.data { font-size: .875rem; }
+
 #p-chat { padding: 0; max-width: none; height: 100%; }
 #chat-frame { display: block; width: 100%; height: 100%; border: 0; background: #23262d; }
+
+/* Console: the full panel, and the strip beside the residents. Same lines, same command box. */
+#p-console { display: flex; flex-direction: column; height: 100%; max-width: none; }
+#p-console .controls { margin-bottom: 8px; }
+#console-text { flex: 1 1 12em; min-width: 0; max-width: 24em; background: #15181c; border: 2px solid var(--seam); border-radius: 2px; padding: 6px 9px; }
+#console-status { margin-bottom: 8px; color: var(--glow); }
+.console-view { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.console-box { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; background: #14171b; border: 2px solid var(--seam); padding: 4px 0; }
+.console-lines li { display: grid; grid-template-columns: auto 1fr; gap: 0 9px; padding: 1px 8px; font-family: var(--data); font-size: .8125rem; line-height: 1.45; border-left: 3px solid transparent; }
+.console-lines time { color: var(--lichen); opacity: .75; white-space: nowrap; }
+.console-lines .what { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--lichen); }
+.console-lines .tag { color: var(--lichen); opacity: .8; font-size: .75rem; border: 1px solid var(--seam); padding: 0 4px; border-radius: 2px; white-space: nowrap; }
+.console-lines li.chat .what, .console-lines li.players .what { color: var(--parchment); font-family: var(--ui); font-size: .875rem; }
+.console-lines li.players .what { color: var(--glow); }
+.console-lines li.warn { border-left-color: var(--redstone); }
+.console-lines li.warn .what, .console-lines li.warn .tag { color: var(--redstone); }
+.console-lines li.command .what { color: var(--c3); font-family: var(--data); font-size: .8125rem; }
+.console-lines li.output .what { color: var(--parchment); font-family: var(--data); font-size: .8125rem; }
+.console-lines li.by-caretaker { border-left-color: var(--caretaker); }
+.console-lines li.by-caretaker .what { color: var(--caretaker); }
+.console-lines li.noise { opacity: .55; }
+.console-box .empty { padding: 14px 10px; font-size: .875rem; }
+.console-more { padding: 4px 8px 8px; }
+.console-more button, .jump { background: var(--seam); border: 0; border-radius: 2px; padding: 5px 10px; font-size: .75rem; font-weight: 700; cursor: pointer; }
+.jump { position: absolute; right: 12px; bottom: 96px; background: var(--glow); color: #2a2206; }
+.command { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding-top: 8px; }
+.command-row { display: flex; gap: 6px; align-items: center; }
+.command .prompt { font-family: var(--data); color: var(--c3); font-weight: 700; }
+.command-input { flex: 1; min-width: 0; background: #15181c; border: 2px solid var(--seam); border-radius: 2px; padding: 8px 10px; font-size: 1rem; }
+.command .send { background: var(--seam); border: 2px solid var(--seam); border-radius: 2px; padding: 8px 14px; font-weight: 700; cursor: pointer; }
+.command :disabled { opacity: .5; cursor: default; }
+.command .problem { color: var(--redstone); font-size: .875rem; }
+.command .problem:empty { display: none; }
+
+#glance { display: flex; flex-direction: column; background: var(--basalt); border: 2px solid var(--seam); border-radius: 2px; padding: 10px 12px 12px; margin-bottom: 14px; }
+#glance > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 8px; }
+#glance h2 { font-size: 1rem; margin-right: auto; }
+#glance a { font-size: .8125rem; color: var(--lichen); }
+#glance .console-box { flex: none; height: 300px; }
 
 @media (min-width: 900px) {
   body { flex-direction: row; flex-wrap: wrap; }
@@ -168,6 +214,15 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #15181c; borde
   main { order: 2; flex: 1; height: calc(100dvh - 48px); }
   .panel { padding: 20px 24px; margin: 0; }
   #map-box { height: min(70dvh, 760px); }
+  .jump { bottom: 104px; }
+}
+/* Wide enough for two resident cards and the strip side by side: the strip stays in view while the cards scroll. */
+@media (min-width: 1300px) {
+  #p-residents { max-width: 1640px; }
+  .watch { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 26%); gap: 14px; align-items: start; }
+  #glance { position: sticky; top: 20px; height: calc(100dvh - 48px - 40px); margin: 0; }
+  #glance .console-view { flex: 1; min-height: 0; }
+  #glance .console-box { flex: 1; height: auto; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .feed li.fresh { animation: arrive .6s ease-out; }

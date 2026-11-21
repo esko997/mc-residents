@@ -122,3 +122,74 @@ export function fakeSynapse(options: { state?: Record<string, unknown>; token?: 
   fake.url = `http://127.0.0.1:${server.port}`;
   return fake;
 }
+
+export interface FakePhoneChat {
+  /** The base address the app is given: ends in `/<token>/`. */
+  url: string;
+  requests: string[];
+  /** Commands received, in order. */
+  commands: string[];
+  /** What a command answers; a string is its output, an Error's message is sent as a 502. Default: no output. */
+  answers: Record<string, string | Error>;
+  /** A line the server wrote to its log. */
+  log(text: string): void;
+  /** The service restarted: new boot, ids from 1, and it repeats the last `repeat` log lines. */
+  restart(repeat: number): void;
+  /** The server replaced its log: new boot, ids from 1, nothing repeated. */
+  rotate(): void;
+  stop(): void;
+}
+/** Stands in for phone_chat.py on the server machine: GET console?after= and POST command, on a random loopback port. */
+export function fakePhoneChat(): FakePhoneChat {
+  interface Line { id: number; text: string; mark?: string; t?: number }
+  let lines: Line[] = [], boots = 0;
+  const add = (text: string, mark?: string) => { lines.push({ id: (lines.at(-1)?.id ?? 0) + 1, text, ...(mark ? { mark, t: Date.now() / 1000 } : {}) }); };
+  const fake: FakePhoneChat = {
+    url: "", requests: [], commands: [], answers: {},
+    log: text => add(text),
+    restart(repeat) {
+      const kept = lines.filter(line => !line.mark).slice(-repeat);
+      boots++; lines = [];
+      for (const line of kept) add(line.text);
+    },
+    rotate() { boots++; lines = []; },
+    stop: () => { void server.stop(true); },
+  };
+  const server = Bun.serve({
+    hostname: "127.0.0.1", port: 0,
+    async fetch(request) {
+      const url = new URL(request.url);
+      fake.requests.push(`${request.method} ${url.pathname}${url.search}`);
+      if (url.pathname === "/chat-token/console") {
+        const after = Number(url.searchParams.get("after")) || 0;
+        return Response.json({ boot: `boot-${boots}`, lines: lines.filter(line => line.id > after) });
+      }
+      if (url.pathname === "/chat-token/command" && request.method === "POST") {
+        const { command } = await request.json() as { command: string };
+        fake.commands.push(command);
+        add(`> ${command}`, "command");
+        const answer = fake.answers[command] ?? "";
+        const said = answer instanceof Error ? answer.message : answer;
+        for (const line of (said || "(no output)").split("\n")) add(line, "output");
+        return answer instanceof Error ? Response.json({ error: said }, { status: 502 }) : Response.json({ output: said });
+      }
+      return Response.json({ error: "Not found." }, { status: 404 });
+    },
+  });
+  fake.url = `http://127.0.0.1:${server.port}/chat-token/`;
+  return fake;
+}
+
+const two = (value: number) => String(value).padStart(2, "0");
+/** A line as the Minecraft server writes it to latest.log: stamped in UTC. */
+export function serverLogLine(t: number, message: string, level = "INFO", logger = "net.minecraft.server.MinecraftServer/", thread = "Server thread") {
+  const date = new Date(t);
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][date.getUTCMonth()];
+  const stamp = `${two(date.getUTCDate())}${month}${date.getUTCFullYear()} ${two(date.getUTCHours())}:${two(date.getUTCMinutes())}:${two(date.getUTCSeconds())}.${String(date.getUTCMilliseconds()).padStart(3, "0")}`;
+  return `[${stamp}] [${thread}/${level}] [${logger}]: ${message}`;
+}
+/** A line as a client writes it to its log: local time, no date. */
+export function clientLogLine(t: number, message: string) {
+  const date = new Date(t);
+  return `[${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}] [Render thread/INFO]: ${message}`;
+}

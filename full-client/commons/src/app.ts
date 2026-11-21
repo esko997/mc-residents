@@ -5,11 +5,13 @@ import type { Database } from "bun:sqlite";
 import { timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
+import { Console, ConsoleFeed } from "./console.ts";
 import { openCommons } from "./db.ts";
 import type { TextFile } from "./notes.ts";
 import { RolloutTail } from "./rollouts.ts";
 import { activityRoutes, type ActivityReply } from "./routes/activity.ts";
 import { commonsRoutes, type CommonsReply } from "./routes/commons.ts";
+import { consoleRoutes, type ConsoleReply } from "./routes/console.ts";
 import { json, refuse, type Context, type Routes } from "./routes/context.ts";
 import { mapRoutes, type MapReply } from "./routes/map.ts";
 import { notesRoutes, type NotesReply } from "./routes/notes.ts";
@@ -17,7 +19,9 @@ import { residentRoutes, type ResidentsReply } from "./routes/residents.ts";
 import { Watcher } from "./watcher.ts";
 
 /** The JSON each GET route under /<token>/api/ returns, for whoever reads it (the page, the tests). */
-export interface Replies { residents: ResidentsReply; activity: ActivityReply; map: MapReply; commons: CommonsReply; notes: NotesReply; file: TextFile }
+export interface Replies {
+  residents: ResidentsReply; activity: ActivityReply; map: MapReply; commons: CommonsReply; notes: NotesReply; file: TextFile; console: ConsoleReply;
+}
 
 export interface App {
   fetch(request: Request): Promise<Response>;
@@ -26,6 +30,8 @@ export interface App {
   stop(): void;
   watcher: Watcher;
   tail: RolloutTail;
+  stream: Console;
+  feed: ConsoleFeed;
   db: Database;
 }
 
@@ -38,9 +44,11 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   const db = openCommons(config.dbPath, config.schemaPath);
   const watcher = new Watcher(config, db, now);
   const tail = new RolloutTail(config.sessionsDir, config.residents, { days: config.activityDays, now });
+  const stream = new Console(config.consoleUrl !== undefined, { now, names: [...config.residents.map(resident => resident.name), ...config.owners] });
+  const feed = new ConsoleFeed(stream, config, now);
   let lastRead = 0;
   const context: Context = {
-    config, db, watcher, tail, now,
+    config, db, watcher, tail, stream, feed, now,
     async readSessions() {
       if (now() - lastRead < 2000) return;
       lastRead = now();
@@ -50,6 +58,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   };
   const routes: Routes = {
     ...residentRoutes(context), ...activityRoutes(context), ...mapRoutes(context), ...notesRoutes(context), ...commonsRoutes(context),
+    ...consoleRoutes(context),
   };
   const secret = Buffer.from(token);
 
@@ -74,7 +83,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   }
 
   return {
-    watcher, tail, db,
+    watcher, tail, stream, feed, db,
     async fetch(request) {
       const url = new URL(request.url);
       const [given = "", ...rest] = url.pathname.replace(/^\//, "").split("/");
@@ -93,7 +102,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
       if (request.method !== "GET" || response.status >= 400) log(`${request.method} /<token>/${rest.join("/")} -> ${response.status}`);
       return response;
     },
-    start() { watcher.start(); void context.readSessions(); },
-    stop() { watcher.stop(); db.close(); },
+    start() { watcher.start(); feed.start(); void context.readSessions(); },
+    stop() { watcher.stop(); feed.stop(); db.close(); },
   };
 }

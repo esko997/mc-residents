@@ -305,7 +305,11 @@ $("#activity-quiet").addEventListener("change", event => { activity.quiet = even
 
 async function loadActivity() {
   const data = await get(`api/activity?boot=${encodeURIComponent(activity.boot)}&after=${activity.after}&limit=500`);
-  if (data.boot !== activity.boot) { activity.entries.clear(); activity.after = 0; activity.boot = data.boot; activity.first = true; }
+  if (data.boot !== activity.boot) {
+    // The app restarted and numbers its entries from 1 again: rows on screen with those numbers are other entries.
+    activity.entries.clear(); activity.after = 0; activity.boot = data.boot; activity.first = true;
+    $("#feed").replaceChildren();
+  }
   for (const entry of data.entries) { activity.entries.set(entry.id, entry); activity.after = Math.max(activity.after, entry.id); }
   if (activity.entries.size > 2000) {
     const keep = [...activity.entries.values()].sort((a, b) => b.t - a.t).slice(0, 1500);
@@ -547,18 +551,23 @@ async function loadNotes() {
   renderNotes();
 }
 
+
 // ---------- Commons ----------
-const commons = { data: null, busy: "", messages: new Map() };
+// Residents see notes and verified skills at once; this panel is where a person looks afterwards.
+const commons = { data: null, busy: "", messages: new Map(), editing: new Map() };
 const reviewerInput = $("#reviewer-name");
 reviewerInput.value = localStorage.getItem("commons.reviewer") ?? "";
-const reviewerHint = () => { $("#reviewer-hint").textContent = reviewerInput.value.trim() ? "Saved in this browser; written on every verdict." : "Type your name once; every verdict is signed with it."; };
+const reviewerHint = () => { $("#reviewer-hint").textContent = reviewerInput.value.trim() ? "Saved in this browser; signed on everything you do here." : "Type your name once; everything you do here is signed with it."; };
 reviewerInput.addEventListener("input", () => { localStorage.setItem("commons.reviewer", reviewerInput.value.trim()); reviewerHint(); });
 $("#reviewer").addEventListener("submit", event => { event.preventDefault(); reviewerInput.blur(); });
 reviewerHint();
 
-const VERDICT_WORDS = { keep: "kept it", reject: "rejected it", comment: "commented" };
-const reviewList = reviews => reviews.length === 0 ? "" : html`<ul class="reviews">${reviews.map(row => html`<li><b>${row.reviewer}</b>
-  <span class="${row.verdict === "keep" ? "good" : row.verdict === "reject" ? "bad" : ""}">${VERDICT_WORDS[row.verdict]}</span> <span class="meta">${stamp(row.at)}</span>${row.text ? html`: ${row.text}` : ""}</li>`)}</ul>`;
+const VERDICT_WORDS = { keep: "kept it", reject: "removed it", comment: "commented" };
+const reviewList = reviews => reviews.length === 0 ? "" : html`<ul class="reviews">${reviews.map(row => row.reviewer === "auto"
+  ? html`<li class="past">Made visible to residents automatically <span class="meta">${stamp(row.at)}</span></li>`
+  : html`<li class="${row.current ? "" : "past"}"><b>${row.reviewer}</b>
+    <span class="${row.verdict === "keep" ? "good" : row.verdict === "reject" ? "bad" : ""}">${VERDICT_WORDS[row.verdict]}</span> <span class="meta">${stamp(row.at)}</span>${row.text ? html`: ${row.text}` : ""}
+    ${row.current ? "" : html`<span class="meta">(about an earlier revision)</span>`}</li>`)}</ul>`;
 function feedbackFigure(feedback, key) {
   return html`<div><h3>What residents say</h3>
     <b>${feedback.entries.length === 0 ? "No verdicts yet" : `worked for ${feedback.worked}, not for ${feedback.notWorked}`}</b>
@@ -567,14 +576,43 @@ function feedbackFigure(feedback, key) {
       <b>${entry.resident}</b>: <span class="${entry.worked ? "good" : "bad"}">${entry.worked ? "worked" : "did not work"}</span>${entry.version !== null ? ` (v${entry.version})` : ""}${entry.text ? `: ${entry.text}` : ""}
       <span class="meta">${stamp(entry.at)}</span></li>`)}</ul></details>` : ""}</div>`;
 }
-function verdictForm(kind, item, canKeep) {
-  const key = `${kind}:${item.id}`, message = commons.messages.get(key), busy = commons.busy === key;
-  return html`<form class="verdict" data-kind="${kind}" data-id="${item.id}" data-version="${item.version ?? ""}">
-    <textarea data-i="reason:${key}" maxlength="600" placeholder="Reason (needed to reject) or a comment" aria-label="Reason or comment; one plain line, its author may read it"></textarea>
-    <div class="buttons">
-      ${canKeep ? html`<button type="button" class="keep" data-verdict="keep" ${busy ? "disabled" : ""}>Keep</button>` : ""}
-      <button type="button" class="reject" data-verdict="reject" ${busy ? "disabled" : ""}>Reject</button>
-      <button type="button" class="comment" data-verdict="comment" ${busy ? "disabled" : ""}>Comment only</button>
+
+// What can be edited here. Code cannot: it belongs to its author.
+const EDIT_FIELDS = {
+  note: [["topic", "Topic", 60, 1], ["text", "Text", 600, 5]],
+  skill: [["description", "Description: what it does and when to use it", 300, 3], ["params", "Params, as JSON: each name and what it means", 2000, 3],
+    ["expect", "Check (expect), as JSON; leave empty for no check", 2000, 4]],
+};
+function openEditor(kind, item) {
+  const key = `${kind}:${item.id}`;
+  commons.editing.set(key, { updatedAt: item.updatedAt });
+  const values = kind === "note" ? { topic: item.topic, text: item.text }
+    : { description: item.description, params: JSON.stringify(item.params, null, 1), expect: item.expect === null ? "" : JSON.stringify(item.expect, null, 1) };
+  for (const [name] of EDIT_FIELDS[kind]) drafts.set(`edit:${key}:${name}`, values[name]);
+}
+function closeEditor(kind, key) {
+  commons.editing.delete(key);
+  for (const [name] of EDIT_FIELDS[kind]) drafts.delete(`edit:${key}:${name}`);
+}
+function actionForm(kind, item) {
+  const key = `${kind}:${item.id}`, message = commons.messages.get(key), off = commons.busy === key ? html`disabled` : "";
+  const editing = commons.editing.has(key), removed = item.status === "rejected", draft = item.status === "draft";
+  const editor = !editing ? "" : html`<div class="editor">
+    ${EDIT_FIELDS[kind].map(([name, label, max, rows]) => html`<label>${label}
+      ${rows === 1 ? html`<input data-i="edit:${key}:${name}" maxlength="${max}">` : html`<textarea data-i="edit:${key}:${name}" maxlength="${max}" rows="${rows}" class="${name === "params" || name === "expect" ? "data" : ""}" spellcheck="${String(name !== "params" && name !== "expect")}"></textarea>`}</label>`)}
+    ${kind === "skill" ? html`<p class="fine">Changing the check makes this a new version and a draft again: its author must run it and pass before the others see it. Description and params change nothing else.</p>` : ""}</div>`;
+  const reasonHint = editing ? "Why you changed it (optional); its author may read this" : removed ? "A comment, or why you restore it (optional)" : "Reason (needed to remove) or a comment";
+  return html`<form class="verdict" data-kind="${kind}" data-id="${item.id}" data-updated="${item.updatedAt}">
+    ${editor}
+    <textarea data-i="reason:${key}" maxlength="600" placeholder="${reasonHint}" aria-label="${reasonHint}; one plain line"></textarea>
+    <div class="buttons">${editing ? html`
+      <button type="button" class="keep" data-action="edit" ${off}>Save changes</button>
+      <button type="button" class="comment" data-action="cancel" ${off}>Cancel</button>` : html`
+      ${removed || draft ? "" : html`<button type="button" class="keep" data-action="keep" ${off}>Looked at, keep</button>`}
+      ${removed ? html`<button type="button" class="keep" data-action="restore" ${off}>Restore</button>` : ""}
+      <button type="button" class="comment" data-action="open" ${off}>Edit</button>
+      ${removed ? "" : html`<button type="button" class="reject" data-action="remove" ${off}>Remove</button>`}
+      <button type="button" class="comment" data-action="comment" ${off}>Comment only</button>`}
     </div>
     ${message ? html`<p class="${message.ok ? "done" : "problem"}" role="${message.ok ? "status" : "alert"}">${message.text}</p>` : ""}</form>`;
 }
@@ -586,13 +624,14 @@ function skillCard(card, skill) {
   const parameters = Object.entries(skill.params);
   setHtml(card, html`
     <header><span class="name">${skill.name}</span><span class="meta">version ${skill.version}</span><span class="pill ${skill.status}">${skill.status}</span>
-      <span class="meta">by ${skill.author}; changed ${stamp(skill.updatedAt)}</span></header>
+      <span class="meta">skill by ${skill.author}; changed ${stamp(skill.updatedAt)}</span></header>
     <p class="said">${skill.description}</p>
     <dl class="facts">
       ${parameters.length ? html`<dt>Takes</dt><dd>${parameters.map(([name, meaning], i) => html`${i ? "; " : ""}<span class="data">${name}</span> ${typeof meaning === "string" ? meaning : JSON.stringify(meaning)}`)}</dd>` : ""}
       <dt>Expects</dt><dd>${skill.expect === null ? html`<span class="warn">nothing declared: its runs cannot be checked</span>` : html`<span class="data">${typeof skill.expect === "string" ? skill.expect : JSON.stringify(skill.expect)}</span>`}</dd>
     </dl>
-    <details data-d="code:${skill.id}"><summary>Code (${plural(skill.code.split("\n").length, "line")})</summary><pre>${skill.code}</pre></details>
+    <details data-d="code:${skill.id}"><summary>Code (${plural(skill.code.split("\n").length, "line")})</summary><pre>${skill.code}</pre>
+      <p class="fine">Code is its author's and cannot be edited here. To stop a skill being used, remove it with a reason: ${skill.author} is shown the reason and can save a better version.</p></details>
     <div class="three">
       <div><h3>Did it work</h3>
         <b>${now.total === 0 ? "Never run in this version" : `${now.passed} of ${plural(now.total, "run")} passed`}</b>
@@ -607,17 +646,18 @@ function skillCard(card, skill) {
       ${feedbackFigure(skill.feedback, key)}
     </div>
     ${reviewList(skill.reviews)}
-    ${verdictForm("skill", skill, skill.status !== "draft")}`);
+    ${actionForm("skill", skill)}`);
 }
 function noteCard(card, note) {
   card.className = "card item";
   card.style.setProperty("--who", colour(note.author));
   setHtml(card, html`
     <header><span class="name">${note.topic}</span><span class="pill ${note.status}">${note.status}</span><span class="meta">shared note by ${note.author}, ${stamp(note.createdAt)}</span></header>
+    ${note.status === "proposed" ? html`<p class="warn">Other residents do not see this until it is kept (automatic acceptance is off, or has not run yet).</p>` : ""}
     <p class="said">${note.text}</p>
     ${note.feedback.entries.length ? html`<div class="three">${feedbackFigure(note.feedback, `note:${note.id}`)}</div>` : ""}
     ${reviewList(note.reviews)}
-    ${verdictForm("note", note, true)}`);
+    ${actionForm("note", note)}`);
 }
 const itemCard = (card, item) => item.kind === "skill" ? skillCard(card, item.it) : noteCard(card, item.it);
 
@@ -625,24 +665,25 @@ function renderCommons() {
   const data = commons.data, body = $("#commons-body");
   if (!body.firstChild) {
     body.innerHTML = html`
-      <section class="group"><h2>Waiting for your decision <small id="g-waiting-n"></small></h2><p id="g-waiting-empty" class="empty" hidden>
-        Nothing is waiting. A skill arrives here once it has passed its own check; a shared note as soon as a resident offers one. Until you keep a note, no other resident sees it.</p><div id="g-waiting"></div></section>
-      <section class="group"><details data-d="group:drafts"><summary id="g-drafts-n"></summary><p class="fine" style="margin:6px 0 10px">Only its author sees and runs a draft. It can be rejected or commented on, but not kept before it passes its check.</p><div id="g-drafts"></div></details></section>
-      <section class="group"><details data-d="group:decided"><summary id="g-decided-n"></summary><div id="g-decided" style="margin-top:10px"></div></details></section>
+      <section class="group"><h2>New, not looked at yet <small id="g-new-n"></small></h2><p id="g-new-empty" class="empty" hidden>
+        Nothing new. A shared note shows up here as soon as a resident offers it, a skill once it has passed its own check. Residents can already see and use them; this is where you look afterwards, and edit or remove what is wrong.</p><div id="g-new"></div></section>
+      <section class="group"><details data-d="group:kept"><summary id="g-kept-n"></summary><div id="g-kept" class="grouped"></div></details></section>
+      <section class="group"><details data-d="group:removed"><summary id="g-removed-n"></summary><p class="fine grouped">Residents no longer see these. The author is shown the reason. Restore brings one back.</p><div id="g-removed"></div></details></section>
+      <section class="group"><details data-d="group:draft"><summary id="g-draft-n"></summary><p class="fine grouped">Only its author sees and runs a draft, until a run passes its check.</p><div id="g-draft"></div></details></section>
       <section class="group"><h2>Caretaker notes <small>written hourly by the overseer; read-only here</small></h2><div id="g-caretaker"></div></section>`.text;
   }
   const items = [...data.skills.map(it => ({ kind: "skill", it })), ...data.notes.map(it => ({ kind: "note", it }))];
   const keyOf = item => `${item.kind}:${item.it.id}`;
-  const waiting = items.filter(item => item.it.status === "verified" || item.it.status === "proposed").sort((a, b) => a.it.updatedAt - b.it.updatedAt);
-  const drafts_ = items.filter(item => item.it.status === "draft");
-  const decided = items.filter(item => item.it.status === "curated" || item.it.status === "rejected");
-  patch($("#g-waiting"), waiting, keyOf, itemCard, "article");
-  patch($("#g-drafts"), drafts_, keyOf, itemCard, "article");
-  patch($("#g-decided"), decided, keyOf, itemCard, "article");
-  $("#g-waiting-n").textContent = waiting.length ? `${waiting.length}, oldest first` : "";
-  $("#g-waiting-empty").hidden = waiting.length > 0;
-  $("#g-drafts-n").textContent = `Drafts (${drafts_.length})`;
-  $("#g-decided-n").textContent = `Decided (${decided.filter(item => item.it.status === "curated").length} kept, ${decided.filter(item => item.it.status === "rejected").length} rejected)`;
+  const titles = { kept: "Kept", removed: "Removed", draft: "Drafts" };
+  for (const group of ["new", "kept", "removed", "draft"]) {
+    // New: oldest first, so nothing waits forever. The others: latest change first.
+    const members = items.filter(item => item.it.group === group).sort((a, b) => group === "new" ? a.it.updatedAt - b.it.updatedAt : b.it.updatedAt - a.it.updatedAt);
+    patch($(`#g-${group}`), members, keyOf, itemCard, "article");
+    if (group === "new") {
+      $("#g-new-n").textContent = members.length ? `${members.length}, oldest first` : "";
+      $("#g-new-empty").hidden = members.length > 0;
+    } else $(`#g-${group}-n`).textContent = `${titles[group]} (${members.length})`;
+  }
   patch($("#g-caretaker"), data.caretaker, entry => entry.resident, (card, entry) => {
     card.className = "card caretaker";
     card.style.setProperty("--who", colour(entry.resident));
@@ -654,31 +695,43 @@ function renderCommons() {
 const caretakerLine = note => html`<li><span class="when">${note.heading}</span>
   ${note.note ? html`<br><b>To the resident:</b> ${note.note}` : ""}${note.maintainers ? html`<br><b>To maintainers:</b> ${note.maintainers}` : ""}${note.other ? html`<br>${note.other}` : ""}</li>`;
 
-// A message about a missing reason is stale as soon as the reason is being typed.
+// A message about a missing reason is stale as soon as something is being typed.
 $("#commons-body").addEventListener("input", event => {
-  const key = event.target.dataset.i?.replace(/^reason:/, "");
+  const key = /^(?:reason|edit):(\w+:\d+)/.exec(event.target.dataset.i ?? "")?.[1];
   if (key && commons.messages.delete(key)) renderCommons();
 });
 $("#commons-body").addEventListener("click", async event => {
-  const button = event.target.closest("button[data-verdict]");
+  const button = event.target.closest("button[data-action]");
   if (!button) return;
   const form = button.closest("form"), kind = form.dataset.kind, id = Number(form.dataset.id), key = `${kind}:${id}`;
-  const verdict = button.dataset.verdict, text = (drafts.get(`reason:${key}`) ?? "").trim(), reviewer = reviewerInput.value.trim();
+  const action = button.dataset.action, item = (kind === "skill" ? commons.data.skills : commons.data.notes).find(entry => entry.id === id);
   const say = (message, ok = false) => { commons.messages.set(key, { text: message, ok }); renderCommons(); };
-  if (!reviewer) { say("Type your name at the top first; every verdict is signed."); reviewerInput.focus(); return; }
-  if (verdict === "reject" && !text) { say("A rejection needs a reason, so its author learns something from it."); return; }
-  if (verdict === "comment" && !text) { say("Write the comment first."); return; }
+  if (action === "open") { openEditor(kind, item); commons.messages.delete(key); renderCommons(); $(`form[data-kind="${kind}"][data-id="${id}"] .editor [data-i]`)?.focus(); return; }
+  if (action === "cancel") { closeEditor(kind, key); commons.messages.delete(key); renderCommons(); return; }
+  const text = (drafts.get(`reason:${key}`) ?? "").trim(), reviewer = reviewerInput.value.trim();
+  if (!reviewer) { say("Type your name at the top first; everything done here is signed."); reviewerInput.focus(); return; }
+  if (action === "remove" && !text) { say("Removing needs a reason: its author is shown it and learns from it."); return; }
+  if (action === "comment" && !text) { say("Write the comment first."); return; }
+  const request = { kind, id, action, text, reviewer, updatedAt: Number(form.dataset.updated) };
+  if (action === "edit") {
+    // What the editor was opened on: if the item changed since, the server says so instead of overwriting it.
+    request.updatedAt = commons.editing.get(key).updatedAt;
+    request.fields = Object.fromEntries(EDIT_FIELDS[kind].map(([name]) => [name, drafts.get(`edit:${key}:${name}`) ?? ""]));
+  }
   commons.busy = key; renderCommons();
   try {
-    const response = await fetch("api/review", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, id, verdict, text, reviewer, ...(form.dataset.version ? { version: Number(form.dataset.version) } : {}) }),
-    });
+    const response = await fetch("api/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);
     drafts.delete(`reason:${key}`);
-    commons.messages.set(key, { ok: true, text: { keep: "Kept. Every resident now sees it as reviewed.", reject: "Rejected, with your reason on record.", comment: "Comment saved." }[verdict] });
-    form.querySelector("textarea").value = "";
+    if (action === "edit") closeEditor(kind, key);
+    commons.messages.set(key, { ok: true, text: {
+      keep: "Kept.",
+      remove: `Removed. Residents no longer see it, and ${item.author} is shown your reason.`,
+      restore: result.status === "draft" ? "Restored as a draft: this version never passed its check, so only its author sees it until it does." : "Restored. Residents see it again.",
+      comment: "Comment saved.",
+      edit: `Saved: ${(result.changed ?? []).join(", ")}.${result.status === "draft" && result.changed?.includes("expect") ? " The check changed, so it is a draft again until its author runs it and it passes." : ""}`,
+    }[action] });
   } catch (error) { commons.messages.set(key, { ok: false, text: error.message || "The server did not answer. Nothing was changed." }); }
   commons.busy = "";
   await loadCommons().catch(() => renderCommons());
@@ -689,6 +742,179 @@ async function loadCommons() {
   renderCommons();
 }
 
+// ---------- Console ----------
+// One store of lines, fed by api/console, and two views of it: the Console panel and the
+// strip beside the residents. Each view has its own filter, scroll position and command box.
+const consoleStore = { boot: "", rev: 0, byId: new Map(), sorted: [], server: null, commandsOff: null, loaded: false };
+const consoleViews = [];
+const CARETAKER = "<Caretaker>";
+const HISTORY_KEY = "commons.commands";
+
+/** Text with the residents' names in their colours. */
+function withNames(text) {
+  if (!state.names.length) return html`${text}`;
+  const parts = text.split(new RegExp(`\\b(${state.names.map(name => name.replace(/\W/g, "\\$&")).join("|")})\\b`));
+  return html`${parts.map((part, index) => index % 2 ? html`<b style="color:${colour(part)}">${part}</b>` : part)}`;
+}
+function lineTime(t) {
+  const date = new Date(t), today = new Date(serverNow());
+  return date.toDateString() === today.toDateString() ? clock(t) : `${date.getDate()} ${MONTHS[date.getMonth()]} ${clock(t, false)}`;
+}
+function consoleRow(line) {
+  const classes = [line.kind, line.source, line.mark ?? "", line.text.includes(CARETAKER) ? "by-caretaker" : "", line.noise ? "noise" : ""].filter(Boolean).join(" ");
+  return { classes, markup: html`<time title="${new Date(line.t).toLocaleString()}">${lineTime(line.t)}</time><span class="what">${line.tag ? html`<span class="tag">${line.tag}</span> ` : ""}${withNames(line.text.replace(/^\[Not Secure\] /, ""))}${
+    line.seenBy ? html` <span class="tag">seen in game by ${line.seenBy.join(", ")}</span>` : ""}</span>` };
+}
+
+function drawConsole(view) {
+  // A hidden view has no size to scroll in; it is drawn when its panel is shown.
+  if (!view.box.offsetParent) return;
+  const needle = view.text.toLowerCase();
+  const matching = consoleStore.sorted.filter(line => (view.noise || !line.noise) && (!view.kinds || view.kinds.has(line.kind))
+    && (!needle || `${line.tag ?? ""} ${line.text} ${line.seenBy?.join(" ") ?? ""}`.toLowerCase().includes(needle)));
+  const shown = matching.slice(-view.limit);
+  const newest = shown.length ? shown[shown.length - 1].id : 0, stick = view.stick;
+  patch(view.list, shown, line => line.id, (row, line) => {
+    if (row.__rev === line.rev) return;
+    row.__rev = line.rev;
+    const { classes, markup } = consoleRow(line);
+    row.className = classes;
+    row.innerHTML = markup.text;
+  }, "li");
+  view.more.hidden = !view.grows || matching.length <= view.limit;
+  view.more.firstChild.textContent = `Show earlier lines (${count(matching.length - shown.length)} more)`;
+  view.empty.hidden = shown.length > 0;
+  view.empty.textContent = !consoleStore.loaded ? "Reading the console…" : consoleStore.sorted.length ? "No line matches this filter." : "Nothing yet. Lines appear as the server writes its log and as the residents' clients show chat.";
+  if (stick) view.box.scrollTop = view.box.scrollHeight;
+  else if (newest !== view.newest) view.jump.hidden = false;
+  view.newest = newest;
+  const off = consoleStore.commandsOff;
+  view.input.disabled = view.send.disabled = Boolean(off) || view.sending;
+  view.off.hidden = !off;
+  view.off.textContent = off ?? "";
+}
+const drawConsoles = () => { for (const view of consoleViews) drawConsole(view); };
+
+function consoleView(root, options) {
+  root.innerHTML = html`
+    <div class="console-box" tabindex="0" role="log" aria-label="Console lines, newest last">
+      <p class="console-more" hidden><button type="button"></button></p><ol class="console-lines"></ol><p class="empty" hidden></p></div>
+    <button type="button" class="jump" hidden>New lines below. Jump to newest</button>
+    <form class="command" autocomplete="off">
+      <label class="check" title="Turns what you type into: say &lt;text&gt;"><input type="checkbox" class="as-server"> Say as Server</label>
+      <div class="command-row"><span class="prompt" aria-hidden="true">&gt;</span>
+        <input class="command-input data" enterkeyhint="send" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Server command">
+        <button class="send">Send</button></div>
+      <p class="problem" role="alert"></p><p class="fine command-off" hidden></p>
+    </form>`.text;
+  const view = {
+    ...options, text: "", stick: true, newest: 0, sending: false,
+    box: $(".console-box", root), list: $("ol", root), more: $(".console-more", root), empty: $(".empty", root), jump: $(".jump", root),
+    input: $(".command-input", root), send: $(".send", root), off: $(".command-off", root),
+  };
+  // Scrolling up pauses following; coming back to the bottom resumes it.
+  view.box.addEventListener("scroll", () => {
+    view.stick = view.box.scrollHeight - view.box.scrollTop - view.box.clientHeight < 40;
+    if (view.stick) view.jump.hidden = true;
+  });
+  view.jump.onclick = () => { view.stick = true; view.jump.hidden = true; view.box.scrollTop = view.box.scrollHeight; };
+  view.more.firstChild.onclick = () => { view.limit += 1000; drawConsole(view); };
+
+  const form = $("form", root), asServer = $(".as-server", root), problem = $(".problem", root);
+  const placeholder = () => { view.input.placeholder = asServer.checked ? "Say to everyone as [Server]" : "Server command, such as: list"; };
+  asServer.onchange = placeholder;
+  placeholder();
+  let recall = -1, unsent = "";
+  const pastCommands = () => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) ?? []; } catch { return []; } };
+  view.input.addEventListener("keydown", event => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    const past = pastCommands();   // newest first
+    if (recall < 0) unsent = view.input.value;
+    recall = Math.max(-1, Math.min(past.length - 1, recall + (event.key === "ArrowUp" ? 1 : -1)));
+    view.input.value = recall < 0 ? unsent : past[recall];
+    // A recalled line is a whole command already.
+    if (recall >= 0) { asServer.checked = false; placeholder(); }
+    event.preventDefault();
+  });
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    const typed = view.input.value.trim().replace(/^\/+/, "").trim();
+    if (!typed || view.sending) return;
+    const command = asServer.checked ? `say ${typed}` : typed, word = command.split(/\s+/)[0].toLowerCase();
+    if ((word === "stop" || word === "restart") && !confirm(`Run "${command}"? This takes the Minecraft server down for everyone on it.`)) return;
+    view.sending = true; problem.textContent = ""; drawConsole(view);
+    try {
+      const response = await fetch("api/console/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? `The server answered ${response.status}.`);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify([command, ...pastCommands().filter(past => past !== command)].slice(0, 50)));
+      view.input.value = ""; recall = -1; view.stick = true;
+    } catch (error) { problem.textContent = error.message || "This page could not reach the commons server. The command was not sent."; }
+    view.sending = false;
+    // The command and its answer are in the stream by now, whether it worked or not.
+    await loadConsole().catch(() => drawConsole(view));
+    view.input.focus();
+  });
+  consoleViews.push(view);
+  return view;
+}
+
+// The strip shows what people said and did, and what you typed; the panel starts with everything.
+const GLANCE_KINDS = ["chat", "players", "command"];
+const glanceView = consoleView($("#glance-view"), { kinds: new Set(GLANCE_KINDS), limit: 40, grows: false });
+const fullView = consoleView($("#console-view"), { kinds: null, limit: 1000, grows: true });
+$("#glance-all").onchange = event => { glanceView.kinds = event.target.checked ? null : new Set(GLANCE_KINDS); glanceView.stick = true; drawConsole(glanceView); };
+const CONSOLE_FILTERS = [["all", "All", null], ["chat", "Chat", ["chat"]], ["players", "Players", ["players"]], ["warn", "Warnings and errors", ["warn"]]];
+let consoleFilter = "all";
+function drawConsoleFilter() {
+  segmented($("#console-kind"), CONSOLE_FILTERS.map(([value, label]) => ({ value, label })), consoleFilter, value => {
+    consoleFilter = value;
+    const kinds = CONSOLE_FILTERS.find(filter => filter[0] === value)[2];
+    fullView.kinds = kinds && new Set(kinds); fullView.stick = true; fullView.limit = 1000;
+    drawConsoleFilter(); drawConsole(fullView);
+  });
+}
+drawConsoleFilter();
+$("#console-text").addEventListener("input", event => { fullView.text = event.target.value.trim(); fullView.stick = true; drawConsole(fullView); });
+// Noise is hidden in every filter unless asked for here; the strip never shows it.
+const NOISE_KEY = "commons.noise";
+$("#console-noise").checked = fullView.noise = localStorage.getItem(NOISE_KEY) === "1";
+$("#console-noise").onchange = event => {
+  fullView.noise = event.target.checked; fullView.stick = true;
+  localStorage.setItem(NOISE_KEY, fullView.noise ? "1" : "0");
+  drawConsole(fullView);
+};
+
+async function loadConsole() {
+  const store = consoleStore;
+  const data = await get(`api/console?boot=${encodeURIComponent(store.boot)}&after=${store.rev}`);
+  if (data.boot !== store.boot) {
+    // The app restarted and numbers its lines from 1 again: rows on screen with those numbers are other lines.
+    store.byId.clear(); store.boot = data.boot;
+    for (const view of consoleViews) view.list.replaceChildren();
+  }
+  for (const id of data.gone) store.byId.delete(id);
+  for (const line of data.lines) store.byId.set(line.id, line);
+  if (data.lines.length || data.gone.length || !store.loaded) {
+    const sorted = [...store.byId.values()].sort((a, b) => a.t - b.t || a.id - b.id);
+    // As on the server: at most 500 noise lines, so they do not push out what people said, then the newest 5,000.
+    const noisy = sorted.filter(line => line.noise), surplus = new Set(noisy.slice(0, Math.max(0, noisy.length - 500)));
+    store.sorted = sorted.filter(line => !surplus.has(line)).slice(-5000);
+    if (store.sorted.length < sorted.length) store.byId = new Map(store.sorted.map(line => [line.id, line]));
+  }
+  Object.assign(store, { rev: data.rev, server: data.server, commandsOff: data.commandsOff, loaded: true });
+  const status = $("#console-status"), server = data.server;
+  status.hidden = server.state === "ok";
+  status.textContent = {
+    unset: "No server log here: neither CONSOLE_URL nor CHAT_URL is set. Showing only what the residents' clients were shown in game.",
+    unknown: "Asking the server machine for its log…",
+    unreachable: `The server log cannot be read right now. ${server.detail ?? ""} Meanwhile this shows what the residents' clients were shown in game.`,
+  }[server.state] ?? "";
+  const noisy = store.sorted.filter(line => line.noise).length;
+  $("#console-noise-n").textContent = noisy ? `(${count(noisy)} lines)` : "";
+  drawConsoles();
+}
+
 // ---------- panels, tabs, and the refresh loop ----------
 const panels = [
   { id: "residents", title: "Residents", every: 5000, load: loadResidents, always: true },
@@ -696,6 +922,8 @@ const panels = [
   { id: "map", title: "Map", every: 10000, load: loadMap },
   { id: "notes", title: "Notes", every: 30000, load: loadNotes },
   { id: "commons", title: "Commons", every: 15000, load: loadCommons },
+  // Also fed while the Residents panel is open: its strip shows the same lines.
+  { id: "console", title: "Console", every: 2000, load: loadConsole, also: "residents" },
   { id: "chat", title: "Chat", hidden: true },
 ];
 const badges = {};
@@ -708,7 +936,9 @@ function setChat(url) {
 }
 function drawTabs() {
   setHtml($("#tabs"), html`${panels.filter(panel => !panel.hidden).map(panel => html`<button type="button" id="t-${panel.id}" data-panel="${panel.id}"
-    ${panel.id === state.active ? html`aria-current="page"` : ""}>${panel.title}${badges[panel.id] ? html`<span class="badge" title="waiting for review">${badges[panel.id]}</span>` : ""}</button>`)}`);
+    ${panel.id === state.active ? html`aria-current="page"` : ""}>${panel.title}${badges[panel.id] ? html`<span class="badge" title="new, not looked at yet">${badges[panel.id]}</span>` : ""}</button>`)}`);
+  // On a phone the tab bar scrolls sideways; keep the open tab in sight.
+  $("#tabs [aria-current]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 function show(id) {
   const panel = panels.find(entry => entry.id === id && !entry.hidden) ?? panels[0];
@@ -720,6 +950,7 @@ function show(id) {
   drawTabs();
   $("main").scrollTop = 0;
   if (panel.id === "map") requestAnimationFrame(() => { if (map.data) renderMap(); });
+  drawConsoles();
   tick();
 }
 $("#tabs").addEventListener("click", event => { const id = event.target.closest("button")?.dataset.panel; if (id) show(id); });
@@ -729,7 +960,8 @@ function refresh(id) { panels.find(panel => panel.id === id).at = 0; tick(); }
 async function tick() {
   if (document.visibilityState === "hidden") return;
   for (const panel of panels) {
-    if (!panel.load || panel.loading || !(panel.always || panel.id === state.active) || Date.now() - (panel.at ?? 0) < panel.every) continue;
+    const wanted = panel.always || panel.id === state.active || panel.also === state.active;
+    if (!panel.load || panel.loading || !wanted || Date.now() - (panel.at ?? 0) < panel.every) continue;
     // Other panels need the residents' names (and their colours) first.
     if (!panel.always && !state.residents) continue;
     panel.loading = true; panel.at = Date.now();

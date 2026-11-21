@@ -5,6 +5,7 @@ import type { Database } from "bun:sqlite";
 import type { Config, ResidentConfig } from "./config.ts";
 import { recordPosition } from "./db.ts";
 import { record } from "./json.ts";
+import { autoAccept } from "./reviews.ts";
 import { normalizeState, synapseGet, type ResidentState } from "./synapse.ts";
 
 export interface Sighting {
@@ -32,11 +33,23 @@ export class Watcher {
   }
   stop() { clearInterval(this.timer); }
 
-  /** One look at every resident. A look still running when the next is due is not doubled. */
+  /**
+   * One look at every resident, and one pass of automatic acceptance when that policy is on.
+   * A tick still running when the next is due is not doubled.
+   */
   sample(): Promise<void> {
     this.sampling ??= Promise.all(this.config.residents.map(resident => this.look(resident)))
-      .then(() => undefined).finally(() => { this.sampling = undefined; });
+      .then(() => this.accept()).finally(() => { this.sampling = undefined; });
     return this.sampling;
+  }
+
+  private accept() {
+    if (!this.config.autoAccept) return;
+    try { autoAccept(this.db, this.now()); }
+    catch (error) {
+      // A tool server held the database past the busy timeout: the notes are accepted on the next tick.
+      console.error(`shared notes not accepted this time: ${error instanceof Error ? error.message : error}`);
+    }
   }
 
   private async look(resident: ResidentConfig) {

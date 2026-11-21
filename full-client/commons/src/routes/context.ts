@@ -3,6 +3,7 @@
 // to the list in app.ts. Everything is served under /<token>/api/<route>.
 import type { Database } from "bun:sqlite";
 import type { Config, ResidentConfig } from "../config.ts";
+import type { Console, ConsoleFeed } from "../console.ts";
 import type { RolloutTail } from "../rollouts.ts";
 import type { Watcher } from "../watcher.ts";
 
@@ -11,6 +12,9 @@ export interface Context {
   db: Database;
   watcher: Watcher;
   tail: RolloutTail;
+  /** The merged console lines, and what feeds them and sends commands. */
+  stream: Console;
+  feed: ConsoleFeed;
   now(): number;
   /** Read what the session files gained, at most every two seconds. */
   readSessions(): Promise<void>;

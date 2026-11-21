@@ -1,10 +1,13 @@
 // A look at the app without the game machine:  bun scripts/demo.ts
 // Builds a throwaway resident home from the fixtures plus made-up sessions,
 // trails and commons entries, runs a stand-in client for Gary (Margo stays
-// offline), and serves the app. Everything is deleted on Ctrl-C.
+// offline) and a stand-in for the phone-chat service on the server machine
+// (set CONSOLE_URL to use a real one), and serves the app. Everything is
+// deleted on Ctrl-C.
+import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "../src/server.ts";
-import { fakeSynapse, fixture, png, rollout, tempHome } from "../test/helpers.ts";
+import { clientLogLine, fakePhoneChat, fakeSynapse, fixture, png, rollout, serverLogLine, tempHome } from "../test/helpers.ts";
 
 const now = Date.now(), minute = 60_000;
 const home = tempHome();
@@ -64,13 +67,58 @@ home.put(`${today}/rollout-gary.jsonl`, [
 
 const client = fakeSynapse({ picture: png(427, 240) });
 const base = client.state;
+
+// The server's log as phone-chat would serve it, and Gary's client log with two things the server never logs.
+const server = fakePhoneChat();
+// As an older phone-chat would pass it on: rcon-cli ends its output with a colour reset on a line of its own.
+server.answers.list = "There are 1 of a max of 20 players online: Gary\n\u001b[0m";
+server.answers["time query daytime"] = "The time is 5321";
+server.answers.nonsense = new Error("The server console refused the command: Unknown or incomplete command, see below for error\nnonsense<--[HERE]");
+const dedicated = "net.minecraft.server.dedicated.DedicatedServer/";
+// [minutes ago, message, level, logger]; "RAW" is a line with no stamp of its own, as in a stack trace.
+const earlier: [number, string, string?, string?][] = [
+  [300, "Starting minecraft server version 1.20.1", "INFO", dedicated], [299, 'Done (41.208s)! For help, type "help"', "INFO", dedicated],
+  [120, "Margo[/192.168.1.50:40112] logged in with entity id 3301 at (20.5, 70.0, -60.5)", "INFO", "net.minecraft.server.players.PlayerList/"],
+  [120, "Margo joined the game"], [118, "[Not Secure] <Margo> hello, is anyone near the cabin?"], [95, "Gary joined the game"],
+  [94, "[Not Secure] <Gary> Margo, the wheat is in. Bread in a few days."], [93, "[Not Secure] <Margo> thank you! the water here is deeper than it looks"],
+  [80, "Margo has made the advancement [Stone Age]"], [61, "Can't keep up! Is the server overloaded? Running 2143ms or 42 ticks behind", "WARN"],
+  [40, "Gary was slain by Zombie"], [39, "[Not Secure] <Gary> I died at the blocked spot. Going back for my things."],
+  [30, "Encountered an unexpected exception", "ERROR", dedicated], [30, "java.lang.IllegalStateException: Entity is already tracked!", "RAW"],
+  [30, "\tat net.minecraft.server.level.ChunkMap.addEntity(ChunkMap.java:1132)", "RAW"], [25, "Margo lost connection: Disconnected"], [25, "Margo left the game"],
+];
+for (const [age, message, level, logger] of earlier) server.log(level === "RAW" ? message : serverLogLine(now - age * minute, message, level, logger));
+const garyLog = home.put("game/logs/latest.log", [
+  clientLogLine(now - 95 * minute, "[System] [CHAT] [SecurityCraft] Thanks for using SecurityCraft v1.10.1! Tip: Have a suggestion for SecurityCraft or found a bug? Join the official SecurityCraft Discord server (English only)!"),
+  clientLogLine(now - 95 * minute, "[System] [CHAT] Gary joined the game"),
+  clientLogLine(now - 94 * minute, "[CHAT] <Gary> Margo, the wheat is in. Bread in a few days."),
+  clientLogLine(now - 60 * minute, "[System] [CHAT] The server restarts at 18:00 for a backup. Finish what you are doing."),
+  clientLogLine(now - 50 * minute, "[System] [CHAT] [Baritone] Going to: GoalBlock{x=133,y=82,z=-104}"),
+  clientLogLine(now - 35 * minute, "[System] [CHAT] <Caretaker> Gary: you tried the same path three times; what is in the way there?"),
+].join("\n") + "\n");
+
 // The same start-up path as `bun src/server.ts`, on loopback only.
 const running = serve(home.config({
   GARY_SYNAPSE_URL: client.url, CODEX_HOME: join(home.dir, "codex-home"), COMMONS_SYSTEMCTL: "systemctl",
   COMMONS_BIND: "127.0.0.1", PORT: process.env.PORT ?? "0", COMMONS_TOKEN: process.env.COMMONS_TOKEN ?? "demo-token",
+  CONSOLE_URL: process.env.CONSOLE_URL ?? server.url,
   ...(process.env.CHAT_URL ? { CHAT_URL: process.env.CHAT_URL } : {}),
+  ...(process.env.COMMONS_AUTO_ACCEPT ? { COMMONS_AUTO_ACCEPT: process.env.COMMONS_AUTO_ACCEPT } : {}),
 }));
 const app = running.app;
+// Something is said now and then, by a player (in both logs) and by tellraw (in the client's only),
+// and whatever polls the server over RCON leaves its two lines each time.
+let spoken = 0;
+setInterval(() => {
+  server.log(serverLogLine(Date.now(), "Thread RCON Client /10.89.5.105 started", "INFO", "net.minecraft.server.rcon.thread.GenericThread/", "RCON Listener #1"));
+  server.log(serverLogLine(Date.now(), "Thread RCON Client /10.89.5.105 shutting down", "INFO", "net.minecraft.server.rcon.thread.RconClient/", "RCON Client /10.89.5.105 #2"));
+}, 3000);
+setInterval(() => {
+  const line = ["the stream is two blocks deep here", "found copper by the birch hill", "going to check the wheat", "anyone seen my pickaxe?"][spoken % 4];
+  if (++spoken % 3) {
+    server.log(serverLogLine(Date.now(), `[Not Secure] <Gary> ${line}`));
+    appendFileSync(garyLog, `${clientLogLine(Date.now(), `[CHAT] <Gary> ${line}`)}\n`);
+  } else appendFileSync(garyLog, `${clientLogLine(Date.now(), `[System] [CHAT] Announcement ${spoken / 3}: ${line}`)}\n`);
+}, 12_000);
 // Gary strolls around his cabin so the map has something to add while you watch.
 setInterval(() => {
   const angle = Date.now() / 20_000;
@@ -114,8 +162,12 @@ const insertNote = app.db.query("INSERT INTO shared_notes (author, topic, text, 
 insertNote.run("Margo", "water", "The pool beside the stone building at 58,64,-96 is three blocks deep. go_to across it stops with navigation_stopped. Walk around the north side.", "proposed", now - 70 * minute, now - 70 * minute);
 const bread = Number(insertNote.run("Gary", "food", "Bread: three wheat in a row on a crafting table. Wheat grows from seeds in about two days near water.", "curated", now - 600 * minute, now - 500 * minute).lastInsertRowid);
 const insertReview = app.db.query("INSERT INTO reviews (kind, target_id, reviewer, verdict, text, at) VALUES (?, ?, ?, ?, ?, ?)");
-insertReview.run("skill", eat, "Sam", "keep", "Simple and it works for both.", now - 700 * minute);
+insertReview.run("skill", eat, "Sam", "keep", "v1: Simple and it works for both.", now - 700 * minute);
 insertReview.run("note", bread, "caretaker", "keep", "", now - 500 * minute);
+insertReview.run("skill", home_, "caretaker", "comment", "v1: Has no check, so a run that never arrives still counts as finished.", now - 140 * minute);
+const lava = Number(insertNote.run("Margo", "lava", "Lava is safe to swim in if you hold a water bucket.", "rejected", now - 400 * minute, now - 380 * minute).lastInsertRowid);
+insertReview.run("note", lava, "auto", "keep", "accepted automatically; nobody has looked at it yet", now - 400 * minute);
+insertReview.run("note", lava, "caretaker", "reject", "False: lava burns regardless of what is held; a bucket only helps when placed.", now - 380 * minute);
 const insertFeedback = app.db.query("INSERT INTO feedback (kind, target_id, resident, worked, text, version, at) VALUES (?, ?, ?, ?, ?, ?, ?)");
 insertFeedback.run("skill", sticks, "Margo", 1, "saved me three calls", 2, now - 38 * minute);
 insertFeedback.run("skill", sticks, "Gary", 0, "fails with birch logs only", 1, now - 280 * minute);
@@ -123,6 +175,6 @@ insertFeedback.run("skill", home_, "Margo", 0, "stopped short at the water again
 insertFeedback.run("note", bread, "Margo", 1, "", null, now - 200 * minute);
 
 console.log(`demo: http://127.0.0.1:${running.port}/${running.token}/   (home ${home.dir}; Ctrl-C removes it)`);
-const stop = () => { running.stop(); client.stop(); home.remove(); process.exit(0); };
+const stop = () => { running.stop(); client.stop(); server.stop(); home.remove(); process.exit(0); };
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);

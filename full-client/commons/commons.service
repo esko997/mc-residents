@@ -10,6 +10,8 @@
 #
 # Settings are optional; every one has a default (see README.md). Put them in
 # ~/.config/commons/env as NAME=value lines, for example CHAT_URL=http://192.168.1.233:8766/<chat token>/
+# (the phone-chat service on the server machine: the Chat tab, and unless CONSOLE_URL says otherwise
+# also where the Console reads the server log and sends commands).
 [Unit]
 Description=Residents commons web app (LAN only)
 

@@ -1,9 +1,11 @@
 # Commons
 
-One page, opened from a phone or laptop on the home LAN, to watch the residents
-and to review what they put in the commons (skills and shared notes). It is the
-home base for running the project: read-only today except for review verdicts,
-and laid out so that panels and actions can be added.
+One page, opened from a phone or laptop on the home LAN, to watch the residents,
+to look over what they put in the commons (skills and shared notes), and to
+read and use the Minecraft server's console. It is the home base for running
+the project, laid out so that panels and actions can be added. What it changes:
+the commons (reviews, edits, automatic acceptance of notes), and the server
+through the commands typed into its console.
 
 One Bun process, no build step, no dependencies at run time. It reads the game
 machine's files and each client's Synapse API on loopback, and shares one SQLite
@@ -43,7 +45,10 @@ once; later starts print only where the token file is.
 | `COMMONS_SYSTEMCTL` | `systemctl` | Where there is no systemd, every unit reads `unknown`. |
 | `COMMONS_SAMPLE_SECONDS` | `10` | How often each client's state is read and its position recorded. |
 | `COMMONS_ACTIVITY_DAYS` | `2` | How far back session files are loaded. |
-| `CHAT_URL` | unset | Address of the phone chat page; adds a Chat tab that embeds it. |
+| `COMMONS_AUTO_ACCEPT` | on | Accept first, review after: every proposed shared note becomes visible to residents at the next tick. `off`, `0`, `false` or `no` makes notes wait for a person's keep. |
+| `COMMONS_OWNER` | `spesk01` | In-game names of the people who play on the server, space or comma separated. A mod's line that mentions one of them (or a resident, or anyone seen joining or chatting) is not treated as noise. |
+| `CHAT_URL` | unset | Address of the phone chat page on the server machine, `http://<host>:<port>/<its token>/`; adds a Chat tab that embeds it. |
+| `CONSOLE_URL` | `CHAT_URL` | The same phone-chat service, as the way to the server's console: its log is read from `console`, commands go to `command`. With neither set the Console shows only what residents' clients were shown, and the command box is off. |
 
 Residents are Gary plus every `instances/<Name>.env` whose notes directory
 `resident/<name in lower case>/` exists (a test client has an instance file but
@@ -58,6 +63,9 @@ worked out.
   `systemctl --user is-active` for the units, token totals from the newest
   session file, and `GET /screenshot?format=base64` only while this panel is
   open: at most every 15 s, or on "Refresh picture" (then at most every 3 s).
+  Beside the cards (after them on a phone) is a strip of the console: the last
+  40 lines of chat, player events and commands, a box to send a command, a
+  switch to show everything, and a link to the Console panel.
 - **Activity**: the Codex session files, told apart by the `cwd` in their first
   line. Each file is read once and then only its new bytes. Tool calls come
   from the harness's finished `McpToolCall` items (falling back to the script
@@ -74,13 +82,53 @@ worked out.
 - **Notes**: `memory.md`, the last 12 KB of `journal.md`, every other `.md`
   file under the resident's directory, and the places files. Read-only.
 - **Commons**: `skills`, `skill_runs`, `shared_notes`, `reviews`, `feedback`
-  and `overseer/<Name>.md`. Three figures are kept apart on purpose: did it
-  work (runs that passed, of all runs), is it worth having (residents other
-  than the author who ran it), and what residents say (their own verdicts).
-  Keep sets `curated`, Reject sets `rejected` and needs a reason; both, and
-  "Comment only", write a `reviews` row signed with the name typed at the top
-  (kept in the browser). A draft can be rejected or commented on, not kept. A
-  verdict on a skill that changed version since the page loaded is refused.
+  and `overseer/<Name>.md`. Residents see things at once (notes are accepted
+  automatically, skills once they pass their own check); this panel is where a
+  person looks afterwards. Groups: "New, not looked at yet", "Kept", "Removed",
+  "Drafts". The tab's badge counts the first. "Looked at" is per revision: an
+  item counts as looked at only when a review by a person or by `caretaker`
+  (any reviewer but `auto`) has `at >= updated_at`; older reviews are shown as
+  history. Three figures are kept apart on purpose: did it work (runs that
+  passed, of all runs), is it worth having (residents other than the author
+  who ran it), and what residents say (their own verdicts).
+  Actions, each writing a `reviews` row signed with the name typed at the top
+  (kept in the browser), and each using one timestamp for the review and the
+  item's `updated_at` when it changes the item:
+  - Looked at, keep: status `curated` (a draft cannot be kept).
+  - Edit: a note's topic and text; a skill's description, params and check
+    (`expect`), validated as the tool server validates them. Never code: that
+    is its author's. A changed check makes the skill a new version and a draft
+    again, because the passes on record proved the old check. The review text
+    says what changed: `edited: topic, text`.
+  - Remove: status `rejected`, reason required; the author is shown it.
+  - Restore: `rejected` back to `curated`; a skill whose current version never
+    passed its check goes back to `draft` instead.
+  - Comment only: changes nothing else.
+  Skill review texts start with the version they are about (`v2: ...`), as the
+  caretaker's do. An action on an item that changed since the page showed it
+  is refused.
+- **Console**: one stream from two sources. A: the server's own log, which is
+  on another machine; the phone-chat service there (`phone-chat/phone_chat.py`)
+  tails it and this app polls its `GET console?after=` every 2 s into a ring
+  of 5,000 lines, so history is there when the panel opens. B: `[CHAT]` lines
+  in each resident's client log `<GAME_DIR>/logs/latest.log`, which is where
+  tellraw, system messages and deaths as players see them turn up; Baritone's
+  own chatter is left out (Activity has it). A client line the server log also
+  has (same words within 10 s) is dropped; the rest are marked "seen in game
+  by <names>". Client lines wait up to 5 s for the server log to claim them.
+  Noise is hidden in every filter unless "Show noise" is ticked (remembered in
+  the browser), and never shown in the strip: server INFO lines for an RCON
+  connection opening or closing and for chunk saves, and client-only lines
+  that start with a `[ModName]` tag, are not chat, and name no known player.
+  Colour codes are stripped and empty lines dropped.
+  Filters: All, Chat, Players (joins, leaves, deaths, advancements), Warnings
+  and errors, and a text filter. Times are local; the server log's stamps are
+  UTC. The command box sends through this app to phone-chat's `POST command`
+  (rcon); the command and its answer come back as lines in the stream. A
+  leading `/` is dropped, up and down recall the last 50 commands, "Say as
+  Server" sends `say <text>`, and `stop` and `restart` ask first. Lines
+  containing `<Caretaker>` (the caretaker model speaking through tellraw) have
+  their own colour and count as chat.
 - **Chat**: an iframe of `CHAT_URL`, shown only when it is set.
 
 ## API
@@ -88,8 +136,25 @@ worked out.
 All under `/<token>/api/`, JSON, `Cache-Control: no-store`:
 `GET residents`, `GET picture?resident=&fresh=1` (PNG), `GET activity?boot=&after=&limit=`,
 `GET map?hours=1|6|24|72|168`, `GET notes?resident=`, `GET file?resident=&path=`,
-`GET commons`, `POST review` with `{kind: "skill"|"note", id, verdict: "keep"|"reject"|"comment", text, reviewer, version?}`.
+`GET commons`,
+`POST review` with `{kind: "skill"|"note", id, action: "keep"|"remove"|"restore"|"comment"|"edit", text, reviewer, updatedAt?, fields?}`
+(`fields` for edit: `{topic, text}` or `{description, params, expect}`, the last two as JSON text),
+`GET console?boot=&after=<rev>` (lines added or changed since that revision, and ids withdrawn),
+`POST console/command` with `{command}`.
 Errors are `{error: "..."}` with the sentence the page shows.
+
+## The phone-chat service on the server machine
+
+`phone-chat/phone_chat.py` (one Python file, no dependencies) must be the
+version with `GET /<token>/console` and `POST /<token>/command`; an older one
+answers 404 and the Console says so. `console?after=<id>` returns
+`{boot, lines: [{id, text, mark?, t?}]}`: raw log lines with growing ids, the
+newest 5,000 kept, the last 2,000 of an existing log preloaded; `boot` changes
+when the service restarts or the server replaces its log. Lines it makes up
+carry a `mark` (`command`, `output`, `chat`) and their time `t`. `command`
+runs `podman exec <container> rcon-cli <command>` and answers `{output}`.
+Anyone who has that address can run server commands: it is as secret as this
+app's own. Its tests: `cd phone-chat && python3 -m unittest`.
 
 ## Adding a panel or an action
 

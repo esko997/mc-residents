@@ -4,6 +4,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { record } from "./json.ts";
+import { AUTO, LOOKED } from "./reviews.ts";
 
 export function openCommons(path: string, schemaPath: string): Database {
   let schema: string;
@@ -26,8 +27,19 @@ export interface RunCounts {
   unchecked: number;
 }
 export interface SkillUser extends RunCounts { resident: string; isAuthor: boolean; lastAt: number }
-export interface ReviewRow { id: number; reviewer: string; verdict: "keep" | "reject" | "comment"; text: string; at: number }
+export interface ReviewRow {
+  id: number; reviewer: string; verdict: "keep" | "reject" | "comment"; text: string; at: number;
+  /** About the item as it is now. False: written before its last change; history only. */
+  current: boolean;
+}
+/**
+ * Where an item stands for a reviewer. new: residents can see it (or, for a proposed note, are
+ * waiting to) and nobody but `auto` has looked at it as it is now. kept: looked at and still
+ * visible. removed: rejected. draft: a skill only its author sees.
+ */
+export type ReviewGroup = "new" | "kept" | "removed" | "draft";
 export interface SkillView {
+  group: ReviewGroup;
   id: number; name: string; author: string; description: string; code: string;
   params: Record<string, unknown>; expect: unknown; status: string; version: number;
   createdAt: number; updatedAt: number;
@@ -41,6 +53,7 @@ export interface SkillView {
   feedback: Feedback;
 }
 export interface NoteView {
+  group: ReviewGroup;
   id: number; author: string; topic: string; text: string; status: string; createdAt: number; updatedAt: number;
   reviews: ReviewRow[];
   feedback: Feedback;
@@ -65,12 +78,20 @@ function parseJson(text: unknown, fallback: unknown): unknown {
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 export function commonsOverview(db: Database): { skills: SkillView[]; notes: NoteView[]; pending: number } {
-  const reviews = new Map<string, ReviewRow[]>();
-  for (const row of db.query<ReviewRow & { kind: string; target_id: number }, []>(
+  const reviewRows = new Map<string, Omit<ReviewRow, "current">[]>();
+  for (const row of db.query<Omit<ReviewRow, "current"> & { kind: string; target_id: number }, []>(
     "SELECT id, kind, target_id, reviewer, verdict, text, at FROM reviews ORDER BY at DESC, id DESC").all()) {
     const key = `${row.kind}:${row.target_id}`;
-    reviews.set(key, [...(reviews.get(key) ?? []), { id: row.id, reviewer: row.reviewer, verdict: row.verdict, text: row.text, at: row.at }]);
+    reviewRows.set(key, [...(reviewRows.get(key) ?? []), { id: row.id, reviewer: row.reviewer, verdict: row.verdict, text: row.text, at: row.at }]);
   }
+  const judged = (kind: string, id: number, status: string, updatedAt: number): { reviews: ReviewRow[]; group: ReviewGroup } => {
+    const reviews = (reviewRows.get(`${kind}:${id}`) ?? []).map(row => ({ ...row, current: row.at >= updatedAt }));
+    const looked = reviews.some(row => row.current && row.reviewer !== AUTO);
+    return {
+      reviews,
+      group: status === "rejected" ? "removed" : status === "draft" ? "draft" : status === "proposed" || !looked ? "new" : "kept",
+    };
+  };
   interface FeedbackRow { kind: string; target_id: number; resident: string; worked: number; text: string; version: number | null; at: number }
   const feedbackRows = db.query<FeedbackRow, []>("SELECT kind, target_id, resident, worked, text, version, at FROM feedback ORDER BY at DESC").all();
   const feedbackFor = (kind: string, id: number, version?: number): Feedback => {
@@ -121,59 +142,24 @@ export function commonsOverview(db: Database): { skills: SkillView[]; notes: Not
         resident: run.resident, version: run.version, startedAt: run.started_at, ms: run.ms, ok: run.ok === 1,
         checkOk: run.check_ok === null ? null : run.check_ok === 1, error: run.error, args: run.args_json,
       })),
-      reviews: reviews.get(`skill:${row.id}`) ?? [], feedback: feedbackFor("skill", row.id, row.version),
+      ...judged("skill", row.id, row.status, row.updated_at), feedback: feedbackFor("skill", row.id, row.version),
     };
   });
   interface NoteRow { id: number; author: string; topic: string; text: string; status: string; created_at: number; updated_at: number }
   const notes = db.query<NoteRow, []>("SELECT * FROM shared_notes ORDER BY updated_at DESC, id DESC").all().map((row): NoteView => ({
     id: row.id, author: row.author, topic: row.topic, text: row.text, status: row.status,
-    createdAt: row.created_at, updatedAt: row.updated_at, reviews: reviews.get(`note:${row.id}`) ?? [], feedback: feedbackFor("note", row.id),
+    createdAt: row.created_at, updatedAt: row.updated_at, ...judged("note", row.id, row.status, row.updated_at), feedback: feedbackFor("note", row.id),
   }));
-  return {
-    skills, notes,
-    pending: skills.filter(skill => skill.status === "verified").length + notes.filter(note => note.status === "proposed").length,
-  };
+  return { skills, notes, pending: [...skills, ...notes].filter(item => item.group === "new").length };
 }
 
+/** How many skills and notes are in the "new" group. The same rule as `commonsOverview`, in one query. */
 export function pendingCount(db: Database): number {
-  const row = db.query<{ n: number }, []>(
-    "SELECT (SELECT COUNT(*) FROM skills WHERE status = 'verified') + (SELECT COUNT(*) FROM shared_notes WHERE status = 'proposed') AS n").get();
+  const looked = (kind: string) => `EXISTS (SELECT 1 FROM reviews r WHERE r.kind = '${kind}' AND r.target_id = i.id AND ${LOOKED})`;
+  const row = db.query<{ n: number }, []>(`SELECT
+    (SELECT COUNT(*) FROM skills i WHERE i.status IN ('verified', 'curated') AND NOT ${looked("skill")}) +
+    (SELECT COUNT(*) FROM shared_notes i WHERE i.status = 'proposed' OR (i.status = 'curated' AND NOT ${looked("note")})) AS n`).get();
   return row?.n ?? 0;
-}
-
-export interface ReviewRequest { kind?: unknown; id?: unknown; verdict?: unknown; text?: unknown; reviewer?: unknown; version?: unknown }
-export type ReviewResult = { ok: true; status: string; reviewId: number } | { ok: false; code: 400 | 404 | 409; error: string };
-
-/** Record a verdict and, for keep or reject, move the skill or note to its new status. One transaction. */
-export function review(db: Database, request: ReviewRequest, now = Date.now()): ReviewResult {
-  const { kind, id, verdict } = request;
-  if (kind !== "skill" && kind !== "note") return { ok: false, code: 400, error: "kind must be skill or note." };
-  if (typeof id !== "number" || !Number.isInteger(id)) return { ok: false, code: 400, error: "id must be a whole number." };
-  if (verdict !== "keep" && verdict !== "reject" && verdict !== "comment") return { ok: false, code: 400, error: "verdict must be keep, reject or comment." };
-  const reviewer = typeof request.reviewer === "string" ? request.reviewer.trim().replace(/\s+/g, " ") : "";
-  if (!reviewer || reviewer.length > 40) return { ok: false, code: 400, error: "Say who is reviewing: a name of 1 to 40 characters." };
-  // Residents may be shown this text; keep it one plain line.
-  const text = typeof request.text === "string" ? request.text.trim().replace(/\s+/g, " ") : "";
-  if (text.length > 600) return { ok: false, code: 400, error: `The reason is ${text.length} characters; the limit is 600.` };
-  if (verdict === "reject" && !text) return { ok: false, code: 400, error: "A rejection needs a reason, so its author learns something from it." };
-  if (verdict === "comment" && !text) return { ok: false, code: 400, error: "Write the comment first." };
-  const table = kind === "skill" ? "skills" : "shared_notes";
-  const status = verdict === "keep" ? "curated" : verdict === "reject" ? "rejected" : undefined;
-  return db.transaction((): ReviewResult => {
-    const row = db.query<{ status: string; version?: number }, [number]>(
-      `SELECT status${kind === "skill" ? ", version" : ""} FROM ${table} WHERE id = ?`).get(id);
-    if (!row) return { ok: false, code: 404, error: `There is no ${kind} with id ${id}.` };
-    if (kind === "skill" && request.version !== undefined && request.version !== row.version) {
-      return { ok: false, code: 409, error: `This skill changed while you were reading it (now version ${row.version}). Read the new code, then decide.` };
-    }
-    if (kind === "skill" && verdict === "keep" && row.status === "draft") {
-      return { ok: false, code: 409, error: "A draft cannot be kept: it has not passed its own check yet. Reject it or leave a comment." };
-    }
-    const inserted = db.query("INSERT INTO reviews (kind, target_id, reviewer, verdict, text, at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(kind, id, reviewer, verdict, text, now);
-    if (status) db.query(`UPDATE ${table} SET status = ?, updated_at = ? WHERE id = ?`).run(status, now, id);
-    return { ok: true, status: status ?? row.status, reviewId: Number(inserted.lastInsertRowid) };
-  }).immediate();
 }
 
 export interface PositionSample { x: number; y: number; z: number; dimension: string; health?: number; food?: number }

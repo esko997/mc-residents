@@ -5,6 +5,11 @@ A message is shown to everyone as `<NAME> text` through the server console
 (`tellraw`), so it reads like that player's own chat without a second login.
 The page also follows the server log, so replies appear without the game open.
 
+For the residents' management app (another machine, which cannot read this
+one's files) it is also the way to the server console:
+  GET  /<token>/console?after=<id>   the server log, line by line, as it is written
+  POST /<token>/command              run one console command through rcon
+
 Configuration (environment):
   PHONE_CHAT_TOKEN      required; the secret first path segment of every URL
   PHONE_CHAT_NAME       player name to speak as (default spesk01)
@@ -32,6 +37,11 @@ LOG = os.environ.get(
     "PHONE_CHAT_LOG", os.path.expanduser("~/mc-servers/simon_vanilla_plus/mc-data/logs/latest.log")
 )
 MAX_CHARS = 256  # Minecraft's own chat limit
+MAX_COMMAND = 1000
+RCON_TIMEOUT = 10  # seconds
+CONSOLE_LINES = 5000  # log lines kept in memory for /console
+CONSOLE_PRELOAD = 2000  # lines of an already written log shown when it is opened
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 # [21Nov2026 00:13:07.381] [Server thread/INFO] [net.minecraft.server.MinecraftServer/]: [Not Secure] <Gary> hello
 LOG_LINE = re.compile(
@@ -46,6 +56,52 @@ entries_lock = threading.Lock()
 next_id = 1
 # Entry ids restart at 1 with the process; the page uses this to notice.
 BOOT = str(time.time_ns())
+
+
+class Console:
+    """The newest lines of the server log, numbered, for GET /<token>/console.
+
+    `boot` changes whenever the numbering starts over (this service started, or
+    the server replaced its log), so a reader knows to ask from the beginning.
+    Lines this service makes up itself (a command typed into a console and what
+    the server answered, a message said through the chat page) carry a `mark`
+    and the time `t` they happened, since they have no log stamp of their own.
+    """
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.lines = deque(maxlen=CONSOLE_LINES)
+        self.next_id = 1
+        self.boots = 0
+        self.boot = f"{BOOT}-0"
+
+    def add(self, text, mark=None):
+        with self.lock:
+            line = {"id": self.next_id, "text": ANSI.sub("", text).rstrip("\r")}
+            if mark:
+                line["mark"] = mark
+                line["t"] = time.time()
+            self.lines.append(line)
+            self.next_id += 1
+
+    def start_over(self):
+        with self.lock:
+            self.lines.clear()
+            self.next_id = 1
+            self.boots += 1
+            self.boot = f"{BOOT}-{self.boots}"
+
+    def keep_last(self, count):
+        with self.lock:
+            while len(self.lines) > count:
+                self.lines.popleft()
+
+    def since(self, after):
+        with self.lock:
+            return {"boot": self.boot, "lines": [line for line in self.lines if line["id"] > after]}
+
+
+console = Console()
 
 
 def add_entry(seconds, name, text):
@@ -74,41 +130,83 @@ def follow_log():
         try:
             with open(LOG, "rb") as log:
                 inode = os.fstat(log.fileno()).st_ino
+                console.start_over()
+                catching_up = True
                 pending = b""
                 while True:
                     chunk = log.read(65536)
                     if chunk:
                         *lines, pending = (pending + chunk).split(b"\n")
                         for line in lines:
-                            read_log_line(line.decode("utf-8", errors="replace"))
+                            text = line.decode("utf-8", errors="replace")
+                            read_log_line(text)
+                            console.add(text)
                         continue
+                    if catching_up:
+                        # What was already in the file: enough of it for a console not to open empty.
+                        console.keep_last(CONSOLE_PRELOAD)
+                        catching_up = False
                     time.sleep(0.5)
-                    if os.stat(LOG).st_ino != inode:
+                    status = os.stat(LOG)
+                    if status.st_ino != inode or status.st_size < log.tell():
                         break
         except OSError:
             time.sleep(2)
 
 
+def rcon(command):
+    """Run one console command on the server.
+
+    Returns (exit code, output), or (None, why) when the console did not answer.
+    The output is plain text: rcon-cli colours it and ends with a colour reset
+    on a line of its own, so colour codes and empty lines are taken out.
+    """
+    try:
+        done = subprocess.run(
+            ["podman", "exec", CONTAINER, "rcon-cli", command],
+            capture_output=True,
+            text=True,
+            timeout=RCON_TIMEOUT,
+        )
+    except (OSError, subprocess.TimeoutExpired) as problem:
+        return None, str(problem)
+    output = ANSI.sub("", done.stdout + done.stderr)
+    return done.returncode, "\n".join(line.rstrip() for line in output.splitlines() if line.strip())
+
+
 def say(text):
     """Show `text` in game chat as NAME. Returns an error string, or None on success."""
     component = json.dumps({"text": f"<{NAME}> {text}"})  # ASCII-only JSON; nothing in it is a selector
-    try:
-        done = subprocess.run(
-            ["podman", "exec", CONTAINER, "rcon-cli", f"tellraw @a {component}"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired) as problem:
-        return f"The server console did not answer: {problem}"
-    output = (done.stdout + done.stderr).strip()
-    if done.returncode != 0:
-        return f"The server console refused the message: {output or done.returncode}"
+    code, output = rcon(f"tellraw @a {component}")
+    if code is None:
+        return f"The server console did not answer: {output}"
+    if code != 0:
+        return f"The server console refused the message: {output or code}"
     if "No player was found" in output:
         return "Nobody is online to read that."
     # tellraw is not written to the server log, so record it here.
     add_entry(time.time(), NAME, text)
+    console.add(f"<{NAME}> {text}", mark="chat")
     return None
+
+
+def run_command(command):
+    """Run a command typed into a console. Returns (output, None) or (None, error).
+
+    Every console reader sees the command and its answer as two kinds of line,
+    like at a real console; neither is in the server's own log.
+    """
+    console.add(f"> {command}", mark="command")
+    code, output = rcon(command)
+    if code is None:
+        problem = f"The server console did not answer: {output}"
+    elif code != 0:
+        problem = f"The server console refused the command: {output or code}"
+    else:
+        problem = None
+    for line in (problem or output or "(no output)").splitlines():
+        console.add(line, mark="output")
+    return (None, problem) if problem else (output, None)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -159,6 +257,10 @@ class Handler(BaseHTTPRequestHandler):
             after = int(query.removeprefix("after=")) if query.removeprefix("after=").isdigit() else 0
             with entries_lock:
                 self.reply(200, {"boot": BOOT, "entries": [entry for entry in entries if entry["id"] > after]})
+        elif route == "console":
+            query = self.path.partition("?")[2]
+            after = int(query.removeprefix("after=")) if query.removeprefix("after=").isdigit() else 0
+            self.reply(200, console.since(after))
         else:
             self.reply(404, {"error": "Not found."})
 
@@ -166,12 +268,15 @@ class Handler(BaseHTTPRequestHandler):
         route = self.route()
         if route is None:
             return
-        if route != "say":
+        if route not in ("say", "command"):
             self.reply(404, {"error": "Not found."})
             return
         length = int(self.headers.get("Content-Length") or 0)
         if length > 4096:
             self.reply(413, {"error": "That message is too long."})
+            return
+        if route == "command":
+            self.post_command(length)
             return
         try:
             text = json.loads(self.rfile.read(length))["text"]
@@ -187,6 +292,25 @@ class Handler(BaseHTTPRequestHandler):
             return
         problem = say(text)
         self.reply(502 if problem else 200, {"error": problem} if problem else {"ok": True})
+
+    def post_command(self, length):
+        try:
+            command = json.loads(self.rfile.read(length))["command"]
+        except (ValueError, KeyError, TypeError):
+            self.reply(400, {"error": "Send JSON with a command field."})
+            return
+        if not isinstance(command, str) or any(not ch.isprintable() for ch in command):
+            self.reply(400, {"error": "A command is one line of plain text."})
+            return
+        command = command.strip().lstrip("/").strip()
+        if not command:
+            self.reply(400, {"error": "Type a command first."})
+            return
+        if len(command) > MAX_COMMAND:
+            self.reply(400, {"error": f"Commands stop at {MAX_COMMAND} characters."})
+            return
+        output, problem = run_command(command)
+        self.reply(502 if problem else 200, {"error": problem} if problem else {"output": output})
 
 
 PAGE = r"""<!doctype html>

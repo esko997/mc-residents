@@ -11,6 +11,8 @@ export interface ResidentConfig {
   tokenFiles: string[];
   /** The unit that runs its Minecraft client. */
   clientUnit: string;
+  /** Its client's log; the `[CHAT]` lines in it are what the resident saw in game. */
+  clientLog: string;
 }
 export interface UnitConfig { unit: string; resident?: string }
 export interface Config {
@@ -23,6 +25,15 @@ export interface Config {
   /** Set when COMMONS_TOKEN is given; otherwise the token file decides. */
   token?: string;
   chatUrl?: string;
+  /**
+   * Base address of the phone-chat service on the server machine, ending in `/<its token>/`.
+   * The server console is read from it and commands are sent through it. Unset: neither is possible.
+   */
+  consoleUrl?: string;
+  /** Make every proposed shared note visible to residents at once; review comes afterwards. */
+  autoAccept: boolean;
+  /** In-game names of the people who own and play on the server; the console keeps mod lines that mention them. */
+  owners: string[];
   sessionsDir: string;
   overseerDir: string;
   sharedPlaces: string;
@@ -63,7 +74,7 @@ function residents(home: string, env: Record<string, string | undefined>): Resid
     name, dir: join(home, "resident", name.toLowerCase()), synapseUrl: synapseUrl.replace(/\/$/, ""),
     // The mod mirrors its token to ~/.synapse/token (what synapse.sh reads); the game directory is the fallback.
     tokenFiles: [...sharedToken, join(homedir(), ".synapse", "token"), join(gameDir, "config", "synapse", "token")],
-    clientUnit: unit(name),
+    clientUnit: unit(name), clientLog: join(gameDir, "logs", "latest.log"),
   });
   const found = [make("Gary", join(home, "game"), env.GARY_SYNAPSE_URL ?? "http://127.0.0.1:25599")];
   let files: string[] = [];
@@ -99,7 +110,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     resident: (found.find(resident => unit === resident.clientUnit)
       ?? found.find(resident => unit.toLowerCase().startsWith(`${resident.name.toLowerCase()}-`)))?.name,
   }));
+  const consoleUrl = env.CONSOLE_URL || env.CHAT_URL || undefined;
   return {
+    consoleUrl: consoleUrl && `${consoleUrl.replace(/\/+$/, "")}/`,
+    autoAccept: !/^(0|off|false|no)$/i.test(env.COMMONS_AUTO_ACCEPT ?? ""),
+    owners: (env.COMMONS_OWNER ?? "spesk01").split(/[\s,]+/).filter(Boolean),
     home, port, hostname: env.COMMONS_BIND ?? "0.0.0.0", dbPath,
     schemaPath: expandHome(env.COMMONS_SCHEMA ?? join(packageRoot, "schema.sql")),
     tokenFile: expandHome(env.COMMONS_TOKEN_FILE ?? join(dirname(dbPath), "token")),
