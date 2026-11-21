@@ -119,10 +119,21 @@ describe("navigation and observation", () => {
     expect(f.requests.filter(r => r.path === "/chat").map(r => r.body.text)).toEqual(["#mine 3 minecraft:iron_ore", "#follow player Levi", "#explore", "#stop"]);
     expect(f.requests.some(r => r.body.action === "release")).toBe(true); expect(f.body.navigation).toBeUndefined();
   });
-  test.each([["south", 0, 10, 0], ["east", 10, 0, -90], ["north", 0, -10, -180], ["west", -10, 0, 90]])("look %s has Minecraft yaw", async (_direction, x, z, yaw) => {
-    const f = await fixture(); await f.tools.call("look", { x, y: 65.62, z });
+  test.each([["south", 0, 10, 0], ["east", 10, 0, -90], ["north", 0, -10, -180], ["west", -10, 0, 90]])("look %s at a block's centre has Minecraft yaw", async (_direction, x, z, yaw) => {
+    // Eye over the centre of block 0,_,0, so the centres of blocks due south etc. are straight lines away.
+    const f = await fixture(); f.state.pos = { x: 0.5, y: 64, z: 0.5 }; f.state.eye = { x: 0.5, y: 65.62, z: 0.5 };
+    await f.tools.call("look", { x, y: 65, z });
     const look = f.requests.find(r => r.body.action === "look")!.body;
-    expect(look.yaw as number).toBeCloseTo(yaw); expect(look.pitch as number).toBeCloseTo(Math.atan2(0.62, 10) * 180 / Math.PI);
+    expect(look.yaw as number).toBeCloseTo(yaw); expect(look.pitch as number).toBeCloseTo(Math.atan2(0.12, 10) * 180 / Math.PI);
+  });
+  test("look at a block says what is actually in the sights", async () => {
+    const f = await fixture();
+    f.state.lookingAt = { type: "block", block: "minecraft:crafting_table", blockPos: [104, 118, -205] };
+    expect(text(await f.tools.call("look", { x: 104, y: 118, z: -205 }))).toContain("Looking at minecraft:crafting_table at 104,118,-205.");
+    f.state.lookingAt = { type: "block", block: "minecraft:grass_block", blockPos: [104, 117, -205] };
+    expect(text(await f.tools.call("look", { x: 104, y: 118, z: -205 }))).toContain("but minecraft:grass_block at 104,117,-205 is in the way");
+    f.state.lookingAt = { type: "miss" };
+    expect(text(await f.tools.call("look", { x: 104, y: 118, z: -205 }))).toContain("out of reach");
   });
   test("hurt/death/hunger and player arrival/departure", async () => {
     const f = await fixture(); await f.body.poll();
@@ -388,9 +399,10 @@ describe("body-tool repair regressions", () => {
     expect(f.requests.at(-1)?.body.text).toBe("#goto 10 64 -1");
     expect(f.body.navigation?.target).toEqual({ x: 10, y: 64, z: -1 });
     await f.tools.call("look", { x: 10.9, y: 65.9, z: -0.2 });
+    // Block 10,65,-1, aimed at its centre 10.5,65.5,-0.5 from the eye at 0,65.62,0.
     const look = f.requests.find(r => r.body.action === "look")!.body;
-    expect(look.yaw as number).toBeCloseTo(-Math.atan2(10, -1) * 180 / Math.PI);
-    expect(look.pitch as number).toBeCloseTo(Math.atan2(0.62, Math.hypot(10, 1)) * 180 / Math.PI);
+    expect(look.yaw as number).toBeCloseTo(-Math.atan2(10.5, -0.5) * 180 / Math.PI);
+    expect(look.pitch as number).toBeCloseTo(Math.atan2(0.12, Math.hypot(10.5, 0.5)) * 180 / Math.PI);
     expect((await f.tools.call("go_to", { x: Infinity, z: 0 })).isError).toBe(true);
   });
   test("open_inventory uses the mod endpoint and verifies the resulting screen", async () => {

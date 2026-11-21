@@ -23,7 +23,7 @@ export const definitions = {
   status: { description: "Brief body, surroundings, navigation and screen status.", schema: z.object({}) },
   inventory: { description: "Non-empty inventory stacks; H marks hotbar (slots 0..8).", schema: z.object({}) },
   say: { description: "Speak plain chat, independently of walking; not commands. Text longer than one chat line (256 characters) is sent as up to three lines.", schema: z.object({ text: z.string().min(1).max(768) }) },
-  look: { description: "Look by yaw and/or pitch (an omitted one stays as it is), world block coordinates (floats use the containing block), or nearby player name.", schema: z.union([z.object({ yaw: finite.optional(), pitch: finite.min(-90).max(90).optional() }).strict().refine(a => a.yaw !== undefined || a.pitch !== undefined, "give yaw, pitch or both"), z.object({ x: blockCoordinate, y: blockCoordinate, z: blockCoordinate }).strict(), z.object({ player: name }).strict()]) },
+  look: { description: "Look by yaw and/or pitch (an omitted one stays as it is), at a world block (floats use the containing block; aims at its centre and says what is actually in your sights), or at a nearby player by name.", schema: z.union([z.object({ yaw: finite.optional(), pitch: finite.min(-90).max(90).optional() }).strict().refine(a => a.yaw !== undefined || a.pitch !== undefined, "give yaw, pitch or both"), z.object({ x: blockCoordinate, y: blockCoordinate, z: blockCoordinate }).strict(), z.object({ player: name }).strict()]) },
   use: { description: "Right-click; optionally hold use 1..200 ticks (20 ticks/s).", schema: z.object(hold) },
   attack: { description: "Left-click; optionally hold attack to mine by hand.", schema: z.object(hold) },
   select_hotbar: { description: "Select hotbar slot 0..8.", schema: z.object({ slot: z.number().int().min(0).max(8) }) },
@@ -174,7 +174,18 @@ export class Tools {
           const entity = state.nearbyEntities?.find(e => playerEntity(e) && e.name?.toLowerCase() === args.player.toLowerCase());
           if (!entity) throw new Error(`Player ${args.player} is not nearby.`);
           await body.lookAt({ x: entity.pos[0], y: entity.pos[1] + 1.62, z: entity.pos[2] }, state);
-        } else await body.lookAt(args);
+        } else {
+          // Aim at the block's centre: its integer coordinates are a corner shared
+          // with seven neighbours, and live both residents kept hitting the
+          // ground beside a crafting table they had looked at.
+          await body.lookAt({ x: args.x + 0.5, y: args.y + 0.5, z: args.z + 0.5 });
+          await Bun.sleep(100);
+          const at = (await api.state().catch(() => undefined))?.lookingAt;
+          if (!at) return "Looked (target read-back unavailable).";
+          if (at.type !== "block") return `Looked toward ${args.x},${args.y},${args.z}, but ${at.type === "entity" ? `${at.entity} is in the way` : "it is out of reach (more than about 4.5 blocks) or hidden"}.`;
+          const hit = at.blockPos?.join(",");
+          return hit === `${args.x},${args.y},${args.z}` ? `Looking at ${at.block} at ${hit}.` : `Looked toward ${args.x},${args.y},${args.z}, but ${at.block} at ${hit} is in the way.`;
+        }
         return "Looked.";
       }
       case "use": case "attack": {
