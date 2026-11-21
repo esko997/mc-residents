@@ -51,4 +51,8 @@ CODEX_HOME=$base/codex-home timeout "$((minutes * 60 + 300))" "$base/bin/codex" 
   -c "mcp_servers.body.env.RESIDENT_NAME=\"$name\"" \
   -c "mcp_servers.body.env.RESIDENT_DIR=\"$home\"" \
   "It is $(date +%H:%M). Play until $end." < /dev/null >> "$session_log" 2>&1
-echo "session ended with status $? at $(date +%H:%M)" >> "$session_log"
+status=$?
+echo "session ended with status $status at $(date +%H:%M)" >> "$session_log"
+# The unit must fail when the mind did: a login, model or tool-server problem
+# would otherwise look like a quiet, successful session.
+exit "$status"
