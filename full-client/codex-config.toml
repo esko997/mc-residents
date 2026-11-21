@@ -1,6 +1,6 @@
 # Gary's own Codex home: only his persona (in his directory) and his body's tools.
 cli_auth_credentials_store = "file"
-model = "gpt-6-luna"
+model = "gpt-6.2-sol"
 model_reasoning_effort = "medium"
 # Older history is summarised once a request passes this size. At 60K the
 # residents lost everything older than about nine minutes (20 summaries in a

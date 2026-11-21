@@ -18,8 +18,8 @@ heap=${GARY_CLIENT_HEAP:-6G}
 game=${GAME_DIR:-$base/game}
 # Baritone reads baritone/settings.txt once at start and rewrites it whenever a
 # setting is changed in game, so every start begins from the generated copy
-# (full-client/tools/baritone-settings.ts; it lists the built blocks Baritone
-# must go around instead of breaking).
+# (full-client/tools/baritone-settings.ts; constructed-looking blocks cost much
+# more to break while routing, but remain breakable if no other route exists).
 if [ -f "$base/baritone-settings.txt" ]; then
   install -D -m 644 "$base/baritone-settings.txt" "$game/baritone/settings.txt"
 else

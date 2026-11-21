@@ -17,7 +17,7 @@ name=${1:?usage: run-until.sh <username> <persona> <HH:MM> [session-minutes] [mo
 persona=${2:?usage: run-until.sh <username> <persona> <HH:MM> [session-minutes] [model]}
 until_clock=${3:?usage: run-until.sh <username> <persona> <HH:MM> [session-minutes] [model]}
 session_minutes=${4:-60}
-model=${5:-gpt-6-luna}
+model=${5:-gpt-6.2-sol}
 
 base=${GARY_CLIENT_HOME:-$HOME/gary-client}
 end_at=$(date -d "$until_clock" +%s) || exit 2

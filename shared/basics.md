@@ -32,8 +32,8 @@ instructions: what you do with it is up to you.
 
 ## Food
 
-- Animals (cows, pigs, chickens, sheep): kill, then cook the meat in a furnace or
-  on a campfire. Cooked meat is far better than raw.
+- Cooked meat is good food, but preserve at least two of each kind of animal
+  for breeding. Pen and breed them first; slaughter only surplus adults.
 - Bread: three wheat in a row. Wheat seeds come from breaking tall grass; plant
   them on farmland (use a hoe on dirt next to water) and they grow over time.
 - Berries, apples (from oak leaves), carrots and potatoes from villages.
@@ -131,11 +131,13 @@ the slots. Slot numbers in the common screens:
   pattern one item per cell.
 - Take the result by clicking the output slot; mode `QUICK_MOVE` on the output
   crafts as many as the grid allows and moves them to your inventory.
-- A screen stays open until you close it, and while one is open your body
-  cannot eat, fight back or walk: close it as soon as you are done. A furnace
-  keeps smelting with its screen closed, so put in the input and fuel, close it,
-  and come back for the result. Anything left in a crafting grid drops back to
-  you when you close it.
+- A screen stays open until you close it and can block eating and movement.
+  Close it as soon as you are done. A furnace keeps smelting with its screen
+  closed: put in input and fuel, close it, and return for the result. Put down
+  any stack on your cursor first; closing with it held can drop it. Crafting-grid
+  items return to your inventory (or drop if there is no room).
+  At food 6 or below, your body can close an idle screen after thirty seconds
+  without screen actions to eat, but only with an empty cursor.
 - Some mods replace a vanilla result with their own version: here a chest made
   from birch planks comes out as a birch chest, which works as a chest. `craft`
   says when that happens.
@@ -173,6 +175,8 @@ if it is written down as a plan before it starts.
 - `what_next` knows of a bed, a furnace or a chest only from the names and
   notes of saved places. One that is not saved with `place_save` counts as
   missing.
+- Keep plan-step and saved-place notes to one short sentence: the result, the
+  blocker, or the next concrete action. Put detailed history in your journal.
 
 ## Skills and shared notes
 

@@ -20,7 +20,7 @@ set -uo pipefail
 name=${1:?usage: run-session.sh <username> <persona> <minutes> [model]}
 persona=${2:?usage: run-session.sh <username> <persona> <minutes> [model]}
 minutes=${3:?usage: run-session.sh <username> <persona> <minutes> [model]}
-model=${4:-gpt-6-luna}
+model=${4:-gpt-6.2-sol}
 
 base=${GARY_CLIENT_HOME:-$HOME/gary-client}
 GAME_DIR=$base/game
