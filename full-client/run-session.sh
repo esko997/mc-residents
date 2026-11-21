@@ -105,9 +105,14 @@ run_mind() { # <seconds> <prompt>
 # the resident in the world for the whole session.
 status=0
 opening="It is $(date +%H:%M). Play until $end.${SESSION_NOTE:+ $SESSION_NOTE}"
+# A fresh run needs a few minutes to be worth starting: near the end, Margo's
+# restarts each read her notes, said goodbye in chat and stopped, three times in
+# two minutes.
+min_left=180
 while :; do
   left=$(( end_at - $(date +%s) ))
-  [ "$left" -lt 180 ] && break
+  [ "$left" -lt "$min_left" ] && break
+  min_left=420
   calls_before=$(body_calls)
   # The hard limit is a backstop: the mind is asked to stop itself at the end time.
   run_mind "$((left + 300))" "$opening"
@@ -116,7 +121,7 @@ while :; do
   [ "$status" -ne 0 ] && break
   # A run that never touched the body would otherwise restart in a tight loop.
   [ "$(body_calls)" -eq "${calls_before:-0}" ] && break
-  opening="It is $(date +%H:%M) and the session runs until $end. You stopped a moment ago; your notes say where you left off."
+  opening="It is $(date +%H:%M) and the session runs until $end. You stopped a moment ago; your notes say where you left off. If you already said goodbye in chat, no need to say it again."
 done
 
 # The unit must fail when the mind did: a login, model or tool-server problem
