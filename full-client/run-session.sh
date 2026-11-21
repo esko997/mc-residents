@@ -77,7 +77,7 @@ body_env() {
     "$log" "$SYNAPSE_URL" "$name" "$home" "$base/knowledge.sqlite"
 }
 
-run_mind() { # <seconds> <prompt>
+run_mind() { # <seconds> <prompt> [Codex thread to resume]
   case $model in
     claude:*)
       local mcp; mcp=$(mktemp)
@@ -98,19 +98,29 @@ run_mind() { # <seconds> <prompt>
         --output-format stream-json --verbose < /dev/null >> "$session_log" 2>&1
       local rc=$?; rm -f "$mcp"; return "$rc" ;;
     *)
-      CODEX_HOME=$base/codex-home timeout "$1" "$base/bin/codex" exec \
-        --skip-git-repo-check -s workspace-write -m "$model" \
-        -c "mcp_servers.body.env.RESIDENT_NAME=\"$name\"" \
-        -c "mcp_servers.body.env.RESIDENT_DIR=\"$home\"" \
-        -c "mcp_servers.body.env.CLIENT_LOG=\"$log\"" \
-        -c "mcp_servers.body.env.SYNAPSE_URL=\"$SYNAPSE_URL\"" \
-        "$2" < /dev/null >> "$session_log" 2>&1 ;;
+      local body=(
+        -c "mcp_servers.body.env.RESIDENT_NAME=\"$name\""
+        -c "mcp_servers.body.env.RESIDENT_DIR=\"$home\""
+        -c "mcp_servers.body.env.CLIENT_LOG=\"$log\""
+        -c "mcp_servers.body.env.SYNAPSE_URL=\"$SYNAPSE_URL\""
+      )
+      if [ -n "${3:-}" ]; then
+        CODEX_HOME=$base/codex-home timeout "$1" "$base/bin/codex" exec resume \
+          --skip-git-repo-check -m "$model" -c 'sandbox_mode="workspace-write"' "${body[@]}" \
+          "$3" "$2" < /dev/null >> "$session_log" 2>&1
+      else
+        CODEX_HOME=$base/codex-home timeout "$1" "$base/bin/codex" exec \
+          --skip-git-repo-check -s workspace-write -m "$model" "${body[@]}" \
+          "$2" < /dev/null >> "$session_log" 2>&1
+      fi ;;
   esac
 }
 
-# A model may decide it is finished long before the end time. Each run is a
-# fresh mind that reads its notes, so starting another one is cheap and keeps
-# the resident in the world for the whole session.
+# A model may decide it is finished long before the end time. A Codex mind is
+# then resumed as the same thread, so a session is one mind with one history
+# however often it stops: that is what a long run is meant to observe. Every
+# stop is written to the session log. Claude Code is started afresh instead and
+# reads its notes again.
 status=0
 # memory.md is read at every start; past a couple of pages it crowds out play
 # and old conclusions pile up (Margo's reached 127 KB in one night).
@@ -123,19 +133,26 @@ opening="It is $(date +%H:%M). Play until $end.${SESSION_NOTE:+ $SESSION_NOTE}$(
 # restarts each read her notes, said goodbye in chat and stopped, three times in
 # two minutes.
 min_left=180
+thread=
 while :; do
   left=$(( end_at - $(date +%s) ))
   [ "$left" -lt "$min_left" ] && break
   min_left=420
   calls_before=$(body_calls)
   # The hard limit is a backstop: the mind is asked to stop itself at the end time.
-  run_mind "$((left + 300))" "$opening"
+  run_mind "$((left + 300))" "$opening" "$thread"
   status=$?
-  echo "run ended with status $status at $(date +%H:%M)" >> "$session_log"
+  # Codex prints the thread id at the top of every run.
+  case $model in claude:*) ;; *) thread=$(grep -a '^session id: ' "$session_log" | tail -n 1 | awk '{print $3}') ;; esac
+  echo "run ended with status $status at $(date +%H:%M)${thread:+ (thread $thread)}" >> "$session_log"
   [ "$status" -ne 0 ] && break
   # A run that never touched the body would otherwise restart in a tight loop.
   [ "$(body_calls)" -eq "${calls_before:-0}" ] && break
-  opening="It is $(date +%H:%M) and the session runs until $end. You stopped a moment ago; your notes say where you left off. If you already said goodbye in chat, no need to say it again.$(memory_note)"
+  if [ -n "$thread" ]; then
+    opening="It is $(date +%H:%M) and the session runs until $end. You stopped early; carry on from where you were. If you already said goodbye in chat, no need to say it again.$(memory_note)"
+  else
+    opening="It is $(date +%H:%M) and the session runs until $end. You stopped a moment ago; your notes say where you left off. If you already said goodbye in chat, no need to say it again.$(memory_note)"
+  fi
 done
 
 # The unit must fail when the mind did: a login, model or tool-server problem
