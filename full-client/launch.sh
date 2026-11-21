@@ -11,6 +11,7 @@ set -euo pipefail
 
 name=${1:?usage: launch.sh <username>}
 base=${GARY_CLIENT_HOME:-$HOME/gary-client}
+java=$HOME/.local/share/PrismLauncher/java/simon-java17/bin/java
 heap=${GARY_CLIENT_HEAP:-6G}
 # Each resident needs its own game directory: two clients cannot share logs,
 # options or the mod's port. Set per resident in instances/<name>.env.
