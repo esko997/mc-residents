@@ -70,7 +70,7 @@ export const skillDefinitions = {
     schema: z.object({ name: skillName, args: z.record(z.unknown()).optional(), max_seconds: z.number().min(1).max(600).optional() }).strict(),
   },
   note_share: {
-    description: "Offer something you learned to the other residents: one fact or method per note, text up to 600 characters. They see it only after a caretaker has reviewed it.",
+    description: "Offer something you learned to the other residents: one fact or method per note, text up to 600 characters. They see it once it is accepted, usually within a minute; a caretaker may later edit or remove it.",
     schema: z.object({ topic: z.string().trim().min(3).max(60), text: z.string().trim().min(10).max(600) }).strict(),
   },
   notes_shared: {
@@ -517,7 +517,7 @@ export class Skills {
     const now = Date.now();
     const id = db.query("INSERT INTO shared_notes (author, topic, text, status, created_at, updated_at) VALUES (?, ?, ?, 'proposed', ?, ?)")
       .run(this.resident, args.topic, args.text, now, now).lastInsertRowid;
-    return `Proposed note #${id} "${args.topic}". The other residents cannot see it yet: they will only after a caretaker has reviewed it. notes_shared shows its status.`;
+    return `Proposed note #${id} "${args.topic}". The other residents see it once it is accepted, usually within a minute; a caretaker may later edit or remove it. notes_shared shows its status.`;
   }
 
   async notesShared(args: Args<"notes_shared">): Promise<string> {

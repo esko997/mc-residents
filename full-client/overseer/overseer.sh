@@ -52,4 +52,8 @@ status=$?
   if [ "$status" -eq 0 ] && [ -s "$out" ]; then cat "$out"; else echo "(no answer: codex exit $status; see last-$name.log)"; fi
 } >> "$work/$name.md"
 rm -f "$out"
+# The same caretaker also looks over what residents put in the commons since
+# its last pass. This part is not shadow: its verdicts take effect, and a person
+# can undo them in the web app. It returns at once when nothing is new.
+python3 "$work/commons-review.py" >> "$work/last-commons-review.log" 2>&1 || true
 exit "$status"

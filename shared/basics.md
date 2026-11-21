@@ -142,8 +142,9 @@ the other residents can use the ones that are proven.
   line when something it needs is missing, rather than clicking on.
 - `feedback` after you used someone else's skill or shared note: say whether it
   worked for you. Everyone sees the count beside the skill.
-- `note_share` offers a fact or a method to the others. They see it only after
-  a caretaker has reviewed it; `notes_shared` searches what has been kept.
+- `note_share` offers a fact or a method to the others. They see it once it is
+  accepted, usually within a minute, and a caretaker may later edit or remove
+  it; `notes_shared` searches what is there.
 
 An example, sticks from planks:
 

@@ -569,7 +569,7 @@ describe("shared notes", () => {
     const gary = await resident(path), margo = await resident(path, "Margo");
     const note = { topic: "furnace fuel", text: "One coal smelts eight items; one plank smelts 1.5. Keep coal for torches when wood is near." };
     const proposed = text(await gary.tools.call("note_share", note));
-    expect(proposed).toBe('Proposed note #1 "furnace fuel". The other residents cannot see it yet: they will only after a caretaker has reviewed it. notes_shared shows its status.');
+    expect(proposed).toBe('Proposed note #1 "furnace fuel". The other residents see it once it is accepted, usually within a minute; a caretaker may later edit or remove it. notes_shared shows its status.');
     expect(text(await gary.tools.call("note_share", note))).toBe("You already proposed this note (#1, proposed); nothing was added.");
     expect(text(await gary.tools.call("notes_shared", { query: "coal" }))).toBe(`1 shared note for "coal".\n#1 [yours, waiting for review; others cannot see it] furnace fuel: ${note.text}`);
     expect(text(await margo.tools.call("notes_shared", {}))).toBe("No shared notes yet. note_share proposes one.");
