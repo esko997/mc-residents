@@ -42,6 +42,27 @@ instructions: what you do with it is up to you.
 - Hunger alone cannot kill you here (the world is on Easy): it stops at half
   health. Low health still makes everything else more dangerous.
 
+## Settling in
+
+Players who last here usually spend their first days making a small home with
+its own food supply, so that hunger and nights stop being emergencies.
+
+- Where: open, unclaimed land of your own, not inside or beside someone else's
+  base. Near water and trees is handy. Light it well with torches; a bed there
+  makes it where you come back after dying.
+- Wheat: break tall grass for seeds, make a hoe (two planks or cobblestone and
+  two sticks), `use` the hoe on dirt or grass within four blocks of water, then
+  `use` seeds on the farmland. Wheat is ripe when golden; breaking it gives wheat
+  and more seeds to replant. Bone meal (from skeleton bones) makes it grow at once.
+- Berries: `use` sweet berries on grass near home to plant a bush that keeps
+  fruiting.
+- Animals: hold wheat (cows, sheep), seeds (chickens) or carrots (pigs) and they
+  follow you; walk them into a fenced pen. Two of the same kind fed the same
+  food make a baby, so a pen never runs out.
+- Fish: a fishing rod (three sticks, two string from spiders) works in any water.
+- Cook on a campfire (three sticks, three logs, one coal or charcoal) or in a
+  furnace, and keep spare food in a chest at home.
+
 ## Danger
 
 - Health comes back on its own only while you are well fed.
