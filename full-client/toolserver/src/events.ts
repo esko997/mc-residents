@@ -1,7 +1,7 @@
 import { open, stat, type FileHandle } from "node:fs/promises";
 
 export interface ResidentEvent { seq: number; type: string; [key: string]: unknown }
-const waking: Record<string, true> = { chat: true, hurt: true, died: true, player_near: true, arrived: true, stopped_short: true };
+const waking: Record<string, true> = { chat: true, hurt: true, died: true, player_near: true, arrived: true, stopped_short: true, reflex: true };
 export class Events {
   private sequence = 0;
   private seen = 0;

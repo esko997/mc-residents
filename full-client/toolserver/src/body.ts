@@ -7,11 +7,25 @@ export interface Navigation {
   description: string; target?: Goal; follow?: string;
   lastPos: Position; lastMoved: number; lastReply?: string; reported: boolean;
 }
-export interface Reflexes { auto_eat: boolean; eat_below: number; when_attacked: "auto" | "fight" | "flee" | "nothing" }
+export interface Reflexes {
+  auto_eat: boolean; eat_below: number; when_attacked: "auto" | "fight" | "flee" | "nothing";
+  surface: boolean; escape_fire: boolean; avoid_creepers: boolean;
+}
 interface Meal {
   item: string; before: number; slot: number; rotation: State["rotation"]; doneAt: number;
   moved?: string; automatic: boolean; finished?: boolean; failure?: string;
 }
+type RescueKind = "retreat" | "surface" | "lava" | "fire";
+interface Rescue {
+  kind: RescueKind; reason: string; started: number; paused: boolean; busy: boolean;
+  action?: Promise<void>; error?: string; lastAim: number; detail?: string;
+  enemyId?: number; initialAir?: number; initialMaxAir?: number;
+  rotation?: State["rotation"]; slot?: number; bucketSlot?: number; placedAt?: number;
+}
+const rescuePriority: Record<RescueKind, number> = { retreat: 1, fire: 2, surface: 3, lava: 4 };
+const seconds = (ms: number) => `${Math.round(ms / 100) / 10} s`;
+const distance = (a: Position, b: Position) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+const entityPosition = (entity: Entity): Position => ({ x: entity.pos[0], y: entity.pos[1], z: entity.pos[2] });
 const foods: Record<string, true> = Object.fromEntries((
   "apple golden_apple enchanted_golden_apple bread baked_potato carrot golden_carrot beetroot melon_slice sweet_berries glow_berries dried_kelp cookie pumpkin_pie mushroom_stew rabbit_stew beetroot_soup cooked_beef cooked_porkchop cooked_chicken cooked_mutton cooked_rabbit cooked_cod cooked_salmon beef porkchop chicken mutton rabbit cod salmon tropical_fish potato honey_bottle"
 ).split(" ").map(item => [`minecraft:${item}`, true]));
@@ -21,7 +35,7 @@ export class Body {
   state?: State;
   entities: Entity[] = [];
   navigation?: Navigation;
-  reflexes: Reflexes = { auto_eat: true, eat_below: 12, when_attacked: "auto" };
+  reflexes: Reflexes = { auto_eat: true, eat_below: 12, when_attacked: "auto", surface: true, escape_fire: true, avoid_creepers: true };
   error?: string;
   private pollTimer?: Timer;
   private polling?: Promise<void>;
@@ -33,6 +47,9 @@ export class Body {
   private combat?: { target: number; until: number; nextAttack: number; previousSlot: number };
   private fleeing = false;
   private fleeGeneration = 0;
+  private crumbs: Position[] = [];
+  private rescue?: Rescue;
+  private rescueCleanup?: Promise<void>;
   private manual = 0;
   private stopped = false;
   constructor(readonly config: Config, readonly api: Synapse, private now = Date.now) {
@@ -83,12 +100,31 @@ export class Body {
       this.players = players;
     }
     await this.tail.read();
+    this.rememberGround(this.state);
     this.checkNavigation(state);
     await this.reflex(this.state, hurt);
   }
+  private rememberGround(state: State) {
+    if (state.health <= 0 || state.onGround !== true || state.inWater !== false || state.inLava !== false || state.onFire !== false) return;
+    const last = this.crumbs.at(-1);
+    if (!last || distance(last, state.pos) >= 1) {
+      this.crumbs.push({ ...state.pos });
+      if (this.crumbs.length > 40) this.crumbs.shift();
+    }
+  }
+  private retreatSensors(state: State) {
+    return state.onGround !== undefined && state.inWater !== undefined && state.inLava !== undefined && state.onFire !== undefined;
+  }
+  survivalStatus(state: State): string | undefined {
+    const unavailable: string[] = [];
+    if (!this.retreatSensors(state)) unavailable.push("safe-ground retreat (legacy flee remains active)");
+    if (this.reflexes.surface && (state.underwater === undefined || state.air === undefined || state.maxAir === undefined)) unavailable.push("surface off");
+    if (this.reflexes.escape_fire && (state.onFire === undefined || state.inWater === undefined || state.inLava === undefined)) unavailable.push("fire/lava rescue off");
+    return unavailable.length ? `Survival senses unavailable from older Synapse: ${unavailable.join("; ")}.` : undefined;
+  }
   private checkNavigation(state: State) {
     const nav = this.navigation;
-    if (!nav || nav.reported || this.combat || this.fleeing) return;
+    if (!nav || nav.reported || this.combat || this.fleeing || this.rescue?.paused) return;
     if (nav.follow) {
       const player = this.entities.find(e => playerEntity(e) && e.name === nav.follow);
       if (player) nav.target = { x: player.pos[0], z: player.pos[2] };
@@ -117,7 +153,7 @@ export class Body {
     this.navigation = { description: command.slice(1), target, follow, lastPos: { ...state.pos }, lastMoved: this.now(), reported: false };
     try {
       await this.api.chat(command);
-      if (this.combat || this.fleeing) await this.api.chat("#pause");
+      if (this.combat || this.fleeing || this.rescue?.paused) await this.api.chat("#pause");
     } catch (error) { this.navigation = undefined; throw error; }
   }
   async lookAt(target: Position, state?: State) {
@@ -227,6 +263,7 @@ export class Body {
   async manualAction<T>(action: () => Promise<T>): Promise<T> {
     this.manual++;
     try {
+      if (this.rescue) await this.finishRescue("interrupted by your action");
       await this.finishCombat();
       if (this.fleeing) {
         this.fleeGeneration++; this.fleeing = false;
@@ -253,6 +290,15 @@ export class Body {
     }
   }
   private async startFlee(enemy: Entity, state: State, reason: string) {
+    if (this.retreatSensors(state)) {
+      await this.startRescue("retreat", `fleeing from ${enemy.type} (${reason})`, state, enemy);
+      return;
+    }
+    // A toolserver restart can precede the mod upgrade. Preserve the old
+    // damage response exactly when none of the safe-ground senses exist.
+    await this.startLegacyFlee(enemy, state, reason);
+  }
+  private async startLegacyFlee(enemy: Entity, state: State, reason: string) {
     if (this.fleeing) return;
     this.fleeing = true;
     const generation = ++this.fleeGeneration;
@@ -274,8 +320,154 @@ export class Body {
         }
       });
   }
+  private environmentalRescue(state: State): { kind: RescueKind; reason: string; enemy?: Entity } | undefined {
+    if (this.reflexes.escape_fire && state.inLava === true) return { kind: "lava", reason: "in lava" };
+    if (this.reflexes.surface && state.underwater === true && state.air !== undefined && state.maxAir !== undefined && state.maxAir > 0 && state.air < state.maxAir / 2) {
+      return { kind: "surface", reason: `air ${state.air}/${state.maxAir}` };
+    }
+    if (this.reflexes.escape_fire && state.onFire === true && state.inLava === false && state.inWater === false) {
+      return { kind: "fire", reason: "burning" };
+    }
+    if (this.reflexes.avoid_creepers && this.retreatSensors(state)) {
+      const enemy = this.entities.find(e => e.type === "minecraft:creeper" && hostileEntity(e) && (e.fuse === true || e.distance <= 3));
+      if (enemy) return { kind: "retreat", reason: enemy.fuse === true ? "creeper fuse" : "creeper within 3 blocks", enemy };
+    }
+    return undefined;
+  }
+  private async interruptForRescue() {
+    const paused = this.combat !== undefined || this.fleeing;
+    if (this.eating) await this.releaseMeal(this.eating);
+    if (this.combat) await this.finishCombat(false);
+    if (this.fleeing) {
+      this.fleeGeneration++; this.fleeing = false;
+      await this.api.player({ action: "release" });
+    }
+    return paused;
+  }
+  private async startRescue(kind: RescueKind, reason: string, state: State, enemy?: Entity) {
+    if (this.rescue) return;
+    const inheritedPause = await this.interruptForRescue();
+    let current = state;
+    if (kind === "fire") current = await this.api.state();
+    const bucket = kind === "fire" ? current.hotbar.find(s => nonempty(s) && s.item === "minecraft:water_bucket") : undefined;
+    const usesControls = kind !== "fire" || (bucket !== undefined && current.dimension !== "minecraft:the_nether");
+    const rescue: Rescue = {
+      kind, reason, started: this.now(), paused: inheritedPause || usesControls, busy: false, lastAim: -Infinity,
+      enemyId: enemy?.id, initialAir: current.air, initialMaxAir: current.maxAir,
+      ...(kind === "fire" && usesControls ? { rotation: { ...current.rotation }, slot: current.selectedSlot, bucketSlot: bucket!.slot } : {}),
+    };
+    this.rescue = rescue;
+    if (kind === "fire" && !usesControls) rescue.detail = current.dimension === "minecraft:the_nether" ? "water cannot be used in the Nether" : "no water bucket in the hotbar";
+    this.events.add("reflex", { text: `${kind} rescue started: ${reason}${rescue.detail ? `; ${rescue.detail}; reported only` : ""}` });
+    try {
+      if (usesControls) await this.api.chat("#pause");
+      if (kind === "fire") {
+        if (!usesControls) return;
+        await this.api.player({ action: "selectHotbar", slot: rescue.bucketSlot! });
+        await this.api.player({ action: "look", yaw: current.rotation.yaw, pitch: 90 });
+        await this.api.player({ action: "use" });
+        rescue.placedAt = this.now();
+      }
+      if (this.rescue === rescue) await this.updateRescue(current);
+    } catch (error) {
+      await this.finishRescue(`failed: ${error instanceof Error ? error.message : "Synapse action failed"}`);
+    }
+  }
+  private rescueMove(rescue: Rescue, movement: Record<string, unknown>) {
+    if (rescue.busy || this.rescue !== rescue) return;
+    rescue.busy = true;
+    rescue.action = this.api.player({ action: "move", ...movement }).then(() => {}).catch(error => {
+      rescue.error = error instanceof Error ? error.message : "Movement failed.";
+    }).finally(() => {
+      rescue.busy = false; rescue.action = undefined;
+    });
+  }
+  private async updateRescue(state: State) {
+    const rescue = this.rescue;
+    if (!rescue) return;
+    if (rescue.error) { await this.finishRescue(`failed: ${rescue.error}`); return; }
+    const elapsed = this.now() - rescue.started;
+    if (rescue.kind === "retreat") {
+      const enemy = this.entities.find(e => e.id === rescue.enemyId && hostileEntity(e));
+      if (!enemy) { await this.finishRescue("threat no longer observed"); return; }
+      const threat = entityPosition(enemy);
+      const separation = distance(state.pos, threat);
+      if (separation >= 10) { await this.finishRescue(`clear of threat at ${Math.round(separation * 10) / 10} blocks`); return; }
+      if (elapsed >= 5000) { await this.finishRescue(`timed out after 5 s, ${Math.round(separation * 10) / 10} blocks from threat`); return; }
+      if (state.onGround !== true) { await this.finishRescue("left safe ground; movement stopped"); return; }
+      if (!this.retreatSensors(state)) { await this.finishRescue("survival senses disappeared"); return; }
+      if (rescue.busy) return;
+      if (this.now() - rescue.lastAim >= 500) {
+        const crumb = [...this.crumbs].reverse().find(p => distance(p, threat) > separation && distance(p, state.pos) > 0.75);
+        const target = crumb ?? { x: state.pos.x * 2 - threat.x, y: state.eye.y, z: state.pos.z * 2 - threat.z };
+        await this.lookAt({ x: target.x, y: state.eye.y, z: target.z }, state);
+        rescue.lastAim = this.now();
+        this.rescueMove(rescue, crumb ? { forward: true, sprint: true, ticks: 5 } : { forward: true, ticks: 4 });
+      }
+      return;
+    }
+    if (rescue.kind === "surface") {
+      if (state.underwater === undefined || state.air === undefined || state.maxAir === undefined) { await this.finishRescue("air senses disappeared"); return; }
+      if (!state.underwater) { await this.finishRescue(`surfaced after ${seconds(elapsed)}, air ${rescue.initialAir} -> ${state.air}`); return; }
+      if (elapsed >= 12000) { await this.finishRescue(`timed out after 12 s underwater, air ${rescue.initialAir} -> ${state.air}`); return; }
+      if (rescue.busy) return;
+      const crumb = elapsed >= 6000 ? this.crumbs.at(-1) : undefined;
+      if (crumb && this.now() - rescue.lastAim >= 500) {
+        await this.lookAt({ x: crumb.x, y: state.eye.y, z: crumb.z }, state);
+        rescue.lastAim = this.now();
+      }
+      this.rescueMove(rescue, { ...(crumb ? { forward: true } : {}), jump: true, ticks: 5 });
+      return;
+    }
+    if (rescue.kind === "lava") {
+      if (state.inLava !== true) { await this.finishRescue(`escaped lava after ${seconds(elapsed)}`); return; }
+      if (elapsed >= 10000) { await this.finishRescue("timed out after 10 s in lava"); return; }
+      if (rescue.busy) return;
+      const crumb = this.crumbs.at(-1);
+      if (crumb && this.now() - rescue.lastAim >= 500) {
+        await this.lookAt({ x: crumb.x, y: state.eye.y, z: crumb.z }, state);
+        rescue.lastAim = this.now();
+      }
+      this.rescueMove(rescue, { ...(crumb ? { forward: true } : {}), jump: true, sprint: true, ticks: 5 });
+      return;
+    }
+    if (rescue.bucketSlot === undefined) {
+      if (state.onFire !== true) await this.finishRescue(`${state.onFire === false ? "no longer burning" : "fire sense disappeared"}; ${rescue.detail}; reported only`);
+      return;
+    }
+    if (rescue.placedAt === undefined || this.now() - rescue.placedAt < 1000) return;
+    await this.api.player({ action: "look", yaw: rescue.rotation!.yaw, pitch: 90 });
+    await this.api.player({ action: "use" });
+    await this.finishRescue(state.onFire === false ? "water placed and retrieved; no longer burning" : "water placed and retrieved; still burning");
+  }
+  private async finishRescue(outcome: string) {
+    const rescue = this.rescue;
+    if (!rescue) { await this.rescueCleanup; return; }
+    this.rescue = undefined;
+    const cleanup = (async () => {
+      await rescue.action;
+      let failed = false;
+      if (rescue.paused) {
+        try { await this.api.player({ action: "release" }); } catch { failed = true; }
+      }
+      if (rescue.bucketSlot !== undefined) {
+        try { await this.api.player({ action: "selectHotbar", slot: rescue.slot! }); } catch { failed = true; }
+        try { await this.api.player({ action: "look", ...rescue.rotation! }); } catch { failed = true; }
+      }
+      if (rescue.paused) {
+        try {
+          await this.api.chat("#resume");
+          if (this.navigation) this.navigation.lastMoved = this.now();
+        } catch { failed = true; }
+      }
+      this.events.add("reflex", { text: `${rescue.kind} rescue ended after ${seconds(this.now() - rescue.started)}: ${outcome}${failed ? "; cleanup incomplete" : ""}` });
+    })();
+    this.rescueCleanup = cleanup;
+    try { await cleanup; } finally { if (this.rescueCleanup === cleanup) this.rescueCleanup = undefined; }
+  }
   private async reflex(state: State, hurt: boolean) {
-    const blocked = this.reflexes.auto_eat && state.food < this.reflexes.eat_below && state.health > 0 && state.screen !== "none";
+    const needsMeal = this.reflexes.auto_eat && (state.food < this.reflexes.eat_below || (state.health < 14 && state.food < 20));
+    const blocked = needsMeal && state.health > 0 && state.screen !== "none";
     if (blocked) {
       this.mealsBlocked ??= { since: this.now(), reported: false };
       if (!this.mealsBlocked.reported && this.now() - this.mealsBlocked.since > 20000) {
@@ -288,6 +480,7 @@ export class Body {
       return;
     }
     if (state.screen !== "none" || state.health <= 0 || this.manual || this.stopped) {
+      if (this.rescue) await this.finishRescue(state.health <= 0 ? "death" : state.screen !== "none" ? `screen opened: ${state.screen}` : "manual control");
       if (this.eating?.automatic || this.fleeing) {
         if (this.eating) await this.releaseMeal(this.eating);
         this.fleeGeneration++; this.fleeing = false;
@@ -296,6 +489,12 @@ export class Body {
       }
       await this.finishCombat(); return;
     }
+    const requested = this.environmentalRescue(state);
+    if (this.rescue && requested && rescuePriority[requested.kind] > rescuePriority[this.rescue.kind]) {
+      await this.finishRescue(`superseded by ${requested.kind}`);
+    }
+    if (this.rescue) { await this.updateRescue(state); return; }
+    if (requested) { await this.startRescue(requested.kind, requested.reason, state, requested.enemy); return; }
     if (this.fleeing) return;
     if (this.eating) {
       if (this.now() >= this.eating.doneAt) {
@@ -308,7 +507,7 @@ export class Body {
     }
     if (this.combat) {
       const combat = this.combat;
-      const enemy = this.entities.find(e => e.id === combat.target && hostileEntity(e) && e.distance <= 6);
+      const enemy = this.entities.find(e => e.id === combat.target && hostileEntity(e) && e.type !== "minecraft:creeper" && e.distance <= 6);
       if (!enemy || this.now() >= combat.until || this.reflexes.when_attacked === "nothing") { await this.finishCombat(); return; }
       if (state.health <= 6 || this.reflexes.when_attacked === "flee") {
         await this.finishCombat(false);
@@ -331,7 +530,9 @@ export class Body {
       if (this.eating) await this.releaseMeal(this.eating);
       const weapon = state.hotbar.find(s => nonempty(s) && /_(sword|axe)$/.test(s.item));
       const mode = this.reflexes.when_attacked;
-      if (mode === "flee" || (mode === "auto" && (!weapon || state.health < 8))) {
+      const shouldFlee = mode === "flee" || (mode === "auto" && (!weapon || state.health < 8));
+      if (enemy.type === "minecraft:creeper" && !shouldFlee) return;
+      if (shouldFlee) {
         await this.startFlee(enemy, state, mode === "flee" ? "flee configured" : !weapon ? "no weapon" : "low health");
       } else {
         await this.api.chat("#pause");
@@ -341,13 +542,19 @@ export class Body {
       }
       return;
     }
-    if (this.reflexes.auto_eat && state.food < this.reflexes.eat_below && !this.eating && this.now() >= this.nextMeal && this.food(state)) {
+    if (needsMeal && !this.eating && this.now() >= this.nextMeal && this.food(state)) {
       await this.beginEating(state, undefined, true);
     }
   }
   async close() {
     this.stopped = true; clearInterval(this.pollTimer); await this.tail.close();
     await this.polling;
-    await Promise.allSettled([this.api.player({ action: "release" }), this.api.chat("#stop")]);
+    const cleaningRescue = this.rescue !== undefined || this.rescueCleanup !== undefined;
+    if (this.rescue) await this.finishRescue("shutdown");
+    await this.rescueCleanup;
+    await Promise.allSettled([
+      ...(cleaningRescue ? [] : [this.api.player({ action: "release" })]),
+      this.api.chat("#stop"),
+    ]);
   }
 }

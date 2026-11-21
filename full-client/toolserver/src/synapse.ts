@@ -6,6 +6,7 @@ export interface Stack { slot: number; item: string; count: number; equip?: stri
 export interface Entity {
   id: number; type: string; name?: string; hostile?: boolean;
   pos: [number, number, number]; distance: number; health?: number; player?: boolean;
+  fuse?: boolean;
 }
 export interface State {
   pos: Position; dimension: string; health: number; food: number;
@@ -14,6 +15,9 @@ export interface State {
   lookingAt: { type: string; block?: string; entity?: string; entityId?: number };
   nearbyEntities?: Entity[];
   inventory?: { main: Stack[]; armor: Stack[]; offhand: Stack };
+  air?: number; maxAir?: number;
+  underwater?: boolean; inWater?: boolean; inLava?: boolean; onFire?: boolean;
+  onGround?: boolean; fallDistance?: number; velocity?: Position;
 }
 export interface Widget {
   index: number; label: string; button?: boolean; editable?: boolean;

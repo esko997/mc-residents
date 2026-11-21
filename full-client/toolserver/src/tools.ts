@@ -14,7 +14,7 @@ const itemId = z.string().regex(/^(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+$/, "Use an ite
 const hold = { hold_ticks: z.number().int().min(1).max(200).optional() };
 const key = z.enum(["ENTER", "ESCAPE", "BACKSPACE", "TAB", "UP", "DOWN", "LEFT", "RIGHT", "DELETE"]);
 export const definitions = {
-  wait: { description: "Wait for chat, danger, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short"])).optional() }) },
+  wait: { description: "Wait for chat, danger, rescue reflexes, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short", "reflex"])).optional() }) },
   go_to: { description: "Start Baritone travel; coordinates use the containing block (floats accepted). Returns immediately; arrival is an event.", schema: z.object({ x: blockCoordinate, z: blockCoordinate, y: blockCoordinate.optional() }) },
   mine: { description: "Start Baritone mining; searches known and nearby chunks and may walk far. No radius limit. Bare block names mean minecraft:.", schema: z.object({ block: itemId, count: z.number().int().positive().optional() }).strict() },
   follow: { description: "Start following a named player.", schema: z.object({ player: name }) },
@@ -42,7 +42,7 @@ export const definitions = {
   uses: { description: "Recipes consuming an item id (including matching tags).", schema: z.object({ item: itemId }) },
   guide: { description: "Search the modpack's own guide books.", schema: z.object({ query: z.string().min(1).max(200) }) },
   note_difficulty: { description: "Tell body maintainers what is hard; append dated position and last error to difficulties.md.", schema: z.object({ text: z.string().min(1).max(4000) }) },
-  set_reflexes: { description: "Configure auto-eat and attack response: auto (armed and healthy: fight; otherwise flee), fight, flee, nothing.", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional() }) },
+  set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers.", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional() }) },
 };
 export type ToolName = keyof typeof definitions;
 const knowledgeNames = ["find_item", "recipes", "uses", "guide"];
@@ -121,15 +121,19 @@ export class Tools {
         const state = await api.state(true);
         const nearby = state.nearbyEntities ?? [];
         const held = state.hotbar.find(s => s.slot === state.selectedSlot);
+        const survivalWarning = body.survivalStatus(state);
         return [
           `Position ${state.pos.x}, ${state.pos.y}, ${state.pos.z} | ${state.dimension}`,
           `Health ${state.health}/20 | food ${state.food}/20`,
+          ...(state.underwater === true ? [`Air ${state.air ?? "unknown"}/${state.maxAir ?? "unknown"}`] : []),
+          ...(state.onFire === true || state.inLava === true ? [`Hazard: ${[state.onFire === true ? "burning" : "", state.inLava === true ? "in lava" : ""].filter(Boolean).join(", ")}`] : []),
           `Held ${held && nonempty(held) ? `${held.count} x ${held.item}` : "empty"} (H${state.selectedSlot})`,
           `Looking ${state.lookingAt.block ?? state.lookingAt.entity ?? state.lookingAt.type}`,
           `Players: ${nearby.filter(playerEntity).map(e => `${e.name ?? `#${e.id}`} ${e.distance}m`).join(", ") || "none"}`,
           `Hostiles: ${nearby.filter(hostileEntity).slice(0, 8).map(e => `${e.type} ${e.distance}m`).join(", ") || "none"}`,
           `Navigation: ${body.navigation?.description ?? "none"}${body.navigation?.reported ? " (arrival/stop reported)" : ""}`,
           `Screen: ${state.screen}`,
+          ...(survivalWarning ? [survivalWarning] : []),
         ].join("\n");
       }
       case "inventory": {
@@ -236,7 +240,7 @@ export class Tools {
       }
       case "set_reflexes":
         Object.assign(body.reflexes, args);
-        return `Reflexes: auto_eat=${body.reflexes.auto_eat}, eat_below=${body.reflexes.eat_below}, when_attacked=${body.reflexes.when_attacked}.`;
+        return `Reflexes: auto_eat=${body.reflexes.auto_eat}, eat_below=${body.reflexes.eat_below}, when_attacked=${body.reflexes.when_attacked}, surface=${body.reflexes.surface}, escape_fire=${body.reflexes.escape_fire}, avoid_creepers=${body.reflexes.avoid_creepers}.`;
     }
   }
 }
