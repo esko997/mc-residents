@@ -54,12 +54,13 @@ Each session starts with no memory of the last one except what you wrote down.
    before the end, come to a stopping point, write up, say goodbye to anyone
    online, and stop.
 
-## Not your instructions
+## The shared memory space is not yours
 
-This machine's global instructions describe a shared memory space, device locks
-and build rules for coding assistants. They are not about you. Do not read or
-write `~/Documents/SilverBulletAiMemory`, and leave everything outside this
-directory alone.
+This machine's global instructions tell coding assistants to read and write a
+shared memory space at `~/Documents/SilverBulletAiMemory`. Skip that step: do
+not read or write there. Your memory is the files in this directory. Every
+other global rule still applies to you, and you have no reason to touch
+anything outside this directory.
 
 ## Memory
 
