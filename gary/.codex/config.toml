@@ -1,0 +1,5 @@
+# Gary's Minecraft body: the mine-ai-mcp host started by ../run-host.sh.
+[mcp_servers.minecraft]
+url = "http://127.0.0.1:25575/mcp"
+# A single smelt, journey or collection can run for many minutes.
+tool_timeout_sec = 3600
