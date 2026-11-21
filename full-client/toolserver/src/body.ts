@@ -43,6 +43,8 @@ export class Body {
   private players = new Map<string, Entity>();
   private eating?: Meal;
   private mealsBlocked?: { since: number; reported: boolean };
+  /** A hazard is present but a screen would not close; reported once per episode. */
+  private rescueBlocked = false;
   private nextMeal = 0;
   private combat?: { target: number; until: number; nextAttack: number; previousSlot: number };
   private fleeing = false;
@@ -479,6 +481,20 @@ export class Body {
       await this.mealOpenedScreen(this.eating, state.screen);
       return;
     }
+    // A screen freezes movement and held keys, so a hazard that arrives while
+    // one is open (a chest opened at the water's edge, a crafting table in a
+    // burning cabin) must get it out of the way rather than wait for him.
+    if (state.screen !== "none" && state.health > 0 && !this.manual && !this.stopped && this.environmentalRescue(state)) {
+      const closed = await this.closeScreen();
+      if (closed.after === "none") {
+        this.events.add("reflex", { text: `closed ${closed.before} to escape danger` });
+        this.rescueBlocked = false;
+        state = { ...state, screen: "none" };
+      } else if (!this.rescueBlocked) {
+        this.rescueBlocked = true;
+        this.events.add("reflex", { text: `in danger but ${closed.after} will not close; rescue blocked` });
+      }
+    } else if (state.screen === "none") this.rescueBlocked = false;
     if (state.screen !== "none" || state.health <= 0 || this.manual || this.stopped) {
       if (this.rescue) await this.finishRescue(state.health <= 0 ? "death" : state.screen !== "none" ? `screen opened: ${state.screen}` : "manual control");
       if (this.eating?.automatic || this.fleeing) {

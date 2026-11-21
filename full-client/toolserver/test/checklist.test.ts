@@ -161,6 +161,27 @@ test("A13 surfacing repeats jump, seeks the trail after six seconds, then resume
   expect(f.requests.filter(r => r.body.text === "#resume")).toHaveLength(1);
 });
 
+test("A13 a screen open while drowning is closed so the rescue can run", async () => {
+  const f = await fixture(); await f.body.poll();
+  f.setScreen({ screen: "CraftingScreen", title: "Crafting" });
+  Object.assign(f.state, { underwater: true, inWater: true, onGround: false, air: 40, maxAir: 300 });
+  await f.body.poll(); await f.body.api.state();
+  const events = f.body.events.consume();
+  expect(events).toContain("closed CraftingScreen to escape danger");
+  expect(events).toContain("surface rescue started");
+  expect(f.requests.some(r => r.body.action === "move" && r.body.jump === true)).toBe(true);
+});
+
+test("A13 a screen that will not close is reported once as blocking the rescue", async () => {
+  const f = await fixture(); Object.assign(f.options, { closeFailures: 99, escapeBlocked: true }); await f.body.poll();
+  f.setScreen({ screen: "CraftingScreen", title: "Crafting" });
+  Object.assign(f.state, { underwater: true, inWater: true, onGround: false, air: 40, maxAir: 300 });
+  await f.body.poll(); await f.body.poll();
+  const events = f.body.events.consume();
+  expect(events.match(/rescue blocked/g)).toHaveLength(1);
+  expect(events).not.toContain("surface rescue started");
+});
+
 test("A12 lava rescue jumps and sprints toward the last safe crumb until out", async () => {
   const f = await fixture(); await f.body.poll(); moveTo(f, 2, 64, 0);
   Object.assign(f.state, { inLava: true, onFire: true, onGround: false });
@@ -279,7 +300,8 @@ test.each(["success", "timeout", "death", "screen", "manual", "shutdown"] as con
     f.tick(1000); await f.body.poll();
   } else if (exit === "timeout") { f.tick(5000); await f.body.poll(); }
   else if (exit === "death") { f.state.health = 0; await f.body.poll(); }
-  else if (exit === "screen") { f.setScreen({ screen: "InventoryScreen" }); await f.body.poll(); }
+  // An ordinary screen is closed so the rescue can go on; only one that refuses to close ends it.
+  else if (exit === "screen") { Object.assign(f.options, { closeFailures: 99, escapeBlocked: true }); f.setScreen({ screen: "InventoryScreen" }); await f.body.poll(); }
   else if (exit === "manual") await f.tools.call("look", { yaw: 10, pitch: 0 });
   else await f.body.close();
   expect(f.requests.filter(r => r.body.action === "release")).toHaveLength(1);
