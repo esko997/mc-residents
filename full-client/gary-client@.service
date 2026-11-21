@@ -1,0 +1,16 @@
+# A resident's real Minecraft client on Cachy, headless. The instance name is
+# the in-game username:  systemctl --user start gary-client@gary_fc_test
+#
+# Deliberately not enabled at login: it shares the machine with the owner's own
+# game, so it runs only when started, under these ceilings.
+[Unit]
+Description=Resident full client (%i)
+
+[Service]
+ExecStart=%h/gary-client/launch.sh %i
+MemoryHigh=9G
+MemoryMax=10G
+MemorySwapMax=0
+CPUQuota=400%
+Nice=10
+Restart=no
