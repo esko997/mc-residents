@@ -9,7 +9,9 @@
 #
 # instances/<username>.env, when present, sets GAME_DIR and SYNAPSE_URL for a
 # resident that is not Gary. SESSION_NOTE, when set, is appended to the opening
-# prompt: one-off news, such as a change to the body.
+# prompt: one-off news, such as a change to the body. RESUME_THREAD, when set
+# to a Codex thread id, continues that mind instead of starting a new one: for
+# putting a resident back after its body was updated in the middle of a run.
 #
 # Start it as a transient user unit so it outlives the SSH session:
 #   systemd-run --user --unit=gary-session ~/gary-client/run-session.sh Gary gary 60
@@ -133,7 +135,7 @@ opening="It is $(date +%H:%M). Play until $end.${SESSION_NOTE:+ $SESSION_NOTE}$(
 # restarts each read her notes, said goodbye in chat and stopped, three times in
 # two minutes.
 min_left=180
-thread=
+thread=${RESUME_THREAD:-}
 while :; do
   left=$(( end_at - $(date +%s) ))
   [ "$left" -lt "$min_left" ] && break

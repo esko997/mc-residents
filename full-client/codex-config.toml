@@ -12,8 +12,8 @@ trust_level = "trusted"
 command = "/home/swatson/gary-client/bin/bun"
 args = ["/home/swatson/gary-client/toolserver/src/main.ts"]
 startup_timeout_sec = 30
-# `wait` can hold for two minutes.
-tool_timeout_sec = 180
+# `wait` can hold for two minutes; a skill may run for up to ten.
+tool_timeout_sec = 660
 default_tools_approval_mode = "approve"
 
 [mcp_servers.body.env]
@@ -21,3 +21,5 @@ CLIENT_LOG = "/home/swatson/gary-client/game/logs/latest.log"
 RESIDENT_NAME = "Gary"
 RESIDENT_DIR = "/home/swatson/gary-client/resident/gary"
 KNOWLEDGE_DB = "/home/swatson/gary-client/knowledge.sqlite"
+# Shared with the Commons web app: skills, shared notes, feedback, reviews.
+COMMONS_DB = "/home/swatson/gary-client/commons-data/commons.sqlite"
