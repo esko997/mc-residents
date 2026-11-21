@@ -23,7 +23,7 @@ export const definitions = {
   status: { description: "Brief body, surroundings, navigation and screen status.", schema: z.object({}) },
   inventory: { description: "Non-empty inventory stacks; H marks hotbar (slots 0..8).", schema: z.object({}) },
   say: { description: "Speak plain chat, independently of walking; not commands. Text longer than one chat line (256 characters) is sent as up to three lines.", schema: z.object({ text: z.string().min(1).max(768) }) },
-  look: { description: "Look by yaw/pitch, world block coordinates (floats use the containing block), or nearby player name.", schema: z.union([z.object({ yaw: finite, pitch: finite.min(-90).max(90) }).strict(), z.object({ x: blockCoordinate, y: blockCoordinate, z: blockCoordinate }).strict(), z.object({ player: name }).strict()]) },
+  look: { description: "Look by yaw and/or pitch (an omitted one stays as it is), world block coordinates (floats use the containing block), or nearby player name.", schema: z.union([z.object({ yaw: finite.optional(), pitch: finite.min(-90).max(90).optional() }).strict().refine(a => a.yaw !== undefined || a.pitch !== undefined, "give yaw, pitch or both"), z.object({ x: blockCoordinate, y: blockCoordinate, z: blockCoordinate }).strict(), z.object({ player: name }).strict()]) },
   use: { description: "Right-click; optionally hold use 1..200 ticks (20 ticks/s).", schema: z.object(hold) },
   attack: { description: "Left-click; optionally hold attack to mine by hand.", schema: z.object(hold) },
   select_hotbar: { description: "Select hotbar slot 0..8.", schema: z.object({ slot: z.number().int().min(0).max(8) }) },
@@ -163,7 +163,12 @@ export class Tools {
         return stacks.join("\n") || "Inventory empty.";
       }
       case "look": {
-        if ("yaw" in args) { await api.player({ action: "look", yaw: args.yaw, pitch: args.pitch }); return "Looked."; }
+        if (!("x" in args) && !("player" in args)) {
+          // Margo asked for {pitch: -45} alone; keep the other angle as it is.
+          const { rotation } = await api.state();
+          await api.player({ action: "look", yaw: args.yaw ?? rotation.yaw, pitch: args.pitch ?? rotation.pitch });
+          return "Looked.";
+        }
         if ("player" in args) {
           const state = await api.state(true);
           const entity = state.nearbyEntities?.find(e => playerEntity(e) && e.name?.toLowerCase() === args.player.toLowerCase());

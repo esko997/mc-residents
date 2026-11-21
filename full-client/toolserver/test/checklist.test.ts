@@ -58,6 +58,16 @@ test.each(["meal", "fight"] as const)("I05 Automatic controls fight a direct too
   expect(f.requests.slice(start).some(r => r.body.action === "attack" || r.body.action === "use")).toBe(false);
 });
 
+test("look with only pitch keeps the current yaw; with neither it explains", async () => {
+  const f = await fixture(); await f.body.poll();
+  const result = await f.tools.call("look", { pitch: -45 });
+  expect(result.isError).toBe(false);
+  expect(f.requests.filter(r => r.body.action === "look").at(-1)?.body).toEqual({ action: "look", yaw: 73, pitch: -45 });
+  const empty = await f.tools.call("look", {});
+  expect(empty.isError).toBe(true);
+  expect(toolText(empty)).toContain("Look by yaw and/or pitch");
+});
+
 test.each(["meal", "fight"] as const)("I06 Automatic controls remain held on death (%s)", async kind => {
   const f = await fixture();
   if (kind === "meal") await startMeal(f); else await startFight(f);
