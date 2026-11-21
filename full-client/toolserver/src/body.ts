@@ -5,8 +5,12 @@ import { angles, hostileEntity, nonempty, playerEntity, type Config, type Entity
 export interface Goal { x: number; z: number; y?: number }
 export interface Navigation {
   description: string; target?: Goal; follow?: string;
+  /** Where he stood when the command was given. */
+  start: Position;
   lastPos: Position; lastMoved: number; lastReply?: string; reported: boolean;
 }
+/** `pos` is the block he last stood in alive; `at` is the body clock (ms) when the death was seen. */
+export interface Death { pos: Position; dimension: string; at: number }
 export interface Reflexes {
   auto_eat: boolean; eat_below: number; when_attacked: "auto" | "fight" | "flee" | "nothing";
   surface: boolean; escape_fire: boolean; avoid_creepers: boolean;
@@ -24,10 +28,16 @@ interface Rescue {
   action?: Promise<void>; error?: string; lastAim: number; detail?: string;
   enemyId?: number; initialAir?: number; initialMaxAir?: number;
   rotation?: State["rotation"]; slot?: number; bucketSlot?: number; placedAt?: number;
+  /** The navigation that was running when a surface or lava rescue began. */
+  navigation?: Navigation;
 }
 const rescuePriority: Record<RescueKind, number> = { retreat: 1, fire: 2, surface: 3, lava: 4 };
 const seconds = (ms: number) => `${Math.round(ms / 100) / 10} s`;
 const distance = (a: Position, b: Position) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+const blockOf = (p: Position): Position => ({ x: Math.floor(p.x), y: Math.floor(p.y), z: Math.floor(p.z) });
+// A goal with a height is not reached by standing above or below it: an
+// underground destination must not report arrival from the surface.
+const remaining = (pos: Position, goal: Goal) => Math.hypot(pos.x - goal.x, pos.z - goal.z, goal.y === undefined ? 0 : pos.y - goal.y);
 const entityPosition = (entity: Entity): Position => ({ x: entity.pos[0], y: entity.pos[1], z: entity.pos[2] });
 const foods: Record<string, true> = Object.fromEntries((
   "apple golden_apple enchanted_golden_apple bread baked_potato carrot golden_carrot beetroot melon_slice sweet_berries glow_berries dried_kelp cookie pumpkin_pie mushroom_stew rabbit_stew beetroot_soup cooked_beef cooked_porkchop cooked_chicken cooked_mutton cooked_rabbit cooked_cod cooked_salmon beef porkchop chicken mutton rabbit cod salmon tropical_fish potato honey_bottle"
@@ -38,6 +48,9 @@ export class Body {
   state?: State;
   entities: Entity[] = [];
   navigation?: Navigation;
+  lastDeath?: Death;
+  /** Called once per death, after `lastDeath` is set, so another module can record it. */
+  onDeath?: (death: Death) => void | Promise<void>;
   reflexes: Reflexes = { auto_eat: true, eat_below: 12, when_attacked: "auto", surface: true, escape_fire: true, avoid_creepers: true, water_bucket: false };
   error?: string;
   private pollTimer?: Timer;
@@ -55,6 +68,10 @@ export class Body {
   private crumbs: Position[] = [];
   private rescue?: Rescue;
   private rescueCleanup?: Promise<void>;
+  /** Per goal description, when a surface or lava rescue stopped it (body clock, last ten minutes). */
+  private hazardStops = new Map<string, number[]>();
+  /** Consecutive stop-shorts of one goal from about one place; `start` is where the latest attempt began. */
+  private stopShorts?: { description: string; start: Position; count: number };
   private manual = 0;
   private stopped = false;
   constructor(readonly config: Config, readonly api: Synapse, private now = Date.now) {
@@ -86,7 +103,17 @@ export class Body {
       if (state.health < this.state.health) {
         hurt = true; this.events.add("hurt", { from: this.state.health, to: state.health });
       }
-      if (state.health <= 0 && this.state.health > 0) this.events.add("died");
+      if (state.health <= 0 && this.state.health > 0) {
+        const death: Death = { pos: blockOf(this.state.pos), dimension: this.state.dimension, at: this.now() };
+        this.lastDeath = death;
+        this.events.add("died", {
+          at: `${death.pos.x},${death.pos.y},${death.pos.z}`, dimension: death.dimension,
+          text: "what you carried dropped there; items last about five minutes",
+        });
+        // A record that cannot be written must not cost the release of held keys below.
+        try { await this.onDeath?.(death); }
+        catch (error) { this.events.add("system", { text: `death not recorded: ${error instanceof Error ? error.message : "hook failed"}` }); }
+      }
       if (state.food < 7 && this.state.food >= 7) this.events.add("hungry", { food: state.food });
     } else if (state.food < 7) this.events.add("hungry", { food: state.food });
     this.state = { ...state, inventory: this.state?.inventory }; this.error = undefined;
@@ -144,16 +171,23 @@ export class Body {
     if (Math.hypot(state.pos.x - nav.lastPos.x, state.pos.y - nav.lastPos.y, state.pos.z - nav.lastPos.z) > 0.15) {
       nav.lastPos = { ...state.pos }; nav.lastMoved = this.now();
     }
-    // A goal with a height is not reached by standing above or below it: an
-    // underground destination must not report arrival from the surface.
-    const distance = nav.target
-      ? Math.hypot(state.pos.x - nav.target.x, state.pos.z - nav.target.z, nav.target.y === undefined ? 0 : state.pos.y - nav.target.y)
-      : undefined;
-    if (distance !== undefined && distance <= 2) {
+    const left = nav.target ? remaining(state.pos, nav.target) : undefined;
+    if (left !== undefined && left <= 2) {
       this.events.add("arrived", { goal: nav.description }); nav.reported = true;
+      this.stopShorts = undefined;
     } else if (this.now() - nav.lastMoved >= 4000) {
+      // navigate() dropped the count if this is another goal or began far from the last attempt.
+      const attempts = (this.stopShorts?.count ?? 0) + 1;
+      this.stopShorts = { description: nav.description, start: nav.start, count: attempts };
       this.events.add("stopped_short", {
-        distance: distance === undefined ? "unknown (no fixed destination)" : Math.round(distance * 10) / 10,
+        distance: left === undefined ? "unknown (no fixed destination)" : Math.round(left * 10) / 10,
+        // Ahead of the Baritone reply, which is what the line limit may cut.
+        ...(attempts >= 3 ? {
+          attempts,
+          text: nav.target && !nav.follow
+            ? `same destination has stopped short ${attempts} times from about here`
+            : `same command has ended ${attempts} times from about here`,
+        } : {}),
         baritone: nav.lastReply ?? "no reply observed since start",
       });
       nav.reported = true;
@@ -162,7 +196,12 @@ export class Body {
   async navigate(command: string, target?: Goal, follow?: string) {
     const state = await this.api.state();
     await this.tail.read(); // Drain old replies before assigning a new navigation.
-    this.navigation = { description: command.slice(1), target, follow, lastPos: { ...state.pos }, lastMoved: this.now(), reported: false };
+    // A rescue that is still cleaning up may be about to send #stop for the
+    // navigation it interrupted; that must not land after this command.
+    while (this.rescueCleanup) await this.rescueCleanup;
+    const description = command.slice(1), last = this.stopShorts;
+    if (last && (last.description !== description || Math.hypot(state.pos.x - last.start.x, state.pos.z - last.start.z) > 8)) this.stopShorts = undefined;
+    this.navigation = { description, target, follow, start: { ...state.pos }, lastPos: { ...state.pos }, lastMoved: this.now(), reported: false };
     try {
       await this.api.chat(command);
       if (this.combat || this.fleeing || this.rescue?.paused) await this.api.chat("#pause");
@@ -367,6 +406,7 @@ export class Body {
       kind, reason, started: this.now(), paused: inheritedPause || usesControls, busy: false, lastAim: -Infinity,
       enemyId: enemy?.id, initialAir: current.air, initialMaxAir: current.maxAir,
       ...(kind === "fire" && usesControls ? { rotation: { ...current.rotation }, slot: current.selectedSlot, bucketSlot: bucket!.slot } : {}),
+      ...(kind === "surface" || kind === "lava" ? { navigation: this.navigation } : {}),
     };
     this.rescue = rescue;
     if (kind === "fire" && !usesControls) rescue.detail = current.dimension === "minecraft:the_nether" ? "water cannot be used in the Nether" : !this.reflexes.water_bucket ? "water bucket use is off" : "no water bucket in the hotbar";
@@ -486,6 +526,11 @@ export class Body {
     const rescue = this.rescue;
     if (!rescue) { await this.rescueCleanup; return; }
     this.rescue = undefined;
+    // Resuming would walk him back into the water or lava this path crosses.
+    // Dropped before any await, so no stopped_short is reported for it. A
+    // navigation given during the rescue is another path and resumes as usual.
+    const abandoned = rescue.navigation !== undefined && rescue.navigation === this.navigation ? rescue.navigation : undefined;
+    if (abandoned) this.navigation = undefined;
     const cleanup = (async () => {
       await rescue.action;
       let failed = false;
@@ -498,14 +543,34 @@ export class Body {
       }
       if (rescue.paused) {
         try {
-          await this.api.chat("#resume");
-          if (this.navigation) this.navigation.lastMoved = this.now();
+          // Baritone's stop is cancel: it drops the goal and its pause flag. On shutdown close() sends it.
+          if (abandoned) { if (!this.stopped) await this.api.chat("#stop"); }
+          else {
+            await this.api.chat("#resume");
+            if (this.navigation) this.navigation.lastMoved = this.now();
+          }
         } catch { failed = true; }
       }
       this.events.add("reflex", { text: `${rescue.kind} rescue ended after ${seconds(this.now() - rescue.started)}: ${outcome}${failed ? "; cleanup incomplete" : ""}` });
+      if (abandoned) this.reportHazardStop(abandoned, rescue.kind === "lava" ? "lava" : "deep water");
     })();
     this.rescueCleanup = cleanup;
     try { await cleanup; } finally { if (this.rescueCleanup === cleanup) this.rescueCleanup = undefined; }
+  }
+  private reportHazardStop(nav: Navigation, hazard: string) {
+    const now = this.now(), window = 600_000;
+    for (const [goal, times] of this.hazardStops) if (now - times.at(-1)! > window) this.hazardStops.delete(goal);
+    const times = [...(this.hazardStops.get(nav.description) ?? []).filter(time => now - time <= window), now];
+    this.hazardStops.set(nav.description, times);
+    const state = this.state!; // A rescue only starts from a polled state.
+    const alive = state.health > 0, here = blockOf(state.pos);
+    this.events.add("navigation_stopped", {
+      goal: nav.description,
+      reason: `the path led into ${hazard}${alive ? "" : " and you died there"}`,
+      ...(alive ? { you: `${here.x},${here.y},${here.z}` } : {}),
+      ...(alive && nav.target && !nav.follow ? { remaining: Math.round(remaining(state.pos, nav.target) * 10) / 10 } : {}),
+      ...(times.length > 1 ? { times: `${times.length} in ten minutes` } : {}),
+    });
   }
   private async reflex(state: State, hurt: boolean) {
     const needsMeal = this.reflexes.auto_eat && (state.food < this.reflexes.eat_below || (state.health < 14 && state.food < 20));

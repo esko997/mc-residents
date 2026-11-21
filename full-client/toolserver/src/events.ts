@@ -1,7 +1,9 @@
 import { open, stat, type FileHandle } from "node:fs/promises";
 
 export interface ResidentEvent { seq: number; type: string; [key: string]: unknown }
-const waking: Record<string, true> = { chat: true, hurt: true, died: true, player_near: true, arrived: true, stopped_short: true, reflex: true };
+const waking: Record<string, true> = { chat: true, hurt: true, died: true, player_near: true, arrived: true, stopped_short: true, navigation_stopped: true, reflex: true };
+/** Lines that carry coordinates and a reason; the rest stay short so eight of them fit a tool result. */
+const long: Record<string, true> = { stopped_short: true, navigation_stopped: true, died: true, reflex: true };
 export class Events {
   private sequence = 0;
   private seen = 0;
@@ -14,7 +16,9 @@ export class Events {
     for (const listener of this.listeners) listener(event);
   }
   async wait(seconds: number, filter?: string[], signal?: AbortSignal): Promise<string> {
-    const matches = (e: ResidentEvent) => waking[e.type] === true && (!filter?.length || filter.includes(e.type));
+    // A rescue can end a navigation without arrival or stall; a wait for either of those must not sleep through it.
+    const matches = (e: ResidentEvent) => waking[e.type] === true && (!filter?.length || filter.includes(e.type) ||
+      (e.type === "navigation_stopped" && (filter.includes("arrived") || filter.includes("stopped_short"))));
     if (this.entries.some(e => e.seq > this.seen && matches(e))) return "Waking event received.";
     if (signal?.aborted) return "Wait cancelled.";
     const { promise, resolve } = Promise.withResolvers<string>();
@@ -35,7 +39,7 @@ export class Events {
     const lines = unseen.map(event => {
       const { seq, type, ...fields } = event;
       const text = Object.entries(fields).map(([key, value]) => `${key}=${String(value).replace(/\s+/g, " ")}`).join(" ");
-      return `${seq} ${type}${text ? ` ${text}` : ""}`.slice(0, type === "stopped_short" || type === "reflex" ? 160 : 91);
+      return `${seq} ${type}${text ? ` ${text}` : ""}`.slice(0, long[type] ? 160 : 91);
     });
     return `Since last time:${dropped > 0 ? ` (${dropped} older dropped)` : ""}\n${lines.length ? lines.join("\n") : "none"}`;
   }

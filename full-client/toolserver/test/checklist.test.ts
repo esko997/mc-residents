@@ -403,3 +403,184 @@ test("status shows air and burning/lava, and new rescues can be disabled", async
   const status = toolText(await f.tools.call("status"));
   expect(status).toContain("Air 20/300"); expect(status).toContain("Hazard: burning, in lava");
 });
+
+const chats = (f: Fixture) => f.requests.filter(r => r.path === "/chat").map(r => r.body.text);
+async function startDrowning(f: Fixture) {
+  Object.assign(f.state, { underwater: true, inWater: true, onGround: false, air: 40, maxAir: 300 });
+  await f.body.poll(); await f.body.api.state();
+}
+async function reachDryGround(f: Fixture, x: number, y: number, z: number) {
+  moveTo(f, x, y, z); Object.assign(f.state, { underwater: false, inWater: false, onGround: true, air: 300 });
+  f.tick(1000); await f.body.poll();
+}
+/** Give a navigation command and let four seconds pass without movement. */
+async function stall(f: Fixture, tool: "go_to" | "mine", args: object) {
+  await f.tools.call(tool, args); f.tick(4000); await f.body.poll();
+  return f.body.events.consume();
+}
+
+test("death report gives the last living block and dimension, and hands the death to a recorder", async () => {
+  const f = await fixture(); const recorded: unknown[] = []; f.body.onDeath = death => { recorded.push(death); };
+  moveTo(f, 104.7, 63, -91.3); f.state.dimension = "minecraft:the_nether"; await f.body.poll();
+  // The body is knocked on before the death is seen; the drop is reported where he last stood alive.
+  f.tick(5000); moveTo(f, 106.2, 60.4, -93.5); f.state.health = 0; await f.body.poll();
+  expect(f.body.events.consume()).toContain("died at=104,63,-92 dimension=minecraft:the_nether text=what you carried dropped there; items last about five minutes");
+  expect(f.body.lastDeath).toEqual({ pos: { x: 104, y: 63, z: -92 }, dimension: "minecraft:the_nether", at: 5000 });
+  expect(recorded).toEqual([f.body.lastDeath]);
+  await f.body.poll();
+  expect(f.body.events.consume()).not.toContain("died");
+  expect(recorded).toHaveLength(1);
+});
+
+test("a death recorder that fails is reported and does not keep held keys down", async () => {
+  const f = await fixture(); f.body.onDeath = () => { throw new Error("disk full"); };
+  await startFight(f);
+  const start = f.requests.length;
+  f.state.health = 0; await f.body.poll();
+  const events = f.body.events.consume();
+  expect(events).toContain("died at=0,64,0 dimension=minecraft:overworld");
+  expect(events).toContain("death not recorded: disk full");
+  expect(f.requests.slice(start).some(r => r.body.action === "release")).toBe(true);
+  expect(f.body.error).toBeUndefined();
+});
+
+test("A13 a go_to that led into deep water is stopped after the rescue, not resumed", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("go_to", { x: 400, y: 60, z: -621 });
+  moveTo(f, 387.5, 61, -617.5); await startDrowning(f);
+  await reachDryGround(f, 388.3, 64, -617.2);
+  expect(chats(f)).toEqual(["#goto 400 60 -621", "#pause", "#stop"]);
+  expect(f.body.navigation).toBeUndefined();
+  const events = f.body.events.consume();
+  expect(events).toContain("surface rescue ended");
+  expect(events).toContain("navigation_stopped goal=goto 400 60 -621 reason=the path led into deep water you=388,64,-618 remaining=12.9");
+  expect(events).not.toContain("times=");
+  f.tick(4000); await f.body.poll();
+  expect(f.body.events.consume()).not.toContain("stopped_short");
+  expect(toolText(await f.tools.call("status"))).toContain("Navigation: none");
+});
+
+test("A13 the second rescue on one goal within ten minutes says so; other goals and later rescues count afresh", async () => {
+  const f = await fixture(); await f.body.poll();
+  const rescued = async (goal: { x: number; z: number }) => {
+    await f.tools.call("go_to", goal); await startDrowning(f); await reachDryGround(f, 0, 64, 0);
+    return f.body.events.consume();
+  };
+  expect(await rescued({ x: 400, z: -621 })).not.toContain("times=");
+  f.tick(60_000);
+  expect(await rescued({ x: 400, z: -621 })).toContain("navigation_stopped goal=goto 400 -621 reason=the path led into deep water you=0,64,0 remaining=738.7 times=2 in ten minutes");
+  expect(await rescued({ x: 50, z: 0 })).not.toContain("times=");
+  f.tick(600_000);
+  const later = await rescued({ x: 400, z: -621 });
+  expect(later).toContain("navigation_stopped goal=goto 400 -621"); expect(later).not.toContain("times=");
+  expect(chats(f).filter(text => text === "#stop")).toHaveLength(4);
+  expect(chats(f)).not.toContain("#resume");
+});
+
+test("A12 a mine command that led into lava is stopped; no distance is given without a destination", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("mine", { block: "iron_ore" });
+  moveTo(f, 2, 63.5, 0); Object.assign(f.state, { inLava: true, onFire: true, onGround: false });
+  await f.body.poll(); await f.body.api.state();
+  moveTo(f, -3.4, 64, 0.2); Object.assign(f.state, { inLava: false, onFire: false, onGround: true });
+  f.tick(1000); await f.body.poll();
+  expect(chats(f)).toEqual(["#mine minecraft:iron_ore", "#pause", "#stop"]);
+  expect(f.body.navigation).toBeUndefined();
+  const events = f.body.events.consume();
+  expect(events).toContain("navigation_stopped goal=mine minecraft:iron_ore reason=the path led into lava you=-4,64,0");
+  expect(events).not.toContain("remaining=");
+});
+
+test("A23 a retreat during a go_to still pauses and resumes the same navigation", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("go_to", { x: 400, z: -621 });
+  f.state.nearbyEntities = [{ id: 7, type: "minecraft:creeper", hostile: true, distance: 2, pos: [2, 64, 0], health: 20, fuse: true }];
+  f.tick(1000); await f.body.poll(); await f.body.api.state();
+  f.state.nearbyEntities = [{ id: 7, type: "minecraft:creeper", hostile: true, distance: 12, pos: [12, 64, 0], health: 20 }];
+  f.tick(1000); await f.body.poll();
+  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#resume"]);
+  expect(f.body.navigation?.description).toBe("goto 400 -621");
+  const events = f.body.events.consume();
+  expect(events).toContain("retreat rescue ended"); expect(events).not.toContain("navigation_stopped");
+  f.tick(4000); await f.body.poll();
+  expect(f.body.events.consume()).toContain("stopped_short distance=738.7");
+});
+
+test("A13 death during a rescue on a go_to stops Baritone once and never resumes it", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("go_to", { x: 400, z: -621 });
+  await startDrowning(f);
+  f.state.health = 0; f.tick(1000); await f.body.poll();
+  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#stop"]);
+  expect(f.body.navigation).toBeUndefined();
+  const events = f.body.events.consume();
+  expect(events).toContain("died at=0,64,0");
+  expect(events).toContain("navigation_stopped goal=goto 400 -621 reason=the path led into deep water and you died there");
+  expect(events).not.toContain("you="); expect(events).not.toContain("remaining=");
+  f.tick(1000); await f.body.poll();
+  expect(chats(f)).toHaveLength(3);
+});
+
+test("A13 a go_to given during the rescue is a new path and is resumed, not stopped", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("go_to", { x: 400, z: -621 });
+  await startDrowning(f);
+  await f.tools.call("go_to", { x: -30, z: 8 });
+  await reachDryGround(f, 1, 64, 1);
+  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#goto -30 8", "#pause", "#resume"]);
+  expect(f.body.navigation?.description).toBe("goto -30 8");
+  expect(f.body.events.consume()).not.toContain("navigation_stopped");
+});
+
+test("A13 shutdown during a rescue on a go_to sends one stop and no resume", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("go_to", { x: 400, z: -621 });
+  await startDrowning(f);
+  await f.body.close();
+  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#stop"]);
+});
+
+test("a wait for arrival wakes when a rescue stops the navigation instead", async () => {
+  const f = await fixture(); await f.body.poll();
+  await f.tools.call("go_to", { x: 400, z: -621 });
+  await startDrowning(f); f.body.events.consume();
+  const waiting = f.tools.call("wait", { seconds: 2, for: ["arrived", "stopped_short"] });
+  await reachDryGround(f, 0, 64, 0);
+  const text = toolText(await waiting);
+  expect(text).toContain("Waking event received."); expect(text).toContain("navigation_stopped goal=goto 400 -621");
+});
+
+test("the third stop-short of one destination from one place says so, and an arrival starts the count over", async () => {
+  const f = await fixture(); const goal = { x: 50, z: 0 };
+  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 baritone=no reply observed since start");
+  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 baritone=no reply observed since start");
+  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 attempts=3 text=same destination has stopped short 3 times from about here baritone=no reply observed since start");
+  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 attempts=4 text=same destination has stopped short 4 times from about here baritone=");
+  await f.tools.call("go_to", goal); moveTo(f, 49, 64, 0); await f.body.poll();
+  expect(f.body.events.consume()).toContain("arrived goal=goto 50 0");
+  moveTo(f, 0, 64, 0);
+  expect(await stall(f, "go_to", goal)).not.toContain("attempts=");
+  expect(await stall(f, "go_to", goal)).not.toContain("attempts=");
+  expect(await stall(f, "go_to", goal)).toContain("attempts=3");
+});
+
+test("the stop-short count ends with a start more than 8 blocks away or with another goal", async () => {
+  const f = await fixture(); const goal = { x: 50, z: 0 };
+  await stall(f, "go_to", goal); await stall(f, "go_to", goal);
+  moveTo(f, 6, 64, 5); // 7.8 blocks across the ground from the previous start
+  expect(await stall(f, "go_to", goal)).toContain("attempts=3");
+  moveTo(f, 6, 64, 14); // 9 blocks from the previous start
+  expect(await stall(f, "go_to", goal)).not.toContain("attempts=");
+  expect(await stall(f, "go_to", goal)).not.toContain("attempts=");
+  expect(await stall(f, "go_to", { x: 50, z: 1 })).not.toContain("attempts=");
+  expect(await stall(f, "go_to", goal)).not.toContain("attempts=");
+  expect(await stall(f, "go_to", goal)).not.toContain("attempts=");
+  expect(await stall(f, "go_to", goal)).toContain("attempts=3");
+});
+
+test("a mine command ending three times from one place is counted without naming a destination", async () => {
+  const f = await fixture(); const args = { block: "oak_log", count: 3 };
+  expect(await stall(f, "mine", args)).not.toContain("attempts=");
+  expect(await stall(f, "mine", args)).not.toContain("attempts=");
+  expect(await stall(f, "mine", args)).toContain("stopped_short distance=unknown (no fixed destination) attempts=3 text=same command has ended 3 times from about here baritone=");
+});

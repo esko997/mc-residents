@@ -1,11 +1,13 @@
 import { appendFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Body } from "./body.ts";
 import { hostileEntity, nonempty, playerEntity, type Stack } from "./synapse.ts";
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 import { craft } from "./craft.ts";
+import { createNotes, notesDefinitions, type Notes } from "./notes.ts";
+import { createWiki, wikiDefinition, type Wiki } from "./wiki.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -15,7 +17,7 @@ const itemId = z.string().regex(/^(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+$/, "Use an ite
 const hold = { hold_ticks: z.number().int().min(1).max(200).optional() };
 const key = z.enum(["ENTER", "ESCAPE", "BACKSPACE", "TAB", "UP", "DOWN", "LEFT", "RIGHT", "DELETE"]);
 export const definitions = {
-  wait: { description: "Wait for chat, danger, rescue reflexes, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short", "reflex"])).optional() }) },
+  wait: { description: "Wait for chat, danger, rescue reflexes, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short", "navigation_stopped", "reflex"])).optional() }) },
   go_to: { description: "Start Baritone travel; coordinates use the containing block (floats accepted). Returns immediately; arrival is an event.", schema: z.object({ x: blockCoordinate, z: blockCoordinate, y: blockCoordinate.optional() }) },
   mine: { description: "Start Baritone mining: walk to the nearest blocks of this kind and break them to collect them; may walk far, no radius limit. It breaks ANY matching block, including ones players placed (chests, doors, machines), so use it for natural blocks such as logs, stone and ores, never for things someone built. With the tree-chopping mod a log takes several chops; mining a log handles that. Bare block names mean minecraft:.", schema: z.object({ block: itemId, count: z.number().int().positive().optional() }).strict() },
   follow: { description: "Start following a named player.", schema: z.object({ player: name }) },
@@ -45,6 +47,8 @@ export const definitions = {
   guide: { description: "Search the modpack's own guide books.", schema: z.object({ query: z.string().min(1).max(200) }) },
   note_difficulty: { description: "Tell body maintainers what is hard; append dated position and last error to difficulties.md.", schema: z.object({ text: z.string().min(1).max(4000) }) },
   set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
+  ...notesDefinitions,
+  wiki: wikiDefinition,
 };
 export type ToolName = keyof typeof definitions;
 const knowledgeNames = ["find_item", "recipes", "craft", "uses", "guide"];
@@ -72,7 +76,20 @@ export class Tools {
   lastError?: string;
   /** How long craft waits for the server to show a crafting result or deliver it. */
   craftWaitMs = 2000;
-  constructor(readonly body: Body, readonly knowledge?: Knowledge, private knowledgeError = "KNOWLEDGE_DB is not configured.") {}
+  /** His own notes and places. Deaths are recorded as places so he can judge whether to go back. */
+  readonly notes: Notes;
+  /** Replaceable, so tests never reach the network. */
+  wiki: Wiki;
+  constructor(readonly body: Body, readonly knowledge?: Knowledge, private knowledgeError = "KNOWLEDGE_DB is not configured.") {
+    const { residentDir, name, knowledgeDb } = body.config;
+    this.notes = createNotes({
+      residentDir, residentName: name,
+      position: async () => { const state = await body.api.state(); return { ...state.pos, dimension: state.dimension }; },
+    });
+    body.onDeath = death => this.notes.recordDeath(death.pos, death.dimension);
+    // One cache file per resident: two tool servers never share a SQLite writer.
+    this.wiki = createWiki({ cachePath: knowledgeDb ? join(dirname(knowledgeDb), `wiki-cache-${name}.sqlite`) : undefined });
+  }
   get registeredNames(): ToolName[] {
     return (Object.keys(definitions) as ToolName[]).filter(n => this.knowledge || !knowledgeNames.includes(n));
   }
@@ -305,6 +322,11 @@ export class Tools {
         await appendFile(join(body.config.residentDir, "difficulties.md"), `\n## ${new Date().toISOString()}\n${args.text}\nPosition: ${position}\nLast tool error: ${this.lastError ?? "none"}\n`, "utf8");
         return "Recorded in difficulties.md.";
       }
+      case "recall": return this.notes.recall(args);
+      case "place_save": return this.notes.place_save(args);
+      case "place_find": return this.notes.place_find(args);
+      case "place_remove": return this.notes.place_remove(args);
+      case "wiki": return this.wiki.lookup(args);
       case "set_reflexes":
         Object.assign(body.reflexes, args);
         return `Reflexes: auto_eat=${body.reflexes.auto_eat}, eat_below=${body.reflexes.eat_below}, when_attacked=${body.reflexes.when_attacked}, surface=${body.reflexes.surface}, escape_fire=${body.reflexes.escape_fire}, avoid_creepers=${body.reflexes.avoid_creepers}, water_bucket=${body.reflexes.water_bucket}.`;
