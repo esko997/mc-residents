@@ -32,7 +32,7 @@ const tags: Record<string, string[]> = {
   "minecraft:planks": [mc("oak_planks"), mc("spruce_planks")],
   "minecraft:stone_crafting_materials": [mc("cobblestone"), mc("andesite")],
   "minecraft:oak_logs": [mc("oak_log"), mc("stripped_oak_log")],
-  "quark:revertable_chests": ["quark:oak_chest", "quark:birch_chest"],
+  "quark:revertable_chests": ["quark:oak_chest", "quark:birch_chest", "quark:spruce_chest", "quark:cherry_chest"],
 };
 function knowledge(dir: string) {
   const path = join(dir, "knowledge.sqlite");
@@ -130,8 +130,29 @@ describe("craft", () => {
     f.state.lookingAt = { type: "block", block: mc("crafting_table"), blockPos: [1, 64, 1] };
     await tools.call("use", {});
     const result = await tools.call("craft", { item: "chest" });
-    expect(text(result)).toContain("Crafted 1 x quark:spruce_chest (this server's own minecraft:chest for those materials; it does the same job) (recipe minecraft:chest) using 8 x minecraft:spruce_planks; you now have 1.");
+    expect(result.isError).toBe(false);
+    expect(text(result)).toContain("quark:spruce_chest");
     expect(menu(f)?.inventory).toEqual({ "quark:spruce_chest": 1 });
+  });
+  test("different chest variants in successive crafts retain both output totals", async () => {
+    const { f, tools } = await crafter({ recipes: [
+      { shapeless: [["quark:oak_chest"]], output: { item: "quark:spruce_chest", count: 1 } },
+      { shapeless: [["quark:birch_chest"]], output: { item: "quark:cherry_chest", count: 1 } },
+    ] });
+    carry(f, [0, 1, "quark:oak_chest"], [1, 1, "quark:birch_chest"]);
+    const result = await tools.call("craft", { item: "chest", count: 2 });
+    expect(result.isError).toBe(false);
+    expect(text(result)).toContain("1 x quark:spruce_chest");
+    expect(text(result)).toContain("1 x quark:cherry_chest");
+    expect(menu(f)?.inventory).toEqual({ "quark:spruce_chest": 1, "quark:cherry_chest": 1 });
+  });
+  test.each(["minecraft:trapped_chest", "unknown:chest", "unknown:birch_chest"])("similar output %s is not accepted as an ordinary chest", async output => {
+    const { f, tools } = await crafter({ recipes: [{
+      shapeless: [["quark:oak_chest"]], output: { item: output, count: 1 },
+    }] }, 100);
+    carry(f, [0, 1, "quark:oak_chest"]);
+    expect((await tools.call("craft", { item: "chest" })).isError).toBe(true);
+    expect(f.state.inventory!.main.map(({ item, count }) => ({ item, count }))).toEqual([{ count: 1, item: "quark:oak_chest" }]);
   });
   test("an ingredient with alternatives uses the one you have (charcoal torches)", async () => {
     const { f, tools } = await crafter();

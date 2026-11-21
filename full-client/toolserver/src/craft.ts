@@ -155,33 +155,25 @@ class Bench {
     if (this.carried !== air || back?.item !== item || back.count !== source.count - 1) throw new Error(`putting the other ${source.count - 1} x ${item} back in slot ${source.slot} left ${this.show(source.slot)} there and ${this.cursor} on the cursor`);
   }
   /**
-   * Waits for the output slot to show the item, then moves it into the inventory and checks it arrived.
-   * Returns what was taken and how many the inventory held before: some mods hand out their own variant
-   * for a vanilla recipe (Quark makes a quark:birch_chest from birch planks where minecraft:chest was asked).
+   * Waits for an accepted output, then moves it into the inventory and checks it arrived.
+   * Some mods hand out a known variant for a vanilla recipe (Quark's wooden chests).
    */
-  async take(item: string): Promise<{ item: string; had: number }> {
+  async take(item: string, accepted: Set<string>): Promise<void> {
     await this.settle();
-    if (!await this.until(() => variantOf(item, this.at(0)?.item))) throw new Error(`the output slot showed ${this.show(0)}, not ${item}; this server may not have the recipe`);
+    if (!await this.until(() => accepted.has(this.at(0)?.item ?? ""))) throw new Error(`the output slot showed ${this.show(0)}, not ${item}; this server may not have the recipe`);
     const result = this.at(0)!.item;
     const had = this.total(result);
     await this.click(0, 0, "QUICK_MOVE");
-    if (await this.until(() => this.total(result) > had)) return { item: result, had };
+    if (await this.until(() => this.total(result) > had)) return;
     // Shift-click moved nothing: carry the result to an empty slot by hand.
     const free = this.free()[0];
     if (free !== undefined && this.carried === air && this.at(0)?.item === result) {
       await this.click(0, 0);
       if (this.carried === result) await this.click(free, 0);
-      if (await this.until(() => this.total(result) > had)) return { item: result, had };
+      if (await this.until(() => this.total(result) > had)) return;
     }
     throw new Error(`taking ${result} from the output slot added none to your inventory${free === undefined ? " (no empty inventory slot)" : ""}`);
   }
-}
-
-/** The item itself, or a mod's version of it named after it: `quark:birch_chest` for `minecraft:chest`. */
-function variantOf(item: string, shown: string | undefined) {
-  if (!shown || shown === air) return false;
-  const path = (id: string) => id.slice(id.indexOf(":") + 1);
-  return shown === item || path(shown) === path(item) || path(shown).endsWith(`_${path(item)}`);
 }
 
 export interface CraftOptions {
@@ -249,32 +241,38 @@ export async function craft(body: Body, knowledge: Knowledge, item: string, craf
 
   const { candidate, plan } = chosen;
   const used = new Map<string, number>();
-  let done = 0, before = 0, result = item, failure: string | undefined;
+  // Only Quark's explicitly revertible ordinary chests may substitute for a plain chest.
+  // Similar names (trapped_chest, modded furnaces, etc.) are not evidence of equivalence.
+  const accepted = new Set([item, ...(item === "minecraft:chest" ? knowledge.itemsInTag("quark:revertable_chests", 500) : [])]);
+  const before = new Map<string, number>();
+  let done = 0, failure: string | undefined;
   try {
     await bench.clearGrid();
-    before = bench.total(item);
+    for (const id of accepted) before.set(id, bench.total(id));
     for (; done < crafts; done++) {
       if (options.signal?.aborted) throw new Error("the call was cancelled");
       // A craft can leave things behind in the grid, such as empty buckets.
       if (done) await bench.clearGrid();
       // Shaped cells keep their row and column from the top-left corner; shapeless ones fill the grid in order.
       for (const [index, cell] of candidate.cells.entries()) await bench.lay(1 + (candidate.shaped ? cell.row * size + cell.col : cell.col), plan.picks[done]![index]!);
-      const taken = await bench.take(item);
-      if (taken.item !== result) { result = taken.item; before = taken.had; }
+      await bench.take(item, accepted);
       for (const id of plan.picks[done]!) used.set(id, (used.get(id) ?? 0) + 1);
     }
     await bench.settle();
   } catch (error) { failure = error instanceof Error ? error.message.replace(/\.$/, "") : "an unknown error"; }
   if (bench.gone) throw new Error(`${failure}. ${done} of ${crafts} crafts were finished. Grid items return to you when a screen closes, but a stack on the cursor drops at your feet; check inventory.`);
   const untidy = await bench.tidy().catch(error => [`nothing checked: tidying up failed (${error instanceof Error ? error.message : "unknown error"})`]);
-  const have = bench.total(result), made = have - before;
-  if (failure === undefined && made <= 0) failure = `the server did not keep the result (you have ${have} x ${result}, as before)`;
+  const produced = [...before].map(([id, had]) => ({ id, have: bench.total(id), made: bench.total(id) - had })).filter(entry => entry.made > 0);
+  const made = produced.reduce((sum, entry) => sum + entry.made, 0);
+  if (failure === undefined && made <= 0) failure = "the server did not keep any crafted result";
   const state = untidy.length ? `Could not put everything away: ${untidy.join("; ")}.` : "The grid and your cursor are empty; unused ingredients are back in your inventory.";
-  const what = result === item ? item : `${result} (this server's own ${item} for those materials; it does the same job)`;
+  const what = produced.map(entry => `${entry.made} x ${entry.id}`).join(", ");
+  const have = produced.length === 1 ? String(produced[0]!.have) : produced.map(entry => `${entry.have} x ${entry.id}`).join(", ");
+  const variant = produced.some(entry => entry.id !== item) ? " The server produced Quark chest variants; use the reported ids for subsequent recipes." : "";
   if (failure === undefined) {
     const using = [...used].map(([id, count]) => `${count} x ${id}`).join(" + ");
-    return `Crafted ${made} x ${what} (recipe ${candidate.recipe.id}) using ${using}; you now have ${have}.${untidy.length ? ` ${state}` : ""} ${bench.layout.name} stays open for more crafting; close_screen when done.`;
+    return `Crafted ${what} (recipe ${candidate.recipe.id}) using ${using}; you now have ${have}.${variant}${untidy.length ? ` ${state}` : ""} ${bench.layout.name} stays open for more crafting; close_screen when done.`;
   }
-  if (done && made > 0) throw new Error(`Crafted ${made} x ${what} in ${done} of ${crafts} crafts (recipe ${candidate.recipe.id}), then stopped: ${failure}. ${state} You now have ${have}.`);
+  if (done && made > 0) throw new Error(`Crafted ${what} in ${done} of ${crafts} crafts (recipe ${candidate.recipe.id}), then stopped: ${failure}. ${state} You now have ${have}.${variant}`);
   return nothingMade(`Crafted nothing with recipe ${candidate.recipe.id}: ${failure}. ${state}${larger}`);
 }
