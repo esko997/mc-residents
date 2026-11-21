@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # The caretaker: a stronger model reads what one resident did lately and writes
 # at most one short note for it, plus a line for the humans who maintain its
-# body. SHADOW MODE: the note is only appended to overseer/<Name>.md for people
-# to read. Nothing here reaches the resident.
+# body. Every note is appended to overseer/<Name>.md. By default that is all
+# (shadow mode). When the file overseer/speak exists, the note is also said in
+# the game's chat as `<Caretaker> <Name>: ...`, through the server-console
+# bridge of the phone-chat service; delete the file to go back to shadow.
 #
 #   overseer.sh <Name> <persona-dir-name> [minutes] [extra digest arguments]
 #
@@ -47,10 +49,18 @@ out=$(mktemp)
   --skip-git-repo-check --ephemeral -s read-only -m "$model" \
   -c 'mcp_servers.body.enabled=false' -o "$out" "$prompt" < /dev/null > "$work/last-$name.log" 2>&1)
 status=$?
+mode=shadow
+[ -e "$work/speak" ] && mode=spoken
 {
-  echo; echo "## $(date '+%F %H:%M') (last $minutes min, $model, shadow)"
+  echo; echo "## $(date '+%F %H:%M') (last $minutes min, $model, $mode)"
   if [ "$status" -eq 0 ] && [ -s "$out" ]; then cat "$out"; else echo "(no answer: codex exit $status; see last-$name.log)"; fi
 } >> "$work/$name.md"
+if [ "$mode" = spoken ] && [ "$status" -eq 0 ] && [ -s "$out" ]; then
+  # The bridge address is the one the web app uses.
+  # shellcheck source=/dev/null
+  [ -f "$HOME/.config/commons/env" ] && . "$HOME/.config/commons/env"
+  python3 "$work/speak.py" "$name" "$out" "${CONSOLE_URL:-${CHAT_URL:-}}" >> "$work/$name.md" 2>&1 || true
+fi
 rm -f "$out"
 # The same caretaker also looks over what residents put in the commons since
 # its last pass. This part is not shadow: its verdicts take effect, and a person
