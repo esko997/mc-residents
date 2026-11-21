@@ -172,6 +172,22 @@ test("A13 a screen open while drowning is closed so the rescue can run", async (
   expect(f.requests.some(r => r.body.action === "move" && r.body.jump === true)).toBe(true);
 });
 
+test("A13 after surfacing he swims for the shore instead of floating and sinking again", async () => {
+  const f = await fixture(); await f.body.poll();
+  Object.assign(f.state, { underwater: true, inWater: true, onGround: false, air: 40, maxAir: 300 });
+  await f.body.poll(); await f.body.api.state();
+  Object.assign(f.state, { underwater: false, inWater: true, air: 120 });
+  for (let i = 0; i < 3; i++) { f.tick(600); await f.body.poll(); await f.body.api.state(); }
+  let events = f.body.events.consume();
+  expect(events).not.toContain("surface rescue ended");
+  expect(f.requests.filter(r => r.body.action === "move").at(-1)?.body).toEqual({ action: "move", forward: true, jump: true, ticks: 5 });
+  Object.assign(f.state, { inWater: false, onGround: true, air: 300 });
+  f.tick(600); await f.body.poll();
+  events = f.body.events.consume();
+  expect(events).toContain("surface rescue ended");
+  expect(events).toContain("out of the water");
+});
+
 test("A13 a screen that will not close is reported once as blocking the rescue", async () => {
   const f = await fixture(); Object.assign(f.options, { closeFailures: 99, escapeBlocked: true }); await f.body.poll();
   f.setScreen({ screen: "CraftingScreen", title: "Crafting" });

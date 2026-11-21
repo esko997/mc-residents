@@ -410,7 +410,23 @@ export class Body {
     }
     if (rescue.kind === "surface") {
       if (state.underwater === undefined || state.air === undefined || state.maxAir === undefined) { await this.finishRescue("air senses disappeared"); return; }
-      if (!state.underwater) { await this.finishRescue(`surfaced after ${seconds(elapsed)}, air ${rescue.initialAir} -> ${state.air}`); return; }
+      if (!state.underwater) {
+        // Surfacing alone is not safe: left floating, he sinks and drowns again.
+        // Swim for the last dry ground he stood on, head kept up, until out.
+        const shore = this.crumbs.at(-1);
+        if (state.inWater !== true || !shore) {
+          await this.finishRescue(`${state.inWater === true ? "surfaced, no known shore" : "out of the water"} after ${seconds(elapsed)}, air ${rescue.initialAir} -> ${state.air}`);
+          return;
+        }
+        if (elapsed >= 20000) { await this.finishRescue(`surfaced but did not reach the shore in 20 s, air ${state.air}`); return; }
+        if (rescue.busy) return;
+        if (this.now() - rescue.lastAim >= 500) {
+          await this.lookAt({ x: shore.x, y: state.eye.y, z: shore.z }, state);
+          rescue.lastAim = this.now();
+        }
+        this.rescueMove(rescue, { forward: true, jump: true, ticks: 5 });
+        return;
+      }
       if (elapsed >= 12000) { await this.finishRescue(`timed out after 12 s underwater, air ${rescue.initialAir} -> ${state.air}`); return; }
       if (rescue.busy) return;
       const crumb = elapsed >= 6000 ? this.crumbs.at(-1) : undefined;
