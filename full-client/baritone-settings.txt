@@ -1,7 +1,5 @@
-# Baritone settings for a resident client: deployed to ~/gary-client/game/baritone/settings.txt
-# Pathfinding may walk, jump and swim, but never breaks or places blocks.
-allowBreak false
-allowPlace false
+allowBreak true
+allowPlace true
 allowSprint true
 chatControl true
 prefixControl true
