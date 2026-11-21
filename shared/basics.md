@@ -56,9 +56,17 @@ its own food supply, so that hunger and nights stop being emergencies.
   and more seeds to replant. Bone meal (from skeleton bones) makes it grow at once.
 - Berries: `use` sweet berries on grass near home to plant a bush that keeps
   fruiting.
-- Animals: hold wheat (cows, sheep), seeds (chickens) or carrots (pigs) and they
-  follow you; walk them into a fenced pen. Two of the same kind fed the same
-  food make a baby, so a pen never runs out.
+- Animals: hold wheat (cows, sheep), seeds (chickens) or carrots and potatoes
+  (pigs) and they follow you; walk them into a fenced pen (fences and a gate
+  from planks and sticks) so they stay. Two of the same kind fed that food make
+  a baby, which grows up in about twenty minutes; each parent can breed again
+  after five. Keep at least two of every kind and eat only the extras: a pen
+  that keeps breeding feeds you for good, an emptied one never comes back.
+- Wool: shears (two iron ingots in a diagonal) take one to three wool from a
+  sheep without harming it, and it grows back after the sheep eats grass, so a
+  pair of sheep on grass is a wool supply. Killing a sheep gives one wool, once.
+  Twelve string (from spiders, or from plant fibre some mods add) also make
+  three wool. Sheep are rare in the wild here; ones you find are worth keeping.
 - Fish: a fishing rod (three sticks, two string from spiders) works in any water.
 - Cook on a campfire (three sticks, three logs, one coal or charcoal) or in a
   furnace, and keep spare food in a chest at home.
@@ -123,8 +131,14 @@ the slots. Slot numbers in the common screens:
   pattern one item per cell.
 - Take the result by clicking the output slot; mode `QUICK_MOVE` on the output
   crafts as many as the grid allows and moves them to your inventory.
-- Close the screen when done. Anything left in a crafting grid drops back to
-  you.
+- A screen stays open until you close it, and while one is open your body
+  cannot eat, fight back or walk: close it as soon as you are done. A furnace
+  keeps smelting with its screen closed, so put in the input and fuel, close it,
+  and come back for the result. Anything left in a crafting grid drops back to
+  you when you close it.
+- Some mods replace a vanilla result with their own version: here a chest made
+  from birch planks comes out as a birch chest, which works as a chest. `craft`
+  says when that happens.
 - `recipes` gives any item's pattern as rows of letters; `find_item` turns a
   name into an id. Machines from mods have their own slots: read `screen`.
 - To give someone an item, stand a block or two from them, `look` at them,
