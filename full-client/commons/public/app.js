@@ -1,5 +1,5 @@
 "use strict";
-// The Commons page. No framework and no build step: each panel fetches JSON from
+// The Shared Knowledge page. No framework and no build step: each panel fetches JSON from
 // api/<route> (relative, so the token in the address carries over) and patches
 // only the parts of the page whose content changed, so nothing flickers and
 // open sections, scroll positions and half-typed reasons survive a refresh.
@@ -552,7 +552,7 @@ async function loadNotes() {
 }
 
 
-// ---------- Commons ----------
+// ---------- Shared Knowledge ----------
 // Residents see notes and verified skills at once; this panel is where a person looks afterwards.
 const commons = { data: null, busy: "", messages: new Map(), editing: new Map() };
 const reviewerInput = $("#reviewer-name");
@@ -849,7 +849,7 @@ function consoleView(root, options) {
       if (!response.ok) throw new Error(result.error ?? `The server answered ${response.status}.`);
       localStorage.setItem(HISTORY_KEY, JSON.stringify([command, ...pastCommands().filter(past => past !== command)].slice(0, 50)));
       view.input.value = ""; recall = -1; view.stick = true;
-    } catch (error) { problem.textContent = error.message || "This page could not reach the commons server. The command was not sent."; }
+    } catch (error) { problem.textContent = error.message || "This page could not reach the Shared Knowledge server. The command was not sent."; }
     view.sending = false;
     // The command and its answer are in the stream by now, whether it worked or not.
     await loadConsole().catch(() => drawConsole(view));
@@ -921,7 +921,7 @@ const panels = [
   { id: "activity", title: "Activity", every: 4000, load: loadActivity },
   { id: "map", title: "Map", every: 10000, load: loadMap },
   { id: "notes", title: "Notes", every: 30000, load: loadNotes },
-  { id: "commons", title: "Commons", every: 15000, load: loadCommons },
+  { id: "commons", title: "Shared Knowledge", every: 15000, load: loadCommons },
   // Also fed while the Residents panel is open: its strip shows the same lines.
   { id: "console", title: "Console", every: 2000, load: loadConsole, also: "residents" },
   { id: "chat", title: "Chat", hidden: true },

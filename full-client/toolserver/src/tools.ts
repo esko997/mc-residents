@@ -10,6 +10,7 @@ import { createNotes, notesDefinitions, type Notes } from "./notes.ts";
 import { Skills, skillDefinitions, type SkillRun, type ToolReply } from "./skills.ts";
 import { createPlans, planDefinitions, type Plans } from "./plan.ts";
 import { readPlaces, snapshotOf, whatNext } from "./ideas.ts";
+import { guideDefinition, lookupGuide } from "./guides.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -47,7 +48,7 @@ export const definitions = {
   recipes: { description: "Recipes producing an item id, including shaped grids.", schema: z.object({ item: itemId }) },
   craft: { description: "Craft an item in one call: looks up the recipe, lays it out in the grid and takes the result into your inventory; prefer it to click_slot. Works at an open crafting table (3x3); recipes that fit 2x2 also work with no screen open, because it opens your own inventory itself. count is the number of crafting operations, not items (one craft of sticks gives 4); default 1. The screen stays open afterwards.", schema: z.object({ item: itemId, count: z.number().int().min(1).max(16).optional() }).strict() },
   uses: { description: "Recipes consuming an item id (including matching tags).", schema: z.object({ item: itemId }) },
-  guide: { description: "Search the modpack's own guide books.", schema: z.object({ query: z.string().min(1).max(200) }) },
+  guide: guideDefinition,
   note_difficulty: { description: "Tell body maintainers what is hard; append dated position and last error to difficulties.md.", schema: z.object({ text: z.string().min(1).max(4000) }) },
   set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
   ...notesDefinitions,
@@ -56,11 +57,12 @@ export const definitions = {
   what_next: { description: "For when you are unsure what to do: at most five suggestions worked out from what your body can see (what you carry and wear, health and food, saved places, recent deaths, your plan), each with the numbers it rests on. They name things that are missing or unused; they are not orders. The current step of your plan in focus comes first.", schema: z.object({}).strict() },
 };
 export type ToolName = keyof typeof definitions;
-const knowledgeNames = ["find_item", "recipes", "craft", "uses", "guide"];
+const knowledgeNames = ["find_item", "recipes", "craft", "uses"];
 const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "stop"];
 /** The resident's own actions on a screen. While one of these was called in the last 30 s, auto-eat leaves an open screen alone. */
 const screenTools = ["use", "open_inventory", "screen", "click_slot", "click_button", "craft", "type_text", "press_key", "close_screen", "write_sign"];
 const compass = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+const livestock: Record<string, true> = { "minecraft:cow": true, "minecraft:sheep": true, "minecraft:pig": true, "minecraft:chicken": true };
 /** "9 blocks north-east, 3 up": north is -z, east is +x. */
 function bearing(dx: number, dy: number, dz: number) {
   const blocks = Math.round(Math.hypot(dx, dy, dz)), count = `${blocks} block${blocks === 1 ? "" : "s"}`;
@@ -226,6 +228,7 @@ export class Tools {
           `Looking ${state.lookingAt.block ?? state.lookingAt.entity ?? state.lookingAt.type}`,
           `Players: ${nearby.filter(playerEntity).map(e => `${e.name ?? `#${e.id}`} ${e.distance}m`).join(", ") || "none"}`,
           `Hostiles: ${nearby.filter(hostileEntity).slice(0, 8).map(e => `${e.type} ${e.distance}m`).join(", ") || "none"}`,
+          `Livestock: ${nearby.filter(e => livestock[e.type]).sort((a, b) => a.distance - b.distance).slice(0, 6).map(e => `${e.type} #${e.id} at ${e.pos.map(v => Math.round(v * 10) / 10).join(",")} (${e.distance}m)`).join("; ") || "none sensed nearby"}`,
           `Navigation: ${body.navigation?.description ?? "none"}${body.navigation?.reported ? " (arrival/stop reported)" : ""}`,
           `Screen: ${state.screen}`,
           ...await this.plans.statusLines().catch(error => [`Plan unavailable: ${error instanceof Error ? error.message : "plan.json could not be read"}.`]),
@@ -366,10 +369,10 @@ export class Tools {
         if (/sign/i.test(after.screen)) throw new Error("Text entered, but sign editor is still open; inspect screen before continuing.");
         return `Entered ${args.lines.length} sign lines; editor closed (${done ? "Done" : "ESCAPE"}). Text persistence is server-controlled.`;
       }
-      case "find_item": case "recipes": case "uses": case "guide": {
+      case "guide": return lookupGuide(args, this.knowledge);
+      case "find_item": case "recipes": case "uses": {
         if (!this.knowledge) throw new Error(`Knowledge unavailable: ${this.knowledgeError}`);
         if (tool === "find_item") return this.knowledge.findItems(args.query, 12).map(i => `${i.id}${i.name ? ` — ${i.name}` : ""}`).join("\n") || "No matching items.";
-        if (tool === "guide") return this.knowledge.searchGuides(args.query, 3).map(h => `${h.where}: ${h.excerpt}`).join("\n") || "No guide matches.";
         const lookup = tool === "recipes" ? this.knowledge.recipesFor.bind(this.knowledge) : this.knowledge.usesOf.bind(this.knowledge);
         let recipes = lookup(args.item, 5);
         let matchedId: string | undefined;
@@ -409,6 +412,7 @@ export class Tools {
       case "plan_step": return this.plans.step(args);
       case "plan_show": return this.plans.show(args);
       case "plan_focus": return this.plans.focus(args);
+      case "plan_finish": return this.plans.finish(args);
       case "what_next": {
         const [state, saved, plan] = await Promise.all([api.state(true), readPlaces(body.config.residentDir), this.plans.focused().catch(() => undefined)]);
         return whatNext(snapshotOf(state, { now: this.now(), ...saved, plan, knowledge: this.knowledge }));

@@ -1,16 +1,19 @@
-# Commons
+# Shared Knowledge
 
 One page, opened from a phone or laptop on the home LAN, to watch the residents,
-to look over what they put in the commons (skills and shared notes), and to
+to look over their Shared Knowledge (skills and shared notes), and to
 read and use the Minecraft server's console. It is the home base for running
 the project, laid out so that panels and actions can be added. What it changes:
-the commons (reviews, edits, automatic acceptance of notes), and the server
+shared knowledge (reviews, edits, automatic acceptance of notes), and the server
 through the commands typed into its console.
 
 One Bun process, no build step, no dependencies at run time. It reads the game
 machine's files and each client's Synapse API on loopback, and shares one SQLite
 file, the commons, with the residents' tool servers (`schema.sql` here is the
 authoritative schema; both sides apply it with `CREATE ... IF NOT EXISTS`).
+
+The visible title and library tab are **Shared Knowledge**. Internal `commons`
+paths, API routes, service name, database and existing bookmarks are unchanged.
 
 ## Run
 
@@ -96,7 +99,7 @@ worked out.
   Overworld only, no terrain.
 - **Notes**: `memory.md`, the last 12 KB of `journal.md`, every other `.md`
   file under the resident's directory, and the places files. Read-only.
-- **Commons**: `skills`, `skill_runs`, `shared_notes`, `reviews`, `feedback`
+- **Shared Knowledge**: `skills`, `skill_runs`, `shared_notes`, `reviews`, `feedback`
   and `overseer/<Name>.md`. Residents see things at once (notes are accepted
   automatically, skills once they pass their own check); this panel is where a
   person looks afterwards. Groups: "New, not looked at yet", "Kept", "Removed",

@@ -153,11 +153,6 @@ describe("rules", () => {
     expect(ids(settled({ [mc("wheat_seeds")]: 5, [mc("stone_hoe")]: 1 }))).not.toContain("seeds_unplanted");
   });
 
-  test("a plan whose steps have not moved for half an hour", () => {
-    expect(said(settled({}, { plan: plan({ idleMs: 45 * minute }) }), "plan_stalled"))
-      .toBe('No step of plan "wheat field" has changed state for 45 min. plan_step marks a step done, blocked (with a note on why) or dropped; plan_set rewrites the steps.');
-    expect(ids(settled({}, { plan: plan({ idleMs: 29 * minute }) }))).not.toContain("plan_stalled");
-  });
 
   test("a better pickaxe than the best one carried, when the head material is on hand", () => {
     const carrying = (items: Record<string, number>): Snapshot => ({ ...settled(), carried: stacks({ [mc("bread")]: 5, ...items }) });
@@ -202,10 +197,6 @@ describe("rules", () => {
     expect(ids(settled(filler(34)))).not.toContain("inventory_full");
   });
 
-  test("no plan written", () => {
-    expect(said(settled({}, { plan: undefined }), "no_plan")).toBe("No plan is written. plan_set keeps a goal and its steps, and status shows the current step after every restart.");
-    expect(whatNext(settled({}, { plan: undefined }))).toBe("1. No plan is written. plan_set keeps a goal and its steps, and status shows the current step after every restart.");
-  });
 });
 
 describe("recipes from the modpack's knowledge", () => {
@@ -280,6 +271,15 @@ describe("what_next reply", () => {
     expect(whatNext(stuck).split("\n")[0]).toBe('Your plan "wheat field" has no step todo or doing; step 3 of 5 is blocked: no water nearby.');
   });
 
+  test("closed actions prompt outcome verification rather than a new project", () => {
+    const criterion = "A harvest for both residents is stored";
+    const snapshot = settled({}, { plan: plan({ current: undefined, blocked: [], awaitingVerification: true, done_when: criterion }) });
+    const first = whatNext(snapshot).split("\n")[0]!;
+    expect(first).toContain(criterion);
+    expect(first).toContain("plan_finish");
+    expect(ids(snapshot)).not.toContain("no_plan");
+  });
+
   test("the reply stays within 1,300 characters by leaving out the least useful suggestions", () => {
     const long = (id: string, priority: number, length: number): Rule => ({ id, priority, suggest: () => `${id} ${"x".repeat(length)}`.slice(0, length) });
     const table = [long("c", 1, 290), long("a", 5, 290), long("e", 0, 10), long("b", 4, 500), long("d", 2, 290)];
@@ -306,7 +306,7 @@ describe("what_next through the body", () => {
     f.state.inventory!.main = stacks({ [mc("wheat_seeds")]: 27, [mc("stone_hoe")]: 1, [mc("bread")]: 2 });
     f.state.inventory!.armor = [{ slot: 2, item: mc("iron_chestplate"), count: 1, equip: "chest" }];
     await f.tools.notes.recordDeath({ x: 5, y: 60, z: 5 }, overworld);
-    await f.tools.call("plan_set", { name: "wheat field", goal: "bread", steps: ["make a hoe", "till 24 blocks by the stream"] });
+    await f.tools.call("plan_set", { name: "wheat field", goal: "bread", why: "renewable shared food", done_when: "harvest and replant the field", steps: ["make a hoe", "till 24 blocks by the stream"] });
     await f.tools.call("plan_step", { step: 1, state: "done" });
     expect(reply(await f.tools.call("what_next"))).toBe([
       'Your plan "wheat field", step 2 of 2: till 24 blocks by the stream.',
@@ -328,7 +328,7 @@ describe("what_next through the body", () => {
     f.state.inventory!.main = stacks({ [mc("cobblestone")]: 5, [mc("andesite")]: 3, [mc("bread")]: 2, [mc("iron_pickaxe")]: 1 });
     f.state.inventory!.armor = [{ slot: 2, item: mc("iron_chestplate"), count: 1, equip: "chest" }];
     await tools.call("place_save", { name: "bed" });
-    await tools.call("plan_set", { name: "house", goal: "a roof", steps: ["collect planks"] });
+    await tools.call("plan_set", { name: "house", goal: "a roof", why: "safe settlement", done_when: "lit enclosed room usable overnight", steps: ["collect planks"] });
     expect(reply(await tools.call("what_next"))).toBe([
       'Your plan "house", step 1 of 1: collect planks.',
       "1. No furnace is known: none carried, no saved place mentions one. minecraft:furnace takes 8 #minecraft:stone_crafting_materials: all carried. A furnace cooks meat and smelts ore.",

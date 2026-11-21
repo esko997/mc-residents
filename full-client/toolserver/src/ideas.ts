@@ -263,7 +263,7 @@ export const rules: Rule[] = [
     suggest(view) {
       const plan = view.snapshot.plan;
       if (!plan || plan.idleMs < 30 * 60_000) return undefined;
-      return `No step of plan "${plan.name}" has changed state for ${span(plan.idleMs)}. plan_step marks a step done, blocked (with a note on why) or dropped; plan_set rewrites the steps.`;
+      return `No action state in project "${plan.name}" has changed for ${span(plan.idleMs)}. Check its blocker or completion criterion with plan_show; use guide for missing mechanics, or agree help with a neighbour. Rewriting notes is not world progress.`;
     },
   },
   {
@@ -318,7 +318,7 @@ export const rules: Rule[] = [
   },
   {
     id: "no_plan", priority: 10,
-    suggest(view) { return view.snapshot.plan ? undefined : "No plan is written. plan_set keeps a goal and its steps, and status shows the current step after every restart."; },
+    suggest(view) { return view.snapshot.plan ? undefined : "No project is written. Choose a useful outcome serving your vision; plan_set keeps why, done_when and immediate steps across restarts. guide explains mechanics; skill_find may offer a tested routine."; },
   },
 ];
 
@@ -336,6 +336,7 @@ export function whatNext(snapshot: Snapshot, table: Rule[] = rules, limit = 1300
   const lines: string[] = [];
   const plan = snapshot.plan;
   if (plan?.current) lines.push(`Your plan "${plan.name}", step ${plan.current.number} of ${plan.total}: ${plan.current.text}${/[.!?]$/.test(plan.current.text) ? "" : "."}`);
+  else if (plan?.awaitingVerification) lines.push(`Your project "${plan.name}" awaits verification: ${plan.verification || plan.done_when || "set an observable done_when with plan_set"}. Inspect the result, then plan_finish with your reported evidence.`);
   else if (plan) {
     const blocked = plan.blocked[0];
     lines.push(`Your plan "${plan.name}" has no step todo or doing${blocked ? `; step ${blocked.number} of ${plan.total} is blocked${blocked.note ? `: ${blocked.note}` : ""}` : ""}.`);

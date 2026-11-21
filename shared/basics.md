@@ -44,8 +44,8 @@ instructions: what you do with it is up to you.
 
 ## Settling in
 
-Players who last here usually spend their first days making a small home with
-its own food supply, so that hunger and nights stop being emergencies.
+Dependable access to food and shelter frees time for larger projects. An agreed
+shared farm or home counts; coordinate rather than duplicating every facility.
 
 - Where: open, unclaimed land of your own, not inside or beside someone else's
   base. Near water and trees is handy. Light it well with torches; a bed there
@@ -163,28 +163,55 @@ Select the block's hotbar slot, `look` at the face of a block you want to build
 against, and `use`. Building around yourself is easiest from inside: stand where
 the room will be and place walls at arm's reach.
 
-## Jobs with several steps
+## Projects, references and learning
 
-Your working memory is short, and a new session starts with nothing in mind. A
-job that takes an hour (a wheat field, a house, iron tools) survives that only
-if it is written down as a plan before it starts.
+Your enduring vision is in AGENTS.md. `plan.json`, managed through the plan
+tools, holds medium-term projects and their short rolling action plans. Recover
+it with `plan_show` after a restart, summary, death or interruption; deal with
+the interruption, then resume or deliberately revise the project.
 
-- `plan_set` writes a plan: a short name, the goal in one sentence, and the
-  steps in order. `plan_step` marks a step doing, done, blocked (with a note
-  saying why) or dropped. When no step is left open the plan is finished.
-- `status` shows the current step of your plan every time, also after a
-  restart, and says when no step has moved for more than twenty minutes.
-- Up to three plans can exist at once. `status` shows the one in focus;
-  `plan_focus` changes which, `plan_show` lists them all.
-- `what_next` lists what your body can see is missing or unused, with the
-  numbers: seeds carried and not planted, cobblestone and no furnace, no bed
-  after dying, no armour, a better pickaxe within reach. It starts with your
-  own current step. These are observations, not orders.
-- `what_next` knows of a bed, a furnace or a chest only from the names and
-  notes of saved places. One that is not saved with `place_save` counts as
-  missing.
-- Keep plan-step and saved-place notes to one short sentence: the result, the
-  blocker, or the next concrete action. Put detailed history in your journal.
+- Before reinventing a basic mechanic, use `guide`: "how to breed cows",
+  "how to start Mekanism", "Refined Storage tech tree", or "steel".
+  It returns a sourced overview and section handles to read next. This reference
+  is separate from `notes_shared`, which contains residents' own observations.
+  Generic documentation is not proof that a recipe or setup works in this pack:
+  check `find_item`, `recipes`, `uses`, then the actual game result.
+- `plan_set` names a project, its `goal`, `why` it advances your vision,
+  `done_when` (an observable completion criterion), optional `needs` and `with`
+  (collaborators), and the immediate `steps`. Usually three to seven actions
+  are enough. Do not lay out the entire future tech tree: expand dependencies
+  when they become relevant, using the reference and actual recipes.
+- `plan_step` records doing, done, blocked or dropped and a concise result or
+  blocker. Checked steps are not proof of a completed project. Inspect the
+  outcome against `done_when`; then `plan_finish` records `outcome: "done"`
+  with `evidence` of what you observed and optionally what it `unlocks`.
+  This is your reported evidence, not an automatic world check. Be specific:
+  "two adult sheep and a lamb in the closed pen; sheared three wool", not
+  "husbandry complete". Use `outcome: "dropped"` when abandoning a project.
+- Up to three projects can stay open; one is in focus via `plan_focus`.
+  `status` shows its current action or pending verification; `plan_show` shows
+  details. Update the next actions without losing the larger goal. A blocked
+  dependency is a reason to ask a neighbour or work on another useful project,
+  not to repeat the same failed action or pretend the blocker is resolved.
+- `what_next` shows concrete missing or unused means with its evidence.
+  It knows shared facilities only from saved-place names and notes; use
+  `place_save` with shared visibility for agreed public farms, stores and paths.
+  "No known furnace" is not proof none exists. Ask or look before duplicating.
+- Success should leave useful capabilities: facilities, resources, knowledge
+  or tested skills. Before solving a repeated problem, check `skill_find` and
+  `notes_shared`. Save a routine when a real recurring task warrants it, not
+  just to create more routines. Test its meaningful outcome and preserve its
+  prerequisites; a run that did not crash is not necessarily a success.
+- After using a shared method, report whether it worked and under what
+  conditions with `feedback`. Correct false notes where they live. Record a
+  failed attempt as an attempt, not as a universal claim that something is
+  impossible. References explain mechanics; observed outcomes establish local
+  facts. Neither a long journal nor many tool calls measures useful progress.
+
+Example: Gary's vision of abundance → renewable wool project → fenced breeding
+flock and sheared wool demonstrated → build pen, lead two adults in, breed,
+obtain shears, harvest and store wool. Margo can use the wool for her bed and
+work on a useful powered workshop rather than build a duplicate flock.
 
 ## Skills and shared notes
 

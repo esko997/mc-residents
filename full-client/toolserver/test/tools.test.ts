@@ -254,6 +254,19 @@ describe("reflexes and interactions", () => {
     const f = await fixture(); expect(f.tools.registeredNames).not.toContain("recipes");
     expect(text(await f.tools.call("recipes", { item: "minecraft:bread" }))).toContain("Knowledge unavailable");
   });
+  test("status gives usable nearby livestock positions without confusing dropped food with animals", async () => {
+    const f = await fixture();
+    f.state.nearbyEntities = [
+      { id: 2, type: "minecraft:cow", pos: [3.25, 64, -2.75], distance: 4.3 },
+      { id: 3, type: "minecraft:sheep", pos: [1, 64, 0], distance: 1 },
+      { id: 4, type: "minecraft:item", pos: [2, 64, 0], distance: 2 },
+    ];
+    const line = text(await f.tools.call("status")).split("\n").find(line => line.startsWith("Livestock:"))!;
+    expect(line).toContain("minecraft:cow #2 at 3.3,64,-2.7");
+    expect(line).toContain("minecraft:sheep #3 at 1,64,0");
+    expect(line.indexOf("sheep")).toBeLessThan(line.indexOf("cow"));
+    expect(line).not.toContain("minecraft:item");
+  });
   test("unreachable and not-in-world are one-line errors", async () => {
     const f = await fixture(); f.setUnavailable(); const result = text(await f.tools.call("status"));
     expect(result).toStartWith("Error: Synapse: No player in world.\n\nSince last time:"); expect(result).not.toContain(" at ");
@@ -285,18 +298,19 @@ describe("reflexes and interactions", () => {
       },
       skill_find: {}, skill_show: { name: "long_routine" }, skill_run: { name: "long_routine" },
       note_share: { topic: "t".repeat(60), text: "x".repeat(600) }, notes_shared: { limit: 8 }, feedback: { skill: "long_routine", worked: true, text: "f".repeat(120) },
-      plan_set: { name: "n".repeat(40), goal: "g".repeat(140), why: "w".repeat(140), steps: Array.from({ length: 12 }, (_, i) => `${i} ${"s".repeat(118)}`.slice(0, 120)) },
+      plan_set: { name: "n".repeat(40), goal: "g".repeat(140), why: "w".repeat(140), done_when: "d".repeat(200), steps: Array.from({ length: 12 }, (_, i) => `${i} ${"s".repeat(118)}`.slice(0, 120)) },
       plan_step: { step: 1, state: "blocked", note: "b".repeat(100) },
       plan_focus: { name: "n".repeat(40) },
+      plan_finish: { outcome: "dropped", evidence: "Not pursued." },
     };
-    for (const tool of Object.keys(definitions)) {
+    for (const tool of [...Object.keys(definitions).filter(name => name !== "plan_finish"), "plan_finish"]) {
       f.state.hotbar = [{ slot: 0, item: tool === "write_sign" ? "minecraft:oak_sign" : "minecraft:bread", count: 2 }];
       f.state.food = 8; f.state.selectedSlot = 0; f.state.lookingAt = { type: "block", block: "minecraft:stone" };
       f.setScreen(tool === "write_sign" || tool === "eat" ? { screen: "none" } : { screen: "InventoryScreen", container: { slots: f.state.inventory!.main, carried: "minecraft:air" } });
       for (let i = 0; i < 20; i++) f.body.events.add("chat", { from: "spesk01", text: "a".repeat(500) });
       const result = await f.tools.call(tool, argumentsByTool[tool] ?? {});
       // The long skill's check cannot pass here; its report is still a complete, capped reply.
-      if (!["find_item", "recipes", "craft", "uses", "guide", "skill_run"].includes(tool)) expect(result.isError).toBe(false);
+      if (!["find_item", "recipes", "craft", "uses", "skill_run"].includes(tool)) expect(result.isError).toBe(false);
       expect(text(result).length).toBeLessThan(1500); expect(text(result)).toContain("Since last time:");
     }
   });

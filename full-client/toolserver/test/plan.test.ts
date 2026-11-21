@@ -12,13 +12,15 @@ afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); });
 const reply = (result: CallToolResult) => result.content.filter(c => c.type === "text").map(c => c.text).join("\n").split("\n\nSince last time:")[0]!;
 const minute = 60_000;
 const wheatSteps = ["make a hoe", "till 24 blocks by the stream", "plant the seeds", "fence the field", "bake bread"];
+const projectDetails = { why: "Build a self-sustaining base that supplies neighbours", done_when: "The outcome is in place and I have observed it working" };
+const noPlanHint = "No plan is written. plan_set keeps a project outcome, why, done_when and rolling steps; status shows the next action or verification.";
 
 /** A resident whose plan clock the test moves by hand. */
 async function resident() {
   const f = await fixture();
   let clock = Date.UTC(2026, 10, 21, 12);
   f.tools.now = () => clock;
-  const call = async (tool: string, args: object = {}) => reply(await f.tools.call(tool, args));
+  const call = async (tool: string, args: object = {}) => reply(await f.tools.call(tool, tool === "plan_set" ? { ...projectDetails, ...args } : args));
   const planLines = async (tools = f.tools) => reply(await tools.call("status")).split("\n").filter(line => /plan/i.test(line));
   return { f, call, planLines, pass: (minutes: number) => { clock += minutes * minute; }, now: () => clock };
 }
@@ -29,7 +31,12 @@ function restart(f: Fixture, now: () => number) {
   cleanups.push(() => tools.close());
   return tools;
 }
-const stored = async (f: Fixture) => JSON.parse(await readFile(join(f.dir, "plan.json"), "utf8")) as { focus?: string; plans: { name: string; steps: { text: string; state: string; note?: string }[] }[]; history: { name: string }[] };
+interface SavedPlan {
+  name: string; goal: string; why?: string; done_when?: string; needs?: string; with?: string[];
+  evidence?: string; unlocks?: string; outcome?: "done" | "dropped"; created: number; moved: number; ended?: number;
+  steps: { text: string; state: string; note?: string }[];
+}
+const stored = async (f: Fixture) => JSON.parse(await readFile(join(f.dir, "plan.json"), "utf8")) as { focus?: string; plans: SavedPlan[]; history: SavedPlan[] };
 
 describe("plans", () => {
   test("status shows the current step and the goal, and a restarted tool server shows the same", async () => {
@@ -43,7 +50,7 @@ describe("plans", () => {
     const restarted = restart(r.f, r.now);
     expect(await r.planLines(restarted)).toEqual(expected);
     expect(reply(await restarted.call("plan_show", { name: "wheat field" }))).toBe([
-      'Plan "wheat field" (in focus). Goal: bread from my own field. Why: food keeps running out.',
+      `Plan "wheat field" (in focus). Goal: bread from my own field. Why: food keeps running out. Done when: ${projectDetails.done_when}.`,
       "1. done: make a hoe", "2. todo: till 24 blocks by the stream", "3. todo: plant the seeds", "4. todo: fence the field", "5. todo: bake bread",
       "Last step change 0 min ago.",
     ].join("\n"));
@@ -91,23 +98,32 @@ describe("plans", () => {
     expect((await stored(r.f)).plans[0]!.steps[1]).toEqual({ text: "find wool", state: "todo" });
   });
 
-  test("marking the last open step done finishes the plan, says so and moves it to history", async () => {
+  test("checked steps retain the project awaiting verification; explicit evidence closes it", async () => {
     const r = await resident();
-    await r.call("plan_set", { name: "tools", goal: "stone tools", steps: ["mine 3 logs", "craft a pickaxe"] });
+    await r.call("plan_set", { name: "tools", goal: "stone tools", done_when: "A stone pickaxe is in my inventory", steps: ["mine 3 logs", "craft a pickaxe"] });
     await r.call("plan_step", { step: 1, state: "dropped" });
-    expect(await r.call("plan_step", { step: 2, state: "done" }))
-      .toBe('Plan "tools": step 2 of 2 is now done (was todo). Plan "tools" has ended: 1 of 2 steps done, 1 dropped. It moved to history. No plan is left.');
-    // With no plan left, status has the one-time hint and then nothing about plans.
-    expect(await r.planLines()).toEqual(["No plan is written. plan_set keeps a goal and its steps; status then shows the current step."]);
+    expect(await r.call("plan_step", { step: 2, state: "done" })).toContain("Awaiting verification: verify done_when: A stone pickaxe is in my inventory.");
+    expect((await r.planLines())[0]).toContain("Awaiting verification");
+    expect(await r.f.tools.plans.focused()).toMatchObject({ name: "tools", done: 1, total: 2, awaitingVerification: true, verification: expect.stringContaining("verify done_when") });
+    const awaiting = await stored(r.f);
+    expect(awaiting.plans).toHaveLength(1);
+    expect(awaiting.history).toEqual([]);
+    expect(awaiting.focus).toBe("tools");
+    expect(await r.call("plan_finish", { outcome: "done" })).toContain("needs nonempty evidence");
+    expect(await r.call("plan_finish", { outcome: "done", evidence: "   " })).toStartWith("Error:");
+    expect(await stored(r.f)).toEqual(awaiting);
+    const completed = await r.call("plan_finish", { outcome: "done", evidence: "inventory shows one stone pickaxe", unlocks: "can mine iron ore" });
+    expect(completed).toContain("done (resident-reported, not machine-verified)");
+    expect(completed).toContain("Capability unlocked (resident-reported): can mine iron ore.");
+    expect(await r.planLines()).toEqual([noPlanHint]);
     expect(await r.planLines()).toEqual([]);
     const saved = await stored(r.f);
-    expect(saved.plans).toEqual([]); expect(saved.focus).toBeUndefined(); expect(saved.history.map(plan => plan.name)).toEqual(["tools"]);
+    expect(saved.plans).toEqual([]);
+    expect(saved.focus).toBeUndefined();
+    expect(saved.history[0]).toMatchObject({ name: "tools", outcome: "done", evidence: "inventory shows one stone pickaxe", unlocks: "can mine iron ore" });
     r.pass(125);
-    expect(await r.call("plan_show")).toBe('No plan is written. plan_set { name, goal, steps } writes one.\nEnded: "tools" 2 h ago (1 of 2 steps done, 1 dropped).');
-    expect(await r.call("plan_show", { name: "tools" })).toStartWith('Plan "tools" ended 2 h ago: 1 of 2 steps done, 1 dropped. Goal: stone tools.\n1. dropped: mine 3 logs\n2. done: craft a pickaxe');
-    // With every step done the word is "finished".
-    await r.call("plan_set", { name: "bed", goal: "a bed", steps: ["craft a bed"] });
-    expect(await r.call("plan_step", { step: 1, state: "done" })).toContain('Plan "bed" is finished: 1 of 1 steps done. It moved to history.');
+    expect(await r.call("plan_show")).toContain('"tools" done (resident-reported, not machine-verified) 2 h ago');
+    expect(await r.call("plan_show", { name: "tools" })).toContain("Observed-result report (resident-reported, not machine-verified): inventory shows one stone pickaxe.");
   });
 
   test("replacing a plan keeps the state of steps whose text is unchanged", async () => {
@@ -143,31 +159,35 @@ describe("plans", () => {
       'In focus: "house" (0 of 2 steps done): a roof. Step 1 of 2: collect planks.',
       '"armour" (0 of 1 steps done): iron armour. Step 1 of 1: mine iron.',
     ].join("\n"));
-    expect(await r.call("plan_step", { all: true, state: "dropped" }))
-      .toBe('Plan "house": steps 1, 2 of 2 are now dropped. Plan "house" has ended: 0 of 2 steps done, 2 dropped. It moved to history. The plan in focus is now "food".');
+    expect(await r.call("plan_step", { all: true, state: "dropped" })).toContain("Awaiting verification");
+    expect((await stored(r.f)).focus).toBe("house");
+    expect(await r.call("plan_finish", { outcome: "dropped", evidence: "I will share the existing shelter instead" }))
+      .toContain('dropped (not success): 0 of 2 steps done, 2 dropped. It moved to history.');
+    expect((await stored(r.f)).history[0]!.outcome).toBe("dropped");
     expect((await r.planLines())[0]).toBe('Plan "food": step 2 of 2: bake bread.');
   });
 
   test("three plans at most, with a way out named; history keeps the last ten", async () => {
     const r = await resident();
     for (const name of ["a", "b", "c"]) await r.call("plan_set", { name, goal: "g", steps: ["one"] });
-    const refused = await r.f.tools.call("plan_set", { name: "d", goal: "g", steps: ["one"] });
+    const refused = await r.f.tools.call("plan_set", { ...projectDetails, name: "d", goal: "g", steps: ["one"] });
     expect(refused.isError).toBe(true);
-    expect(reply(refused)).toBe('Error: Three plans exist already: "a", "b", "c". plan_set with one of these names replaces it; plan_step with all: true and state dropped ends one.');
+    expect(reply(refused)).toBe('Error: Three plans exist already: "a", "b", "c". plan_set with one of these names updates it; plan_finish with outcome dropped abandons one.');
     expect((await stored(r.f)).plans.map(plan => plan.name)).toEqual(["a", "b", "c"]);
     // Replacing one of the three is not a fourth.
-    expect((await r.f.tools.call("plan_set", { name: "b", goal: "g2", steps: ["one", "two"] })).isError).toBe(false);
-    for (const name of ["a", "b", "c"]) await r.call("plan_step", { name, all: true, state: "done" });
+    expect((await r.f.tools.call("plan_set", { ...projectDetails, name: "b", goal: "g2", steps: ["one", "two"] })).isError).toBe(false);
+    for (const name of ["a", "b", "c"]) await r.call("plan_finish", { name, outcome: "dropped" });
     for (let i = 0; i < 12; i++) {
       await r.call("plan_set", { name: `job ${i}`, goal: "g", steps: ["one"] });
       await r.call("plan_step", { step: 1, state: "done" });
+      await r.call("plan_finish", { outcome: "done", evidence: "I observed the intended result in the world" });
     }
     expect((await stored(r.f)).history.map(plan => plan.name)).toEqual(Array.from({ length: 10 }, (_, i) => `job ${11 - i}`));
   });
 
   test("the hint that plan_set exists is given once per tool-server start", async () => {
     const r = await resident();
-    expect(await r.planLines()).toEqual(["No plan is written. plan_set keeps a goal and its steps; status then shows the current step."]);
+    expect(await r.planLines()).toEqual([noPlanHint]);
     expect(await r.planLines()).toEqual([]);
     const restarted = restart(r.f, r.now);
     expect(await r.planLines(restarted)).toHaveLength(1);
@@ -194,21 +214,24 @@ describe("plans", () => {
     expect(await r.call("plan_step", { step: 1, all: false, state: "doing" })).toBe('Plan "food": step 1 of 2 is now doing (was todo). Current step 1 of 2: plant wheat.');
   });
 
-  test("twelve long steps with notes still fit one reply, each with its number and state", async () => {
+  test("long project actions and notes remain readable across bounded pages", async () => {
     const r = await resident();
     const steps = Array.from({ length: 12 }, (_, i) => `${i + 1} ${"s".repeat(117)}`.slice(0, 120));
+    const note = "b".repeat(200);
     await r.call("plan_set", { name: "n".repeat(40), goal: "g".repeat(140), why: "w".repeat(140), steps });
-    await r.call("plan_step", { all: true, state: "blocked", note: "b".repeat(100) });
+    await r.call("plan_step", { all: true, state: "blocked", note });
     await r.call("plan_step", { step: 1, state: "done" });
-    const shown = await r.call("plan_show", { name: "n".repeat(40) });
-    expect(shown.length).toBeLessThanOrEqual(1200);
-    const lines = shown.split("\n");
-    expect(lines).toHaveLength(14);
-    expect(lines[1]).toStartWith("1. done: 1 sss");
-    for (let i = 2; i <= 12; i++) expect(lines[i]).toStartWith(`${i}. blocked: ${i} sss`);
-    expect(lines[13]).toBe("Last step change 0 min ago.");
-    const status = await r.f.tools.call("status");
-    expect(status.content.filter(c => c.type === "text").map(c => c.text).join("\n").length).toBeLessThan(1500);
+    const first = await r.call("plan_show", { name: "n".repeat(40) });
+    const pages = Number(first.match(/Page 1\/(\d+)/)?.[1]);
+    expect(pages).toBeGreaterThan(1);
+    const shown = [first];
+    for (let page = 2; page <= pages; page++) shown.push(await r.call("plan_show", { name: "n".repeat(40), page }));
+    for (const page of shown) expect(page.length).toBeLessThanOrEqual(1250);
+    const all = shown.join("\n");
+    expect(all).toContain(`1. done: ${steps[0]}`);
+    for (let i = 2; i <= 12; i++) expect(all).toContain(`${i}. blocked: ${steps[i - 1]} (note: ${note})`);
+    expect(all).toContain(projectDetails.done_when);
+    expect(all).toContain("Last step change");
   });
 
   test("calls sent at the same time all land", async () => {
@@ -225,5 +248,89 @@ describe("plans", () => {
     expect(await readFile(join(r.f.dir, "plan.json.corrupt"), "utf8")).toBe("{ not json");
     expect(await r.call("plan_set", { name: "food", goal: "bread", steps: ["plant wheat"] })).toBe('Plan "food" written with 1 step. It is the plan in focus. Current step 1 of 1: plant wheat.');
     expect((await r.planLines())[0]).toBe('Plan "food": step 1 of 1: plant wheat.');
+  });
+
+  test("old stores load intact, retain timestamps and history, and ask for missing criteria", async () => {
+    const r = await resident();
+    const legacy = {
+      focus: "old farm",
+      plans: [{ name: "old farm", goal: "lasting food", steps: [{ text: "plant wheat", state: "done", note: "24 crops planted" }], created: r.now() - minute * 60, moved: r.now() - minute * 30 }],
+      history: [{ name: "old shelter", goal: "shelter", why: "survive", steps: [{ text: "build walls", state: "done" }], created: 1, moved: 2, ended: 3 }],
+    };
+    const source = JSON.stringify(legacy);
+    await writeFile(join(r.f.dir, "plan.json"), source);
+    expect((await r.planLines()).join(" ")).toContain("Completion criteria need specification");
+    expect(await r.call("plan_show", { name: "old farm" })).toContain("Why: needs specification. Done when: needs specification.");
+    expect(await r.call("plan_show", { name: "old shelter" })).toContain("legacy ending (completion unverified)");
+    expect(await readFile(join(r.f.dir, "plan.json"), "utf8")).toBe(source);
+    expect(await r.call("plan_finish", { outcome: "done", evidence: "I can see the crops" })).toContain("needs done_when completion criteria");
+    expect(await stored(r.f)).toEqual(legacy);
+    await r.call("plan_set", { name: "old farm", goal: "lasting food", done_when: "24 planted crops survive and a harvest is stored", steps: ["plant wheat", "harvest and store food"] });
+    const updated = await stored(r.f);
+    expect(updated.plans[0]).toMatchObject({ created: legacy.plans[0]!.created, moved: legacy.plans[0]!.moved, steps: [{ text: "plant wheat", state: "done", note: "24 crops planted" }, { text: "harvest and store food", state: "todo" }] });
+    expect(updated.history).toEqual(legacy.history);
+  });
+
+  test("new and updated projects require why and observable completion criteria", async () => {
+    const r = await resident();
+    for (const details of [{}, { why: projectDetails.why }, { done_when: projectDetails.done_when }, { why: " ", done_when: projectDetails.done_when }]) {
+      expect((await r.f.tools.call("plan_set", { name: "farm", goal: "lasting food", steps: ["plant wheat"], ...details })).isError).toBe(true);
+    }
+    await r.call("plan_set", { name: "farm", goal: "lasting food", steps: ["plant wheat"] });
+    const before = await stored(r.f);
+    expect((await r.f.tools.call("plan_set", { name: "farm", goal: "food for two", steps: ["plant wheat"] })).isError).toBe(true);
+    expect(await stored(r.f)).toEqual(before);
+  });
+
+  test("blocked projects cannot finish successfully, but may be explicitly abandoned", async () => {
+    const r = await resident();
+    await r.call("plan_set", { name: "farm", goal: "lasting food", needs: "water beside the field", with: ["Margo"], steps: ["plant wheat"] });
+    await r.call("plan_step", { step: 1, state: "blocked", note: "water source is inaccessible" });
+    expect(await r.call("plan_finish", { outcome: "done", evidence: "I marked the action" })).toContain("still has open or blocked actions");
+    expect(await r.f.tools.plans.focused()).toMatchObject({ awaitingVerification: false, needs: "water beside the field", with: ["Margo"], blocked: [{ number: 1, text: "plant wheat", note: "water source is inaccessible" }] });
+    expect((await r.planLines())[0]).toContain("Needs: water beside the field.");
+    expect((await stored(r.f)).history).toEqual([]);
+    expect(await r.call("plan_finish", { outcome: "dropped", evidence: "Use Margo's existing field instead", unlocks: "a path to Margo's field was cleared" })).toContain("dropped (not success)");
+    expect((await stored(r.f)).history[0]).toMatchObject({ outcome: "dropped", unlocks: "a path to Margo's field was cleared", steps: [{ text: "plant wheat", state: "blocked", note: "water source is inaccessible" }] });
+  });
+
+  test("verification and completion reports survive restart and a rolling plan resumes", async () => {
+    const r = await resident();
+    await r.call("plan_set", { name: "farm", goal: "lasting food", needs: "seed stock", with: ["Gary", "Margo"], steps: ["plant wheat"] });
+    await r.call("plan_step", { all: true, state: "done" });
+    r.pass(30);
+    const restarted = restart(r.f, r.now);
+    expect(await r.planLines(restarted)).toEqual(await r.planLines());
+    expect(await restarted.plans.focused()).toMatchObject({ awaitingVerification: true, idleMs: 30 * minute, with: ["Gary", "Margo"] });
+    await restarted.call("plan_set", { ...projectDetails, name: "farm", goal: "lasting food", steps: ["plant wheat", "store the harvest"] });
+    expect(await restarted.plans.focused()).toMatchObject({ awaitingVerification: false, current: { number: 2, text: "store the harvest" }, needs: "seed stock", with: ["Gary", "Margo"], idleMs: 30 * minute });
+    await restarted.call("plan_set", { ...projectDetails, name: "farm", goal: "lasting food", needs: "", with: [], steps: ["plant wheat", "store the harvest"] });
+    expect(await restarted.plans.focused()).toMatchObject({ needs: "", with: [], idleMs: 30 * minute });
+    await restarted.call("plan_step", { step: 2, state: "done" });
+    await restarted.call("plan_finish", { outcome: "done", evidence: "Harvest stored in the shared chest", unlocks: "bread for neighbours" });
+    expect(reply(await restart(r.f, r.now).call("plan_show", { name: "farm" }))).toContain("Harvest stored in the shared chest.");
+  });
+
+  test("text and note edits are not progress; changed criteria invalidate completion evidence", async () => {
+    const r = await resident();
+    await r.call("plan_set", { name: "farm", goal: "lasting food", steps: ["plant wheat"] });
+    await r.call("plan_step", { step: 1, state: "blocked", note: "need seeds" });
+    const originalMoved = (await stored(r.f)).plans[0]!.moved;
+    r.pass(40);
+    await r.call("plan_step", { step: 1, state: "blocked", note: "ask Margo about seeds" });
+    await r.call("plan_step", { all: true, state: "blocked", note: "waiting for seeds" });
+    await r.call("plan_set", { name: "farm", goal: "shared lasting food", why: "Help the settlement feed newcomers", steps: ["plant wheat", "build storage"] });
+    expect((await stored(r.f)).plans[0]!.moved).toBe(originalMoved);
+    expect((await r.planLines())[0]).toContain("No step has moved for 40 min.");
+    const seeded = await stored(r.f);
+    seeded.plans[0]!.evidence = "Earlier observation under previous criteria";
+    seeded.plans[0]!.unlocks = "Old capability claim";
+    await writeFile(join(r.f.dir, "plan.json"), JSON.stringify(seeded));
+    await r.call("plan_set", { name: "farm", goal: "shared lasting food", why: "Help the settlement feed newcomers", done_when: "A harvest for two neighbours is stored", steps: ["plant wheat", "build storage"] });
+    const revised = (await stored(r.f)).plans[0]!;
+    expect(revised.evidence).toBeUndefined();
+    expect(revised.unlocks).toBeUndefined();
+    expect(revised.moved).toBe(originalMoved);
+    expect(revised.steps[0]).toMatchObject({ state: "blocked", note: "waiting for seeds" });
   });
 });
