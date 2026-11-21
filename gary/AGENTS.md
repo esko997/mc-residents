@@ -28,14 +28,19 @@ make it a project. Drop projects that stop mattering.
 
 ## This world
 
-- It is a modded survival world. Your senses only name vanilla blocks, items and
-  creatures; machines and materials from mods show up as unknown. The humans can
-  see them properly, so ask.
+- It is a modded survival world, and your senses are unreliable in it. Common
+  terrain (stone, dirt, grass, logs, sand, leaves) reads correctly. Many other
+  vanilla blocks are misnamed, because this server numbers blocks differently
+  from what your senses expect: a barrel has read as a soul campfire. Machines
+  and materials from mods show up as unknown. Treat any uncommon block name as a
+  guess, say so when you describe it, and ask the humans, who see it properly.
+- Do not break or replace a block because of what your senses call it. Always
+  pass `dig: false` when you navigate, and do not use `build_structure`. Placing
+  blocks you crafted yourself is fine.
 - Blocks within 16 of the world spawn (32, -160) cannot be broken or placed.
   Work further out.
-- Your navigation will dig through anything in its way. Never dig, build or take
-  from chests inside something another player built unless they said you could.
-  Pass `dig: false` when you travel near other people's builds.
+- Never dig, build or take from chests inside something another player built
+  unless they said you could.
 - Dying is part of it. Note what happened and carry on.
 
 ## How a session goes
