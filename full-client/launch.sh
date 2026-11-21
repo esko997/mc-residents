@@ -16,6 +16,15 @@ heap=${GARY_CLIENT_HEAP:-6G}
 # Each resident needs its own game directory: two clients cannot share logs,
 # options or the mod's port. Set per resident in instances/<name>.env.
 game=${GAME_DIR:-$base/game}
+# Baritone reads baritone/settings.txt once at start and rewrites it whenever a
+# setting is changed in game, so every start begins from the generated copy
+# (full-client/tools/baritone-settings.ts; it lists the built blocks Baritone
+# must go around instead of breaking).
+if [ -f "$base/baritone-settings.txt" ]; then
+  install -D -m 644 "$base/baritone-settings.txt" "$game/baritone/settings.txt"
+else
+  echo "no $base/baritone-settings.txt: Baritone keeps the settings already in $game" >&2
+fi
 
 exec gamescope --backend headless -W 854 -H 480 -r 20 -- \
   "$base/venv/bin/portablemc" --main-dir "$base/main" start \
