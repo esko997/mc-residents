@@ -115,6 +115,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass  # the token is in every URL; keep it out of the journal
 
+    def log_request(self, code="-", size="-"):
+        """Journal sends and failures, by route only; successful polls would drown them."""
+        status = getattr(code, "value", code)
+        if self.command == "POST" or status not in (200, 308):
+            tail = self.path.split("?", 1)[0].strip("/").partition("/")[2]
+            print(f"{self.command} /<token>/{tail} -> {status} from {self.client_address[0]}", flush=True)
+
     def reply(self, status, body, content_type="application/json"):
         payload = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(status)
@@ -137,6 +144,13 @@ class Handler(BaseHTTPRequestHandler):
         if route is None:
             return
         if route == "":
+            # Without the trailing slash the page's own requests would lose the token.
+            if not self.path.split("?", 1)[0].endswith("/"):
+                self.send_response(308)
+                self.send_header("Location", f"/{TOKEN}/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             self.reply(200, PAGE.replace("__NAME__", NAME).encode(), "text/html; charset=utf-8")
         elif route == "log":
             query = self.path.partition("?")[2]
@@ -217,7 +231,7 @@ PAGE = r"""<!doctype html>
   const log = document.getElementById("log"), form = document.getElementById("form");
   const input = document.getElementById("text"), send = document.getElementById("send");
   const problem = document.getElementById("problem");
-  let after = 0;
+  let after = 0, missed = 0;
 
   function show(entry) {
     document.getElementById("empty")?.remove();
@@ -240,11 +254,16 @@ PAGE = r"""<!doctype html>
   async function poll() {
     try {
       const response = await fetch("log?after=" + after, { cache: "no-store" });
+      if (!response.ok) throw new Error(response.status);
       const fresh = await response.json();
       const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
       for (const entry of fresh) { show(entry); after = entry.id; }
       if (fresh.length && atBottom) log.scrollTop = log.scrollHeight;
-    } catch { /* the next poll retries */ }
+      if (missed >= 3) problem.textContent = "";
+      missed = 0;
+    } catch {
+      if (++missed === 3) problem.textContent = "This page lost contact with the chat server. Check you are on home Wi-Fi, then reload.";
+    }
   }
 
   form.addEventListener("submit", async (event) => {
