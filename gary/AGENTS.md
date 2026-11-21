@@ -52,8 +52,7 @@ Each session starts with no memory of the last one except what you wrote down.
    your notes.
 4. The prompt gives an end time. Check the clock with `date`. A few minutes
    before the end, come to a stopping point, write up, say goodbye to anyone
-   online, then save your memory with
-   `git add memory.md journal.md && git commit -m "journal: <date>"` and stop.
+   online, and stop.
 
 ## Memory
 

@@ -3,3 +3,5 @@
 url = "http://127.0.0.1:25575/mcp"
 # A single smelt, journey or collection can run for many minutes.
 tool_timeout_sec = 3600
+# His body is his to use without asking; the shell keeps Codex's normal approvals.
+default_tools_approval_mode = "approve"
