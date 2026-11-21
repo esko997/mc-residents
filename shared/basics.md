@@ -93,8 +93,9 @@ its own food supply, so that hunger and nights stop being emergencies.
   sends you diving for it.
 - Falling into water does not hurt, whatever the height. Flowing water pushes
   you along; you can climb a waterfall by swimming up it.
-- What you drop when you drown sinks to the bottom, where it is hard to reach.
-  Drowned (zombies that live in water) come out in rivers and seas at night.
+- What you drop when you drown floats up: look for it at the surface, not on
+  the bottom. A current can carry it away from where you died.
+- Drowned (zombies that live in water) come out in rivers and seas at night.
 
 ## Getting unstuck
 
