@@ -504,9 +504,8 @@ describe("body-tool repair regressions", () => {
     await f.tools.call("go_to", { x: 20, z: 0 }); f.tick(4000); await f.body.poll();
     expect(f.body.events.consume()).toContain("baritone=no reply observed since start");
   });
-  test("mine documents its unbounded search and rejects an unsupported near radius", async () => {
+  test("mine rejects an unsupported near radius and reports no fixed destination", async () => {
     const f = await fixture();
-    expect(definitions.mine.description).toContain("known and nearby chunks and may walk far");
     expect((await f.tools.call("mine", { block: "tall_grass", count: 6, near: 10 })).isError).toBe(true);
     await f.tools.call("mine", { block: "tall_grass", count: 6 }); f.tick(4000); await f.body.poll();
     expect(f.body.events.consume()).toContain("distance=unknown (no fixed destination)");
