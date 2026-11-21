@@ -38,7 +38,7 @@ export class Body {
   state?: State;
   entities: Entity[] = [];
   navigation?: Navigation;
-  reflexes: Reflexes = { auto_eat: true, eat_below: 12, when_attacked: "auto", surface: true, escape_fire: true, avoid_creepers: true };
+  reflexes: Reflexes = { auto_eat: true, eat_below: 12, when_attacked: "auto", surface: true, escape_fire: true, avoid_creepers: true, water_bucket: false };
   error?: string;
   private pollTimer?: Timer;
   private polling?: Promise<void>;
@@ -116,6 +116,13 @@ export class Body {
       this.crumbs.push({ ...state.pos });
       if (this.crumbs.length > 40) this.crumbs.shift();
     }
+  }
+  /** Newest safe ground at least 1.5 blocks away across the ground. The very
+   * newest crumb is often the rim of the hole he fell into: live, aiming at a
+   * point 0.2 blocks off spun him in place in a 1x1 lava hole until he died. */
+  private escapeCrumb(state: State) {
+    const far = [...this.crumbs].reverse().find(p => Math.hypot(p.x - state.pos.x, p.z - state.pos.z) >= 1.5);
+    return far ?? this.crumbs.at(-1);
   }
   private retreatSensors(state: State) {
     return state.onGround !== undefined && state.inWater !== undefined && state.inLava !== undefined && state.onFire !== undefined;
@@ -422,7 +429,7 @@ export class Body {
       if (!state.underwater) {
         // Surfacing alone is not safe: left floating, he sinks and drowns again.
         // Swim for the last dry ground he stood on, head kept up, until out.
-        const shore = this.crumbs.at(-1);
+        const shore = this.escapeCrumb(state);
         if (state.inWater !== true || !shore) {
           await this.finishRescue(`${state.inWater === true ? "surfaced, no known shore" : "out of the water"} after ${seconds(elapsed)}, air ${rescue.initialAir} -> ${state.air}`);
           return;
@@ -438,7 +445,7 @@ export class Body {
       }
       if (elapsed >= 12000) { await this.finishRescue(`timed out after 12 s underwater, air ${rescue.initialAir} -> ${state.air}`); return; }
       if (rescue.busy) return;
-      const crumb = elapsed >= 6000 ? this.crumbs.at(-1) : undefined;
+      const crumb = elapsed >= 6000 ? this.escapeCrumb(state) : undefined;
       if (crumb && this.now() - rescue.lastAim >= 500) {
         await this.lookAt({ x: crumb.x, y: state.eye.y, z: crumb.z }, state);
         rescue.lastAim = this.now();
@@ -450,7 +457,7 @@ export class Body {
       if (state.inLava !== true) { await this.finishRescue(`escaped lava after ${seconds(elapsed)}`); return; }
       if (elapsed >= 10000) { await this.finishRescue("timed out after 10 s in lava"); return; }
       if (rescue.busy) return;
-      const crumb = this.crumbs.at(-1);
+      const crumb = this.escapeCrumb(state);
       if (crumb && this.now() - rescue.lastAim >= 500) {
         await this.lookAt({ x: crumb.x, y: state.eye.y, z: crumb.z }, state);
         rescue.lastAim = this.now();

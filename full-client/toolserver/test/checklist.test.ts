@@ -225,6 +225,15 @@ test("A12 lava rescue jumps and sprints toward the last safe crumb until out", a
   expect(f.requests.filter(r => r.body.text === "#resume")).toHaveLength(1);
 });
 
+test("A12 lava rescue steers past the rim crumb he just stepped off", async () => {
+  const f = await fixture(); await f.body.poll();
+  moveTo(f, 2, 64, 1); await f.body.poll(); // last dry step: the rim of a 1x1 lava hole
+  moveTo(f, 2, 63.5, 0.8); Object.assign(f.state, { inLava: true, onFire: true, onGround: false });
+  await f.body.poll(); await f.body.api.state();
+  // Aim at the older crumb (0, 0), 2.2 blocks away, not the rim 0.2 blocks off (yaw 0).
+  expect(f.requests.find(r => r.body.action === "look")?.body.yaw as number).toBeCloseTo(111.8, 0);
+});
+
 test("A11 fire rescue places and retrieves water when bucket use is on, restoring view and hotbar", async () => {
   const f = await fixture(); f.body.reflexes.water_bucket = true; await f.body.poll();
   f.state.hotbar = [{ slot: 2, item: "minecraft:water_bucket", count: 1 }]; f.state.onFire = true;
