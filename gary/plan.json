@@ -1,0 +1,64 @@
+{
+  "focus": "Stream homestead",
+  "plans": [
+    {
+      "name": "Stream homestead",
+      "goal": "Make the stream homestead a dependable place to eat, sleep and store supplies.",
+      "steps": [
+        {
+          "text": "Harvest and replant ripe stream wheat to grow the seed supply.",
+          "state": "done",
+          "note": "Harvested and replanted one confirmed mature wheat, gaining two seeds."
+        },
+        {
+          "text": "Plant at least twenty crops by water.",
+          "state": "done",
+          "note": "Seventeen new wheat plus four original tiles verified, all within four blocks of stream water."
+        },
+        {
+          "text": "Make and place a bed in the cabin, then sleep in it.",
+          "state": "blocked",
+          "note": "Need three wool. Hemp and flax are planted for string. No sheep seen on scouts."
+        },
+        {
+          "text": "Check the cabin shell and door, light the interior, and add a chest.",
+          "state": "done",
+          "note": "Patched walls and roof, closed working door, and verified torches and chest."
+        },
+        {
+          "text": "Save the finished homestead markers and put away supplies.",
+          "state": "done",
+          "note": "Cabin and field signs, shared composter, and a lit cobblestone stair route are in place."
+        }
+      ],
+      "created": 1795289274891,
+      "moved": 1795292471334
+    }
+  ],
+  "history": [
+    {
+      "name": "Cabin repair",
+      "goal": "Restore the cabin so I can shut the door and sleep safely.",
+      "steps": [
+        {
+          "text": "Gather birch for the floor and missing wall.",
+          "state": "done",
+          "note": "33 birch planks brought back."
+        },
+        {
+          "text": "Rebuild the west wall and patch the floor and north opening.",
+          "state": "done",
+          "note": "West wall, south corner, north wall opening and roof hole patched."
+        },
+        {
+          "text": "Craft and place a chest and interior torches.",
+          "state": "done",
+          "note": "Birch chest opens, two torches are lit, and the oak door shuts."
+        }
+      ],
+      "created": 1795289520865,
+      "moved": 1795289896373,
+      "ended": 1795289896373
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "focus": "Settle by the stream",
+  "plans": [
+    {
+      "name": "Settle by the stream",
+      "goal": "Build a reliable home base with renewable food, a bed, and a small lit house.",
+      "why": "I need a safe place and food before deeper machine work.",
+      "steps": [
+        {
+          "text": "Harvest my ripe wheat and replant; expand my stream-side field toward 20 crops.",
+          "state": "doing",
+          "note": "My saved crop now looks mature; harvest only my tile and replant it."
+        },
+        {
+          "text": "Find a renewable food source I can use without disturbing Gary's garden.",
+          "state": "todo"
+        },
+        {
+          "text": "Gather wool and planks, craft a bed, and save its place.",
+          "state": "todo"
+        },
+        {
+          "text": "Build a small lit house with a door and chest on open land.",
+          "state": "todo"
+        },
+        {
+          "text": "Check that food, bed, and house are all established; update my notes.",
+          "state": "todo"
+        }
+      ],
+      "created": 1795289285276,
+      "moved": 1795291307069
+    }
+  ],
+  "history": []
+}

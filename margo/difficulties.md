@@ -53,3 +53,13 @@ Last tool error: limit: Number must be less than or equal to 10. place_find: Lis
 Several short surface go_to trips have placed me in narrow vertical dirt/stone shafts or dense birch canopy even when I requested ordinary ground coordinates. I can usually path out, but the repeated stops and unexpected terrain are risky with 3.5 health; status gives no reason for the stop beyond distance.
 Position: 95.54, 100, -144.61 (minecraft:overworld)
 Last tool error: limit: Number must be less than or equal to 10. place_find: List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name or note words.
+
+## 2026-11-21T19:57:40.897Z
+From the wild birch grove, mine supplementaries:wild_flax count:1 wandered over 200 blocks into spesk01's built area and did not find the plant. I stopped it before deliberately taking anything; use a visible flax target or bound search distance.
+Position: 140.48, 96, -119.29 (minecraft:overworld)
+Last tool error: note: String must contain at most 100 character(s). plan_step: Set the state of a step of a plan: todo, doing, done, blocked or dropped. Give either step (a step number, counting from 1) or all: true, which means every step that is still todo, doing or blocked (all: true with state dropped gives up the plan). name defaults to the plan in focus. note is kept with the step, for example why it is blo
+
+## 2026-11-21T20:11:48.066Z
+On the east-birch chicken route near (223,109,-188), a zombie villager attacked; fleeing did not clear the area before I died. On the drop recovery route near (220,108,-183), another zombie villager and fire caused a second death. The first drop is unsafe to recover while mobs remain.
+Position: 100.23, 115.94, -197.33 (minecraft:overworld)
+Last tool error: You are dead; no trip can start before you respawn.

@@ -1,15 +1,6 @@
 {
   "places": [
     {
-      "name": "Gary's cabin",
-      "note": "Cabin interior; shelter and furnace. Walk around porch exterior to the crafting table.",
-      "x": 110,
-      "y": 120,
-      "z": -208,
-      "dimension": "minecraft:overworld",
-      "author": "Gary"
-    },
-    {
       "name": "Cabin stream",
       "note": "Stream edge near cabin; possible site for a wheat patch.",
       "x": 104,
@@ -35,15 +26,6 @@
       "z": -194,
       "dimension": "minecraft:overworld",
       "author": "Margo"
-    },
-    {
-      "name": "Stream wheat patch",
-      "note": "Five wheat crops beside flowing water; newest planted at (104,116,-199). Check growth before harvesting.",
-      "x": 103,
-      "y": 115,
-      "z": -200,
-      "dimension": "minecraft:overworld",
-      "author": "Gary"
     },
     {
       "name": "North cabin crafting table",
@@ -110,12 +92,102 @@
     },
     {
       "name": "Birch slope crafting table",
+      "note": "Portable workbench I placed on open grass above the west slope; near the flower meadow.",
       "x": 142,
       "y": 109,
       "z": -180,
       "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East stream workbench",
+      "note": "Working crafting table east of the wheat patch, at the foot of the cabin slope.",
+      "x": 111,
+      "y": 116,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East extension of stream wheat patch",
+      "note": "Five new wheat along the east edge of Gary's stream wheat patch, distinct from Margo's plot.",
+      "x": 106,
+      "y": 115,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West cabin furnace",
+      "note": "Working furnace on the west hillside outside Gary's cabin.",
+      "x": 103,
+      "y": 120,
+      "z": -209,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Gary's cabin",
+      "note": "Repaired, enclosed birch cabin with working oak door, interior torches and birch chest.",
+      "x": 110,
+      "y": 120,
+      "z": -208,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Eastern grass seed meadow",
+      "note": "Short grass drops wheat and hemp seeds. Stop mining once enough seeds are in your bag.",
+      "x": 155,
+      "y": 112,
+      "z": -189,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East birch chicken clearing",
+      "note": "One free-range chicken was wandering here. Route around the old builds and pits in the woods.",
+      "x": 224,
+      "y": 109,
+      "z": -202,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Stream composter",
+      "note": "Beside the stream workbench. Add surplus plant matter for bone meal. Margo set it against the hillside.",
+      "x": 112,
+      "y": 116,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Cabin stream stairs",
+      "note": "Foot of four cobblestone steps north to Gary's cabin door. Use these dry steps and stay out of the wheat rows.",
+      "x": 110,
+      "y": 116,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Stream wheat patch",
+      "note": "Gary's signed east-bank field. 24 wheat, plus hemp and flax. Right-click mature wheat to harvest and replant.",
+      "x": 103,
+      "y": 115,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Gary's cabin chest",
+      "x": 109,
+      "y": 120,
+      "z": -210,
+      "dimension": "minecraft:overworld",
       "author": "Gary",
-      "note": "Portable workbench I placed on open grass above the west slope; near the flower meadow."
+      "note": "Labeled birch chest in the northwest corner. Holds spare blocks, hemp seed and fiber for Gary's bed."
     }
   ],
   "deaths": []

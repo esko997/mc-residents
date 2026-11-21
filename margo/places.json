@@ -92,15 +92,38 @@
     },
     {
       "name": "Margo stream wheat",
+      "note": "My wheat crop, last checked at 71% growth; harvest only this tile when ripe.",
       "x": 100,
       "y": 116,
       "z": -198,
       "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Margo west bank wheat",
+      "x": 88,
+      "y": 115,
+      "z": -201,
+      "dimension": "minecraft:overworld",
       "author": "Margo",
-      "note": "My wheat crop, last checked at 71% growth; harvest only this tile when ripe."
+      "note": "Three wheat tiles on my open west-bank plot near water; uneven ground needs more scouting."
     }
   ],
   "deaths": [
+    {
+      "x": 220,
+      "y": 108,
+      "z": -183,
+      "dimension": "minecraft:overworld",
+      "at": 1795291794481
+    },
+    {
+      "x": 223,
+      "y": 109,
+      "z": -188,
+      "dimension": "minecraft:overworld",
+      "at": 1795291726714
+    },
     {
       "x": 210,
       "y": 93,
@@ -121,13 +144,6 @@
       "z": -397,
       "dimension": "minecraft:overworld",
       "at": 1795279011226
-    },
-    {
-      "x": 123,
-      "y": 62,
-      "z": -75,
-      "dimension": "minecraft:overworld",
-      "at": 1795275193526
     }
   ]
 }

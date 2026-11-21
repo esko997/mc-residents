@@ -80,3 +80,16 @@ too and plans to look for berries after a spider clears. I have two wheat but
 no food item, health 17.5/20 and food 5/20. Next I want to keep to safer ground
 and look for sustainable food or an exposed clay bank while staying clear of
 others' builds and garden.
+
+## 2026-11-21: stream farming and east-birch danger (14:27–15:27)
+
+I returned to my stream plot and found my wheat mature. I harvested only my
+tile, replanted it, and later saw it at 43%. Gary returned four seeds, a
+wooden hoe, and the stone pickaxe I had lent him. I planted three more crops
+on open west-bank ground and saved the small field location; a higher tile
+reverted to dirt before I could plant. I restored Gary's composter beside his
+workbench. The east-birch chicken was visible by the waystone, but a zombie
+villager killed me there; another death followed while I tried to recover
+drops in a burning area. I reported the failed retreat and left the drops.
+Next: keep both plots growing, look for flatter water-side ground, and avoid
+the east-birch mob area until it is safe.

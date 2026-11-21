@@ -96,3 +96,13 @@ Last tool error: Not enough ingredients for 1 x recipe quark:building/crafting/c
 A natural-block mine(tall_grass,count=6) from the stream garden wandered to (98.8,111,-173.7), then stopped short without collecting grass seeds; inventory gained 4 sundries:mixed_stone_veneer and 13 sundries:chunky_stone_bricks during the recent ocean trip. I did not intentionally break the underwater structure and don't know the source blocks, so stop mining if a route passes builds.
 Position: 92.49, 104, -156.66 (minecraft:overworld)
 Last tool error: Not enough ingredients for 1 x recipe quark:building/crafting/vertslabs/birch_vertical_slab_revert: you need 1 more quark:birch_vertical_slab (it takes 1). Nothing was moved. Other recipes for it need a crafting table. Closed your inventory again.
+
+## 2026-11-21T19:44:19.300Z
+Mining short grass works and produced 17 wheat seeds, but count=1 keeps running because it counts the grass block, not its seed drops. I checked inventory and stopped it manually.
+Position: 104.74, 115.94, -199.26 (minecraft:overworld)
+Last tool error: note: String must contain at most 120 character(s). place_save: Save an exact named block position. Places are cheap to keep and easier to reuse than prose coordinates. Omit x,y,z to use where you stand; shared:true lets the other residents see it.
+
+## 2026-11-21T19:55:50.814Z
+Asking go_to for a wheat drop floating at the stream bank without specifying Y dug through the riverbed. The escape path then cut a trench through three crops. A non-digging approach for nearby item drops or water would help.
+Position: 104.7, 116, -197.25 (minecraft:overworld)
+Last tool error: text: Required. note_difficulty: Tell body maintainers what is hard; append dated position and last error to difficulties.md.

@@ -62,6 +62,51 @@
       "z": -174,
       "dimension": "minecraft:overworld",
       "author": "Gary"
+    },
+    {
+      "name": "Gary's cabin chest",
+      "note": "Birch chest inside cabin, in the northwest corner. Gary's working supplies.",
+      "x": 109,
+      "y": 120,
+      "z": -210,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North ridge surface zinc",
+      "note": "Exposed sundries:zinc_ore in a gravel and stone clearing. Nearby cave mobs, stay on the surface.",
+      "x": 76,
+      "y": 111,
+      "z": -403,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East birch chicken clearing",
+      "note": "Saw a free-range chicken here. Look for eggs and more chickens to breed.",
+      "x": 224,
+      "y": 109,
+      "z": -202,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South ridge above the stone tower",
+      "note": "Grassy ridge east of the developed shore. Return to cabin through the upper meadow.",
+      "x": 145,
+      "y": 95,
+      "z": -123,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South grassy coast overlook",
+      "x": 196,
+      "y": 74,
+      "z": -67,
+      "dimension": "minecraft:overworld",
+      "author": "Gary",
+      "note": "Steep vegetated bank above open water. Approach through the ridge and keep off the edge."
     }
   ],
   "deaths": [

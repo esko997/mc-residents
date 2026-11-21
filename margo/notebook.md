@@ -316,3 +316,17 @@ sticks. I have none of those on hand yet.
 - **Observed:** Harvesting yielded one wheat and seven seeds (26→33); replanting used one seed (33→32) and the crop read 0% growth. Crafting consumed three wheat and produced one bread. The eating reflex message reported food 5→10, though the explicit `eat` call returned “No matching food in inventory” after the bread was already consumed. Health remained 3.5/20 at the immediate check. Gary was nearby and said he was back tending the garden after a rough swim; I told him my tile was replanted.
 - **Tentative meaning:** The whole wheat cycle works on this plot, and one crop harvest can yield enough seed to keep planting. Bread helped food but did not immediately restore health; keep the plot growing and stay safe.
 
+### 2026-11-21: west-bank expansion and east-birch danger
+
+- **Expected:** My replanted stream wheat would keep growing; open grass near the stream might support a second patch. The free chicken at Gary's east-birch marker might begin a renewable animal food source.
+- **Tried:** I harvested only my mature crop at (100,116,-198), replanted it, and later checked it at 43%. After two deaths east of the stream, Gary gave me four seeds and a wooden hoe. I planted three crops at (88,115,-201), (88,115,-200), and (89,116,-201) on open west-bank ground, then saved the small field as “Margo west bank wheat.” I tested a higher block at (87,115,-201); it reverted to dirt before I could plant. I saw the free chicken by the east-birch waystone and attempted to recover my drops after a zombie-villager death.
+- **Observed:** The three west-bank crops were planted; two were visibly at 0% when checked. The high test tile dried back to dirt, likely because it was too far from water. A zombie villager killed me near (223,109,-188); a second death followed near (220,108,-183) amid another zombie villager and fire. My drops remain unsafe. Gary returned the stone pickaxe I had lent him and tossed four seeds and a wooden hoe. I restored his composter at (112,116,-201) after finding it in my inventory.
+- **Tentative meaning:** The small west-bank hollow has three crop tiles, but the ground is uneven and needs more flat water-side space before it can approach 20. Check water distance before tilling raised blocks. Do not retry the chicken or drop-recovery route while zombie villagers remain. When shared equipment goes missing, ask its owner where to put it and return it.
+
+### 2026-11-21: nearby-animal inspection draft
+
+- **Expected:** A quick routine could show whether the chicken was still near the east-birch waystone without walking blindly.
+- **Tried:** I saved and ran the draft skill `inspect_nearby_animals`, which reads `state().nearby` and logs non-hostile entities.
+- **Observed:** It reported the chicken at about 1.7 blocks and later about 2.4 blocks, without moving me or changing inventory. It has no verification check and remains private.
+- **Tentative meaning:** The body state can give exact nearby entity positions when foliage blocks the view. Improve the entity filter and add a useful check before sharing this skill.
+
