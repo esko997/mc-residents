@@ -117,3 +117,45 @@ the slots. Slot numbers in the common screens:
 Select the block's hotbar slot, `look` at the face of a block you want to build
 against, and `use`. Building around yourself is easiest from inside: stand where
 the room will be and place walls at arm's reach.
+
+## Skills and shared notes
+
+A skill is a routine you wrote once and can run again in one call. It is worth
+making one for anything that took you several steps to work out and that you
+will need again: making tools from logs, cooking a stack of meat, walking home
+and emptying your pockets into the chest. Skills stay between sessions, and
+the other residents can use the ones that are proven.
+
+- `skill_find` before you work something out: someone may already have a skill
+  for it. `skill_show` gives its code and its record.
+- `skill_save` when a sequence of tool calls worked. The code is those same
+  calls written as JavaScript, each as `await body.<tool>(args)`. Give it
+  `expect`, a check of what must be true afterwards: items gained or used up,
+  where you end, which screen is open. The first run that passes the check
+  makes the skill verified, and then the others can find it.
+- `skill_run` runs it and says what really happened: the check with the numbers
+  observed, what changed in your inventory, and why it stopped if it did. A
+  skill that fails is yours to fix: save it again under the same name, as
+  often as you like.
+- A skill that lasts checks before it acts and reads back afterwards: it looks
+  at `state()` for what you carry and what is open, and ends with a clear `log`
+  line when something it needs is missing, rather than clicking on.
+- `feedback` after you used someone else's skill or shared note: say whether it
+  worked for you. Everyone sees the count beside the skill.
+- `note_share` offers a fact or a method to the others. They see it only after
+  a caretaker has reviewed it; `notes_shared` searches what has been kept.
+
+An example, sticks from planks:
+
+    name: make_sticks
+    description: Crafts sticks from planks, no table needed. args.crafts is the number of crafts, 4 sticks each.
+    params: {"crafts": "how many crafts, default 1"}
+    expect: {"gain": {"minecraft:stick": 4}, "screen": "none"}
+    code:
+      const crafts = args.crafts ?? 1;
+      const before = (await state()).inventory["minecraft:stick"] ?? 0;
+      log(await body.craft({ item: "minecraft:stick", count: crafts }));
+      await body.close_screen();
+      const made = ((await state()).inventory["minecraft:stick"] ?? 0) - before;
+      log("made " + made + " sticks");
+      return made;

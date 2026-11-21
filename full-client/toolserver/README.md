@@ -21,6 +21,7 @@ Only MCP messages go to stdout; startup diagnostics go to stderr. Closing stdin,
 | `SYNAPSE_TOKEN_FILE` | `~/.synapse/token`; token is never returned to the model. |
 | `RESIDENT_DIR` | Current directory; `note_difficulty` appends `difficulties.md` here. Directory must exist. |
 | `KNOWLEDGE_DB` | Optional read-only SQLite export; knowledge tools register only when it opens. Missing/invalid database is reported clearly on stderr; attempted knowledge calls return a tool error. |
+| `COMMONS_DB` | `~/gary-client/commons/commons.sqlite`; the SQLite file all residents and the management app share (skills, runs, shared notes, feedback). Created on first use from `../commons/schema.sql`. If it cannot be opened, the skill, note and feedback tools answer with one line and everything else works. |
 
 Paths accept `~/`. Knowledge export/build instructions live alongside `scripts/build-knowledge.ts`; runtime lookup never contacts a service or generates recipes.
 
@@ -73,12 +74,36 @@ KNOWLEDGE_DB = "/home/your-user/gary-client/knowledge.sqlite"
 - `set_reflexes` — Configure `auto_eat`, `eat_below`, `when_attacked` (`auto`, `fight`, `flee`, `nothing`), and the independently switchable `surface`, `escape_fire` (both fire and lava) and `avoid_creepers` rescues. Rescue switches default to `true`.
 - `recall` — Keyword search of the resident's own notes (`memory.md`, `journal.md`, `notebook.md`, `notes/**`); never `archive/`.
 - `place_save`, `place_find`, `place_remove` — Named coordinates kept as data: private in `RESIDENT_DIR/places.json`, shared between residents in `../shared/places.json`. `place_find` lists nearest first and includes the last five deaths with their age.
+- `skill_save` — Save or revise the resident's own skill: JavaScript (the body of an async function) plus an optional `expect` check (`gain`, `lose`, `near`, `screen`). Syntax errors are reported with their line. Changing code or check bumps the version and makes it a draft again.
+- `skill_find` — Keyword search over the resident's own skills and everyone's verified or curated ones; each line shows status, author, args and three separate figures: runs that passed the check, other residents who used it, and their feedback.
+- `skill_show` — One skill in full: description, args, check, record, review, feedback, latest runs and code (`from_line` continues long code).
+- `skill_run` — Run a skill with `args`; `max_seconds` 1..600 (default 120). Reports finished/stopped and why, the check with observed numbers, inventory changes, what the code returned, and the last log lines.
+- `note_share` — Propose a piece of knowledge (up to 600 characters) to the other residents; they see it only once a reviewer has curated it.
+- `notes_shared` — Search curated shared notes, plus the resident's own proposals with their status.
+- `feedback` — Say whether another resident's skill or a curated note worked (`worked` true/false, optional `text`); one verdict per resident per target, replaced by a later one.
 
 Not registered: `src/wiki.ts` (a lookup of the vanilla Minecraft Wiki) is work in progress. The wiki describes the newest game version while the server runs 1.20.1, and it is written for keyboard and mouse; until both gaps have real answers the residents do not get it.
 
 Events that carry what the resident needs to decide for itself: `died` gives the block and dimension and that dropped items last about five minutes; `navigation_stopped` replaces a silent resume when a drowning or lava rescue interrupted a trip (goal, reason, where it stands, distance left, and a count when it recurs within ten minutes); `stopped_short` adds `attempts=N` from the third consecutive failure of the same goal from about the same place.
 
 Bare ids for `mine`, `eat`, `recipes` and `uses` assume `minecraft:`. When an exact recipe/use lookup is empty, matching indexed item ids are tried and any selected alternate id is reported.
+
+## Skills
+
+A skill is a routine a resident wrote once and can run again in one call; the commons (`COMMONS_DB`) keeps it, so it survives sessions and the other residents can use it. Statuses: `draft` (author only) → `verified` (a run by its author finished and passed its `expect` check; visible to everyone, not yet reviewed) → `curated` or `rejected` (set by a reviewer through the management app). A skill without `expect` can never be verified. Three records stay separate everywhere they are shown: whether runs passed the check (`skill_runs`), how many residents other than the author ran it, and those residents' `feedback`.
+
+**What skill code is.** It runs in QuickJS compiled to WebAssembly (`quickjs-emscripten-core` with `@jitl/quickjs-singlefile-cjs-release-sync`: pure WebAssembly embedded in the package, no native build, installed by `bun install`), a separate JavaScript interpreter inside a worker thread (`src/skill-worker.ts`, driven by `src/sandbox.ts`). Its global object has the language built-ins and nothing else: no `Bun`, `process`, `require`, `import()`, `fetch`, timers, files, network, environment, commons database or tool-server objects. All it can do is:
+
+- `await body.<tool>(args)` — any body tool the resident has, returning the tool's text without the event tail. Closed to skill code: `skill_save`, `note_share`, `feedback` (the resident's own word) and `picture` (an image). A tool error is thrown as an error with `.tool` and `.message`; uncaught, it stops the run. `say` is limited to five messages per run.
+- `await state()` — `{pos, dimension, health, food, air, screen, lookingAt, held, selectedSlot, hotbar, inventory, nearby, onGround, inWater, inLava, onFire, navigation}`; `inventory` maps item id to total count (inventory, armour and offhand), `nearby` is the 24 nearest entities with `type`, `name`, `distance`, `hostile`, `player`, `x`, `y`, `z`. Read at most five times a second when nothing else is called in between.
+- `args`, `log(text)` (the last lines appear in the report), `await sleep(ms)`.
+- `await body.skill_run({name, args})` — other skills, two levels deep, inside the same time and tool-call budget. A called skill that stops or fails its check throws.
+
+Limits are enforced outside the interpreter: wall time (default 120 s, `max_seconds` up to 600), 300 tool calls per top-level run, 64 MB of memory, 400 KiB of stack. An endless loop is ended by the interpreter's interrupt handler and, failing that, by terminating the worker; the tool server's own thread, and with it the poller and the rescues, never waits on skill code. If the interpreter cannot be started, `skill_save` and `skill_run` refuse with one line; skill code is never run in the tool server's own JavaScript engine.
+
+**A run and the body.** `skill_run` is not itself a manual action. Each tool the code calls takes the same path as a call from the resident, so `takeoverTools` still interrupt a fight or a meal for just that call and reflexes act between calls. The run stops at once, saying why, when the resident dies, when a rescue, flee or fight reflex starts (so the code's next action cannot take the body away from the rescue), when a tool error is not caught, at a limit, or when the MCP call is cancelled. It will not start while the resident is dead or a rescue is under way. `wait` inside a skill counts only events since the run's previous `wait` and returns those event lines after its first line, so `go_to` then `wait` works any number of times in one run; the resident still gets all events in the tail of the `skill_run` result. After the run the check is evaluated from state read before and after, the run is recorded in `skill_runs` (`ok`, `check_ok`, `error`), and a draft whose run finished and passed becomes `verified`.
+
+Codex and Claude give an MCP call 180 seconds here (`tool_timeout_sec`, `MCP_TOOL_TIMEOUT`); a `max_seconds` above about 170 needs those raised, otherwise the client cancels the call and the run stops as cancelled.
 
 ## Body behavior
 

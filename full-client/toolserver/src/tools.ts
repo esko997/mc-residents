@@ -7,6 +7,7 @@ import { hostileEntity, nonempty, playerEntity, type Stack } from "./synapse.ts"
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 import { craft } from "./craft.ts";
 import { createNotes, notesDefinitions, type Notes } from "./notes.ts";
+import { Skills, skillDefinitions, type SkillRun, type ToolReply } from "./skills.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -47,6 +48,7 @@ export const definitions = {
   note_difficulty: { description: "Tell body maintainers what is hard; append dated position and last error to difficulties.md.", schema: z.object({ text: z.string().min(1).max(4000) }) },
   set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
   ...notesDefinitions,
+  ...skillDefinitions,
 };
 export type ToolName = keyof typeof definitions;
 const knowledgeNames = ["find_item", "recipes", "craft", "uses", "guide"];
@@ -76,6 +78,8 @@ export class Tools {
   craftWaitMs = 2000;
   /** His own notes and places. Deaths are recorded as places so he can judge whether to go back. */
   readonly notes: Notes;
+  /** His saved routines and what residents share, in the commons. */
+  readonly skills: Skills;
   constructor(readonly body: Body, readonly knowledge?: Knowledge, private knowledgeError = "KNOWLEDGE_DB is not configured.") {
     const { residentDir, name } = body.config;
     this.notes = createNotes({
@@ -83,11 +87,22 @@ export class Tools {
       position: async () => { const state = await body.api.state(); return { ...state.pos, dimension: state.dimension }; },
     });
     body.onDeath = death => this.notes.recordDeath(death.pos, death.dimension);
+    this.skills = new Skills(body, body.config.commonsDb, (tool, args, signal, run) => this.run(tool, args, signal, run));
   }
+  close() { this.skills.close(); }
   get registeredNames(): ToolName[] {
     return (Object.keys(definitions) as ToolName[]).filter(n => this.knowledge || !knowledgeNames.includes(n));
   }
   async call(name: string, args: unknown = {}, signal?: AbortSignal): Promise<CallToolResult> {
+    const reply = await this.run(name, args, signal);
+    let text = reply.text;
+    const events = this.body.events.consume();
+    const budget = 1499 - events.length - 2;
+    if (text.length > budget) text = text.slice(0, budget - 28) + "\n… remaining output omitted.";
+    return { isError: reply.isError, content: [...(reply.image ? [{ type: "image" as const, data: reply.image, mimeType: "image/png" }] : []), { type: "text", text: `${text}\n\n${events}` }] };
+  }
+  /** One tool call without the event tail; errors come back as text. `skill` is set when skill code makes the call. */
+  async run(name: string, args: unknown, signal?: AbortSignal, skill?: SkillRun): Promise<ToolReply & { image?: string }> {
     let text: string;
     let image: string | undefined;
     let isError = false;
@@ -96,10 +111,10 @@ export class Tools {
       const parsed = definitions[name as ToolName].schema.parse(args);
       // The runtime-selected schema and its tool name are a correlated pair.
       const command = [name, parsed] as Command;
-      const run = () => this.execute(command, signal);
+      const run = () => this.execute(command, signal, skill);
       const value = takeoverTools.includes(name) ? await this.body.manualAction(run) : await run();
       if (typeof value === "string") text = value;
-      else { text = value.text; image = value.image; }
+      else { text = value.text; image = value.image; isError = value.isError === true; }
     } catch (error) {
       // A bare "Invalid input" (from a union such as look's three forms) tells
       // the model nothing; the description says which shapes are accepted.
@@ -109,16 +124,21 @@ export class Tools {
       this.lastError = message.replace(/\s+/g, " ").slice(0, 400);
       text = `Error: ${this.lastError}`; isError = true;
     }
-    const events = this.body.events.consume();
-    const budget = 1499 - events.length - 2;
-    if (text.length > budget) text = text.slice(0, budget - 28) + "\n… remaining output omitted.";
-    return { isError, content: [...(image ? [{ type: "image" as const, data: image, mimeType: "image/png" }] : []), { type: "text", text: `${text}\n\n${events}` }] };
+    return { text, image, isError };
   }
-  private async execute(command: Command, signal?: AbortSignal): Promise<string | { text: string; image: string }> {
+  private async execute(command: Command, signal?: AbortSignal, skill?: SkillRun): Promise<string | { text: string; image?: string; isError?: boolean }> {
     const [tool, args] = command;
     const body = this.body, api = body.api;
     switch (tool) {
-      case "wait": return body.events.wait(args.seconds, args.for, signal);
+      case "wait": {
+        if (!skill) return body.events.wait(args.seconds, args.for, signal);
+        // Nothing shows events to skill code between its calls, so a wait there
+        // counts only what happened since the run's last wait and returns those lines.
+        const cursor = skill.shared.eventCursor;
+        const outcome = await body.events.wait(args.seconds, args.for, signal, cursor);
+        skill.shared.eventCursor = body.events.latest;
+        return [outcome, ...body.events.since(cursor)].join("\n");
+      }
       case "go_to": {
         const command = `#goto ${args.x} ${args.y === undefined ? "" : `${args.y} `}${args.z}`;
         await body.navigate(command, { x: args.x, z: args.z, ...(args.y === undefined ? {} : { y: args.y }) });
@@ -320,6 +340,13 @@ export class Tools {
       case "place_save": return this.notes.place_save(args);
       case "place_find": return this.notes.place_find(args);
       case "place_remove": return this.notes.place_remove(args);
+      case "skill_save": return this.skills.save(args);
+      case "skill_find": return this.skills.find(args);
+      case "skill_show": return this.skills.show(args);
+      case "skill_run": return this.skills.run(args, signal, skill);
+      case "note_share": return this.skills.noteShare(args);
+      case "notes_shared": return this.skills.notesShared(args);
+      case "feedback": return this.skills.feedback(args);
       case "set_reflexes":
         Object.assign(body.reflexes, args);
         return `Reflexes: auto_eat=${body.reflexes.auto_eat}, eat_below=${body.reflexes.eat_below}, when_attacked=${body.reflexes.when_attacked}, surface=${body.reflexes.surface}, escape_fire=${body.reflexes.escape_fire}, avoid_creepers=${body.reflexes.avoid_creepers}, water_bucket=${body.reflexes.water_bucket}.`;

@@ -32,7 +32,7 @@ async function main() {
   async function shutdown() {
     if (closing) return;
     closing = true;
-    await body.close(); knowledge?.close(); await server.close();
+    await body.close(); tools.close(); knowledge?.close(); await server.close();
   }
   process.on("SIGINT", () => { void shutdown().finally(() => process.exit(0)); });
   process.on("SIGTERM", () => { void shutdown().finally(() => process.exit(0)); });

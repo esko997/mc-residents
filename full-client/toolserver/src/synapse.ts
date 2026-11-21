@@ -31,6 +31,8 @@ export interface Screen {
 export interface Config {
   url: string; tokenFile: string; log: string; residentDir: string;
   name: string; knowledgeDb?: string;
+  /** The commons shared by all residents and the management app; skills and shared notes are off without it. */
+  commonsDb?: string;
 }
 export const expandHome = (path: string) => path === "~" ? homedir() : path.replace(/^~\//, `${homedir()}/`);
 export function configuration(env = process.env): Config {
@@ -41,6 +43,7 @@ export function configuration(env = process.env): Config {
     tokenFile: expandHome(env.SYNAPSE_TOKEN_FILE ?? "~/.synapse/token"),
     log: expandHome(env.CLIENT_LOG), residentDir: expandHome(env.RESIDENT_DIR ?? process.cwd()),
     name: env.RESIDENT_NAME, knowledgeDb: env.KNOWLEDGE_DB ? expandHome(env.KNOWLEDGE_DB) : undefined,
+    commonsDb: expandHome(env.COMMONS_DB ?? "~/gary-client/commons/commons.sqlite"),
   };
 }
 export class Synapse {

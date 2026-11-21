@@ -18,6 +18,8 @@ export interface FakeRecipe {
 }
 export interface FakeOptions {
   closeFailures?: number; escapeBlocked?: boolean; eatWorks?: boolean; openWorks?: boolean;
+  /** The resident's name (default Gary) and the commons database it shares with other fixtures. */
+  name?: string; commonsDb?: string;
   swapWorks?: boolean; interactable?: boolean; forceMealScreen?: boolean;
   /** Fail this many plain /gui reads (no action) with a 500. */
   guiReadFailures?: number;
@@ -259,9 +261,9 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
   } });
   const url = `http://127.0.0.1:${server.port}`;
   const api = new Synapse(url, "test-token");
-  const body = new Body({ url, tokenFile: "", log, name: "Gary", residentDir: dir }, api, () => clock);
+  const body = new Body({ url, tokenFile: "", log, name: options.name ?? "Gary", residentDir: dir, commonsDb: options.commonsDb }, api, () => clock);
   const tools = new Tools(body);
-  cleanups.push(async () => { await body.close(); server.stop(true); await rm(dir, { recursive: true, force: true }); });
+  cleanups.push(async () => { await body.close(); tools.close(); server.stop(true); await rm(dir, { recursive: true, force: true }); });
   return {
     dir, log, state, requests, body, tools, options, tick: (ms: number) => { clock += ms; }, setScreen: show, setUnavailable: () => { unavailable = true; },
     setMenu: (kind, slots, carried) => {

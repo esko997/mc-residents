@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { appendFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CallToolResultSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -253,7 +254,9 @@ describe("reflexes and interactions", () => {
     expect(text(await offline.call("status"))).toContain("Synapse unreachable");
   });
   test("all tool text stays below 1500 characters with full inventory and event burst", async () => {
-    const f = await fixture(); f.state.inventory!.main = Array.from({ length: 36 }, (_, slot) => ({ slot, count: 64, item: `mekanism:very_long_modded_material_stack_${slot}` }));
+    const commonsDir = await mkdtemp(join(tmpdir(), "resident-commons-"));
+    cleanups.push(() => rm(commonsDir, { recursive: true, force: true }));
+    const f = await fixture({ commonsDb: join(commonsDir, "commons.sqlite") }); f.state.inventory!.main = Array.from({ length: 36 }, (_, slot) => ({ slot, count: 64, item: `mekanism:very_long_modded_material_stack_${slot}` }));
     await writeFile(join(f.dir, "memory.md"), Array.from({ length: 60 }, (_, i) => `- bread note ${i} ${"n".repeat(200)}`).join("\n"));
     const argumentsByTool: Record<string, unknown> = {
       wait: { seconds: 1 }, go_to: { x: 10, z: 10 }, mine: { block: "minecraft:stone" },
@@ -265,6 +268,14 @@ describe("reflexes and interactions", () => {
       guide: { query: "bread" }, craft: { item: "minecraft:bread" }, note_difficulty: { text: "test" },
       recall: { query: "bread", limit: 8 }, place_save: { name: "home", note: "n".repeat(120) }, place_find: {},
       place_remove: { name: "home" },
+      // Saved first, so the tools after it have a long skill, a long log and a long note to show.
+      skill_save: {
+        name: "long_routine", description: "d".repeat(300), params: Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`param_${i}`, "p".repeat(120)])),
+        code: Array.from({ length: 40 }, (_, i) => `log("step ${i} ${"s".repeat(120)}");`).join("\n") + `\nreturn "${"r".repeat(900)}";`,
+        expect: { gain: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`mekanism:very_long_modded_material_stack_${i}`, 64])) },
+      },
+      skill_find: {}, skill_show: { name: "long_routine" }, skill_run: { name: "long_routine" },
+      note_share: { topic: "t".repeat(60), text: "x".repeat(600) }, notes_shared: { limit: 8 }, feedback: { skill: "long_routine", worked: true, text: "f".repeat(120) },
     };
     for (const tool of Object.keys(definitions)) {
       f.state.hotbar = [{ slot: 0, item: tool === "write_sign" ? "minecraft:oak_sign" : "minecraft:bread", count: 2 }];
@@ -272,7 +283,8 @@ describe("reflexes and interactions", () => {
       f.setScreen(tool === "write_sign" || tool === "eat" ? { screen: "none" } : { screen: "InventoryScreen", container: { slots: f.state.inventory!.main, carried: "minecraft:air" } });
       for (let i = 0; i < 20; i++) f.body.events.add("chat", { from: "spesk01", text: "a".repeat(500) });
       const result = await f.tools.call(tool, argumentsByTool[tool] ?? {});
-      if (!["find_item", "recipes", "craft", "uses", "guide"].includes(tool)) expect(result.isError).toBe(false);
+      // The long skill's check cannot pass here; its report is still a complete, capped reply.
+      if (!["find_item", "recipes", "craft", "uses", "guide", "skill_run"].includes(tool)) expect(result.isError).toBe(false);
       expect(text(result).length).toBeLessThan(1500); expect(text(result)).toContain("Since last time:");
     }
   });
@@ -286,7 +298,7 @@ test("stdio MCP registration, union-schema tool calls and clean shutdown", async
   const f = await fixture(); const tokenFile = join(f.dir, "token"); await writeFile(tokenFile, "test-token");
   const transport = new StdioClientTransport({
     command: process.execPath, args: [join(import.meta.dir, "../src/main.ts")], stderr: "pipe",
-    env: { CLIENT_LOG: f.log, RESIDENT_NAME: "Gary", RESIDENT_DIR: f.dir, SYNAPSE_TOKEN_FILE: tokenFile, SYNAPSE_URL: f.body.config.url, KNOWLEDGE_DB: join(f.dir, "missing.sqlite") },
+    env: { CLIENT_LOG: f.log, RESIDENT_NAME: "Gary", RESIDENT_DIR: f.dir, SYNAPSE_TOKEN_FILE: tokenFile, SYNAPSE_URL: f.body.config.url, KNOWLEDGE_DB: join(f.dir, "missing.sqlite"), COMMONS_DB: join(f.dir, "commons", "commons.sqlite") },
   });
   const client = new Client({ name: "integration-test", version: "1" });
   try {
@@ -297,6 +309,14 @@ test("stdio MCP registration, union-schema tool calls and clean shutdown", async
     expect(result.isError).toBe(false);
     const picture = CallToolResultSchema.parse(await client.callTool({ name: "picture", arguments: {} }));
     expect(picture.content[0].type).toBe("image");
+    // A skill end to end in the real server process: the commons is created, the interpreter starts beside it,
+    // and the code's tool call reaches the client.
+    expect(Object.keys(listed.tools.find(t => t.name === "skill_save")!.inputSchema.properties!)).toEqual(["name", "description", "code", "params", "expect"]);
+    const saved = CallToolResultSchema.parse(await client.callTool({ name: "skill_save", arguments: { name: "face_east", description: "Turns to face east and reports health.", code: "await body.look({ yaw: -90, pitch: 10 });\nreturn 'health ' + (await state()).health;", expect: { screen: "none" } } }));
+    expect(saved.isError).toBe(false);
+    const ran = CallToolResultSchema.parse(await client.callTool({ name: "skill_run", arguments: { name: "face_east" } }));
+    expect(text(ran)).toMatch(/^Skill face_east v1 finished in \d+(\.\d)? s, 1 tool call\.\nCheck passed: screen is none, needs none\.\nInventory changes: none\.\nReturned: health 20\nface_east is now verified/);
+    expect(f.state.rotation).toEqual({ yaw: -90, pitch: 10 });
   } finally { await client.close(); }
 });
 

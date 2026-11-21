@@ -15,11 +15,19 @@ export class Events {
     if (this.entries.length > 128) this.entries.shift();
     for (const listener of this.listeners) listener(event);
   }
-  async wait(seconds: number, filter?: string[], signal?: AbortSignal): Promise<string> {
+  /** The newest event's number; with `wait` and `since`, a cursor for a reader other than the tool-result tail. */
+  get latest() { return this.sequence; }
+  /** Sees every event as it is added, until the returned function is called. */
+  subscribe(listener: (event: ResidentEvent) => void) {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+  /** `after`: only events newer than this number count; by default those not yet shown in a tool result. */
+  async wait(seconds: number, filter?: string[], signal?: AbortSignal, after = this.seen): Promise<string> {
     // A rescue can end a navigation without arrival or stall; a wait for either of those must not sleep through it.
     const matches = (e: ResidentEvent) => waking[e.type] === true && (!filter?.length || filter.includes(e.type) ||
       (e.type === "navigation_stopped" && (filter.includes("arrived") || filter.includes("stopped_short"))));
-    if (this.entries.some(e => e.seq > this.seen && matches(e))) return "Waking event received.";
+    if (this.entries.some(e => e.seq > after && matches(e))) return "Waking event received.";
     if (signal?.aborted) return "Wait cancelled.";
     const { promise, resolve } = Promise.withResolvers<string>();
     const finish = (message: string) => {
@@ -32,15 +40,20 @@ export class Events {
     this.listeners.add(listener); signal?.addEventListener("abort", abort, { once: true });
     return promise;
   }
+  private line(event: ResidentEvent) {
+    const { seq, type, ...fields } = event;
+    const text = Object.entries(fields).map(([key, value]) => `${key}=${String(value).replace(/\s+/g, " ")}`).join(" ");
+    return `${seq} ${type}${text ? ` ${text}` : ""}`.slice(0, long[type] ? 160 : 91);
+  }
+  /** The newest eight events after `seq`, as lines, without marking them shown. */
+  since(seq: number): string[] {
+    return this.entries.filter(e => e.seq > seq).slice(-8).map(e => this.line(e));
+  }
   consume(): string {
     const unseen = this.entries.filter(e => e.seq > this.seen).slice(-8);
     const dropped = this.sequence - this.seen - unseen.length;
     this.seen = this.sequence;
-    const lines = unseen.map(event => {
-      const { seq, type, ...fields } = event;
-      const text = Object.entries(fields).map(([key, value]) => `${key}=${String(value).replace(/\s+/g, " ")}`).join(" ");
-      return `${seq} ${type}${text ? ` ${text}` : ""}`.slice(0, long[type] ? 160 : 91);
-    });
+    const lines = unseen.map(e => this.line(e));
     return `Since last time:${dropped > 0 ? ` (${dropped} older dropped)` : ""}\n${lines.length ? lines.join("\n") : "none"}`;
   }
 }

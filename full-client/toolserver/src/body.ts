@@ -67,6 +67,8 @@ export class Body {
   private fleeGeneration = 0;
   private crumbs: Position[] = [];
   private rescue?: Rescue;
+  /** The kind of rescue moving the body right now, if any. */
+  get rescuing(): string | undefined { return this.rescue?.kind; }
   private rescueCleanup?: Promise<void>;
   /** Per goal description, when a surface or lava rescue stopped it (body clock, last ten minutes). */
   private hazardStops = new Map<string, number[]>();
