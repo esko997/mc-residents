@@ -43,7 +43,7 @@ const MAX_BODY = 8192;
 export function createApp(config: Config, token: string, now: () => number = Date.now, log: (line: string) => void = console.log): App {
   const db = openCommons(config.dbPath, config.schemaPath);
   const watcher = new Watcher(config, db, now);
-  const tail = new RolloutTail(config.sessionsDir, config.residents, { days: config.activityDays, now });
+  const tail = new RolloutTail(config.sessionsDir, config.residents, { days: config.activityDays, now, callsDir: config.callsDir });
   const stream = new Console(config.consoleUrl !== undefined, { now, names: [...config.residents.map(resident => resident.name), ...config.owners] });
   const feed = new ConsoleFeed(stream, config, now);
   let lastRead = 0;

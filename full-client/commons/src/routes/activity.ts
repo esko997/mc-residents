@@ -3,7 +3,7 @@ import type { Entry, Indicators, SessionInfo } from "../rollouts.ts";
 import type { Context, Routes } from "./context.ts";
 
 export interface ActivityReply {
-  /** Changes when the server restarts and entry ids start over. */
+  /** Changes when entry ids start over or stop naming the same entries: the server restarted, or read a file again. */
   boot: string;
   now: number; entries: Entry[];
   residents: { name: string; indicators: Indicators; sessions: SessionInfo[] }[];

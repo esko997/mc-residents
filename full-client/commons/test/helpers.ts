@@ -74,6 +74,12 @@ export const rollout = {
   },
 };
 export const reply = (text: string, isError = false) => JSON.stringify({ content: [{ type: "text", text }], isError });
+/**
+ * The line a resident's tool server writes to its call log for the call `rollout.call` describes
+ * with the same arguments: `t` is when the call started, the reply came back `ms` later.
+ */
+export const callLine = (t: number, tool: string, args: object | undefined, text: string, options: { isError?: boolean; ms?: number } = {}) =>
+  JSON.stringify({ t: iso(t), ms: options.ms ?? 40, tool, args, error: options.isError === true, text });
 
 /** A PNG of plain bands, big enough to look like a picture on the page. */
 export function png(width = 160, height = 90, tint = [90, 140, 90]): Uint8Array<ArrayBuffer> {

@@ -1,6 +1,9 @@
-// Follows the residents' Codex rollout files (one JSON object per line) and keeps
-// a short, readable record of what each resident did. Files grow while a session
-// runs and reach several MB, so each is read once and then only its new bytes.
+// Keeps a short, readable record of what each resident did, from two kinds of file
+// (one JSON object per line in both). The residents' Codex rollouts have the model's
+// own words, its reasoning summaries, token counts and shell calls. The call logs
+// their tool servers write have every body call with its reply. Before a resident
+// had a call log, its body calls are read from the rollouts too. Files grow while a
+// session runs and reach several MB, so each is read once and then only its new bytes.
 import { open, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { clip, finite, record } from "./json.ts";
@@ -11,6 +14,7 @@ export interface Entry {
   /** Unix ms. For an event: when the tool result that reported it came back. */
   t: number;
   resident: string;
+  /** The Codex session it was read from; empty for a body call or event read from a call log. */
   session: string;
   kind: EntryKind;
   /** call, said: tool name without the mcp__body__ prefix. */
@@ -111,17 +115,69 @@ export function callsInScript(script: string): { tool: string; args: unknown; ra
   return found;
 }
 
+type NewEntry = Omit<Entry, "id" | "resident" | "session">;
+/** The `session` of entries read from a call log, which does not say which session made a call. */
+const LOGGED = "";
+
+/** The entries one body call leaves: the call itself (or what was said), then the events its reply reported. */
+function callEntries(t: number, tool: string, args: unknown, reply: string, failed: boolean, ms?: number): NewEntry[] {
+  const { body, events } = splitResult(reply);
+  const error = failed || /^Error\b/.test(body);
+  const words = tool === "say" ? record(args).text : undefined;
+  const said = typeof words === "string";
+  return [
+    {
+      t, kind: said ? "said" : "call", tool, args: compactArgs(args), result: clip(body, 400), ms,
+      ...(error ? { error: true } : {}), ...(said ? { text: clip(words, 400) } : {}),
+      quiet: QUIET_TOOLS[tool] === true && !error,
+    },
+    ...events.map((event): NewEntry => ({ t, kind: "event", type: event.type, text: clip(event.text, 300), quiet: NOTABLE_EVENTS[event.type] !== true })),
+  ];
+}
+
+/** A file another program appends to: how far it was read, and the start of a line still being written. */
+interface Tail { path: string; offset: number; carry: Buffer }
+/** Hands over each whole line appended since the last time. `line` answers whether the rest of the file is wanted. */
+async function readAppended(tail: Tail, size: number, line: (data: Buffer, start: number, end: number) => boolean) {
+  const file = await open(tail.path, "r");
+  try {
+    while (tail.offset < size) {
+      const buffer = Buffer.alloc(Math.min(size - tail.offset, 4 << 20));
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, tail.offset);
+      if (bytesRead === 0) break;
+      tail.offset += bytesRead;
+      const data = tail.carry.length ? Buffer.concat([tail.carry, buffer.subarray(0, bytesRead)]) : buffer.subarray(0, bytesRead);
+      // Only whole lines are read; the writer may be halfway through the last one.
+      let start = 0, wanted = true;
+      for (let end = data.indexOf(10, start); end >= 0; end = data.indexOf(10, start)) {
+        if (wanted && end > start) wanted = line(data, start, end);
+        start = end + 1;
+      }
+      // Do not hoard the bytes of a file that is skipped wholesale.
+      if (!wanted) { tail.carry = Buffer.alloc(0); tail.offset = size; break; }
+      tail.carry = Buffer.from(data.subarray(start));
+    }
+  } finally { await file.close(); }
+}
+
 interface Pending { t: number; script: string; itemsSeen: number }
-interface FileState {
-  path: string;
-  offset: number;
-  carry: Buffer;
+interface FileState extends Tail {
   /** undefined: first line not read yet. null: not a resident's session. */
   resident: string | null | undefined;
   info: SessionInfo;
   pending: Map<string, Pending>;
   /** The harness logs a reasoning summary twice (response item and finished item); it is recorded once. */
   lastThought: string;
+}
+interface CallLog extends Tail {
+  /** Device and inode: a log that was moved away and begun again is another file, whatever its size. */
+  identity: string;
+  /**
+   * From this time on the log, not the rollouts, is the record of the resident's body calls:
+   * when its first call started, or the start of the window when the log reaches further back.
+   * Unset until a call was read from it.
+   */
+  from?: number;
 }
 interface ResidentDir { name: string; dir: string }
 
@@ -136,10 +192,14 @@ const NEEDED: Record<string, true> = {
 // megabytes of JSON. A line is skipped only when its kind was positively read and is not needed;
 // anything that does not look as expected is parsed in full.
 const KIND = /^\{\s*"timestamp":\s*"[^"]*",\s*(?:"ordinal":\s*\d+,\s*)?"type":\s*"(\w+)",\s*"payload":\s*\{\s*"type":\s*"(\w+)"/;
+// A call-log line opens with when the call started and how long it took, readable without parsing the reply.
+const CALL_TIMES = /^\{"t":"([^"]+)","ms":(\d+)[,}]/;
 
 export class RolloutTail {
-  readonly boot = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  private started = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  private rereads = 0;
   private files = new Map<string, FileState>();
+  private callLogs = new Map<string, CallLog>();
   private entries = new Map<string, Entry[]>();
   private unsorted = new Set<string>();
   private nextId = 1;
@@ -148,9 +208,11 @@ export class RolloutTail {
 
   constructor(
     private sessionsDir: string, private residents: ResidentDir[],
-    private options: { days?: number; maxEntries?: number; now?: () => number } = {},
+    private options: { days?: number; maxEntries?: number; now?: () => number; callsDir?: string } = {},
   ) {}
   private now() { return this.options.now?.() ?? Date.now(); }
+  /** Changes when ids handed out before no longer name the same entries: at a restart, and when a file was dropped to be read again. */
+  get boot() { return `${this.started}-${this.rereads}`; }
 
   /** Read whatever was appended since the last call. Concurrent calls share one pass. */
   refresh(): Promise<void> {
@@ -160,6 +222,11 @@ export class RolloutTail {
 
   private async pass() {
     const cutoff = this.now() - (this.options.days ?? 2) * 86_400_000;
+    // Call logs first: a rollout is read knowing from when its resident's body calls are on record there.
+    // A tool server writes a call to its log before the harness can write the result to the rollout,
+    // so a call the rollout has and the log was not yet read to turns up on the next pass.
+    const { callsDir } = this.options;
+    if (callsDir) for (const resident of this.residents) await this.readCalls(join(callsDir, `${resident.name}.jsonl`), resident.name, cutoff);
     for (const path of await this.rolloutFiles(cutoff)) {
       try {
         const info = await stat(path);
@@ -170,7 +237,9 @@ export class RolloutTail {
           state = { path, offset: 0, carry: Buffer.alloc(0), resident: undefined, pending: new Map(), lastThought: "", info: { id: path, resident: "", startedAt: 0, lastAt: 0 } };
           this.files.set(path, state);
         }
-        if (info.size > state.offset) await this.readNew(state, info.size);
+        const reading = state;
+        // A session that is not a resident's is skipped wholesale.
+        if (info.size > state.offset) await readAppended(state, info.size, (data, start, end) => { this.line(reading, data, start, end); return reading.resident !== null; });
       } catch { /* a file that vanished or cannot be read is tried again on the next pass */ }
     }
   }
@@ -193,34 +262,55 @@ export class RolloutTail {
     return found;
   }
 
-  private forget(state: FileState) {
-    this.files.delete(state.path);
-    if (!state.resident) return;
-    const kept = (this.entries.get(state.resident) ?? []).filter(entry => entry.session !== state.info.id);
-    this.entries.set(state.resident, kept);
+  /** Takes back what was read from one file, so that it can be read again. */
+  private drop(resident: string, session: string) {
+    this.entries.set(resident, (this.entries.get(resident) ?? []).filter(entry => entry.session !== session));
+    this.rereads++;
   }
 
-  private async readNew(state: FileState, size: number) {
-    const file = await open(state.path, "r");
+  private forget(state: FileState) {
+    this.files.delete(state.path);
+    if (state.resident) this.drop(state.resident, state.info.id);
+  }
+
+  /** A resident's call log: `<Name>.jsonl`, absent until its tool server made a call with the log switched on. */
+  private async readCalls(path: string, resident: string, cutoff: number) {
+    let log = this.callLogs.get(resident);
+    const before = log?.from;
     try {
-      while (state.offset < size) {
-        const buffer = Buffer.alloc(Math.min(size - state.offset, 4 << 20));
-        const { bytesRead } = await file.read(buffer, 0, buffer.length, state.offset);
-        if (bytesRead === 0) break;
-        state.offset += bytesRead;
-        let data = state.carry.length ? Buffer.concat([state.carry, buffer.subarray(0, bytesRead)]) : buffer.subarray(0, bytesRead);
-        // Only whole lines are read; the writer may be halfway through the last one.
-        let start = 0;
-        for (let end = data.indexOf(10, start); end >= 0; end = data.indexOf(10, start)) {
-          if (state.resident !== null && end > start) this.line(state, data, start, end);
-          start = end + 1;
-        }
-        data = data.subarray(start);
-        // A session that is not a resident's is skipped wholesale; do not hoard its bytes either.
-        if (state.resident === null) { state.carry = Buffer.alloc(0); state.offset = size; break; }
-        state.carry = Buffer.from(data);
+      const info = await stat(path).catch(() => undefined);
+      const identity = info ? `${info.dev}:${info.ino}` : "";
+      if (log && (!info || identity !== log.identity || info.size < log.offset)) {
+        // Removed or begun again: what was read from the old one is no longer on record.
+        this.callLogs.delete(resident);
+        this.drop(resident, LOGGED);
+        log = undefined;
       }
-    } finally { await file.close(); }
+      if (info) {
+        if (!log) this.callLogs.set(resident, log = { path, identity, offset: 0, carry: Buffer.alloc(0) });
+        const reading = log;
+        if (info.size > log.offset) await readAppended(log, info.size, (data, start, end) => { this.loggedCall(resident, reading, data, start, end, cutoff); return true; });
+      }
+    } catch { /* a log that cannot be read is tried again on the next pass */ }
+    // Which calls the rollouts supply depends on where the log begins: they are read again under the new rule.
+    if (log?.from !== before) for (const state of [...this.files.values()]) if (state.resident === resident) this.forget(state);
+  }
+
+  /** One line of a call log: `{t: when the call started, ms, tool, args, error, text: the whole reply}`. */
+  private loggedCall(resident: string, log: CallLog, data: Buffer, start: number, end: number, cutoff: number) {
+    // A log is never trimmed; calls from before the window are passed over without parsing their replies.
+    const times = CALL_TIMES.exec(data.toString("latin1", start, Math.min(end, start + 64)));
+    if (times && log.from !== undefined && Date.parse(times[1]) + Number(times[2]) < log.from) return;
+    let item: Record<string, unknown>;
+    try { item = record(JSON.parse(data.toString("utf8", start, end))); } catch { return; }
+    const started = Date.parse(typeof item.t === "string" ? item.t : ""), ms = finite(item.ms);
+    if (!Number.isFinite(started) || typeof item.tool !== "string") return;
+    log.from ??= Math.max(started, cutoff);
+    // As in a rollout, a call is timed by when its reply came back.
+    const t = started + (ms ?? 0);
+    if (t < log.from) return;
+    const reply = typeof item.text === "string" ? item.text : "";
+    for (const entry of callEntries(t, item.tool, item.args, reply, item.error === true, ms)) this.push(resident, LOGGED, entry);
   }
 
   private line(state: FileState, data: Buffer, start: number, end: number) {
@@ -306,19 +396,11 @@ export class RolloutTail {
     this.toolCall(state, t, item.tool, item.arguments, textOf(result) || failure, result.isError === true || item.status === "failed", Number.isFinite(ms) ? ms : undefined);
   }
 
+  /** A body call found in a rollout. From where the resident's call log begins, it is left to the log. */
   private toolCall(state: FileState, t: number, tool: string, args: unknown, resultText: string, failed: boolean, ms?: number) {
-    const { body, events } = splitResult(resultText);
-    const error = failed || /^Error\b/.test(body);
-    const words = tool === "say" ? record(args).text : undefined;
-    const said = typeof words === "string";
-    this.add(state, {
-      t, kind: said ? "said" : "call", tool, args: compactArgs(args), result: clip(body, 400), ms,
-      ...(error ? { error: true } : {}), ...(said ? { text: clip(words, 400) } : {}),
-      quiet: QUIET_TOOLS[tool] === true && !error,
-    });
-    for (const event of events) {
-      this.add(state, { t, kind: "event", type: event.type, text: clip(event.text, 300), quiet: NOTABLE_EVENTS[event.type] !== true });
-    }
+    const from = this.callLogs.get(state.info.resident)?.from;
+    if (from !== undefined && t >= from) return;
+    for (const entry of callEntries(t, tool, args, resultText, failed, ms)) this.add(state, entry);
   }
 
   /** The script's own output. Body calls were already recorded from their items when the harness logs those. */
@@ -355,12 +437,13 @@ export class RolloutTail {
     }
   }
 
-  private add(state: FileState, entry: Omit<Entry, "id" | "resident" | "session">) {
-    const resident = state.info.resident;
+  private add(state: FileState, entry: NewEntry) { this.push(state.info.resident, state.info.id, entry); }
+
+  private push(resident: string, session: string, entry: NewEntry) {
     let list = this.entries.get(resident);
     if (!list) this.entries.set(resident, list = []);
     if (list.length && entry.t < list[list.length - 1].t) this.unsorted.add(resident);
-    list.push({ id: this.nextId++, resident, session: state.info.id, ...entry });
+    list.push({ id: this.nextId++, resident, session, ...entry });
     const limit = this.options.maxEntries ?? 4000;
     if (list.length > limit * 1.25) {
       this.sorted(resident);

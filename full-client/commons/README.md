@@ -38,6 +38,7 @@ once; later starts print only where the token file is.
 | `COMMONS_DB` | `~/gary-client/commons/commons.sqlite` | The commons database (WAL, shared with the tool servers). |
 | `GARY_CLIENT_HOME` | `~/gary-client` | Home of the residents: `resident/`, `instances/`, `overseer/`, `codex-home/`. |
 | `CODEX_HOME` | `$GARY_CLIENT_HOME/codex-home` | Where Codex writes `sessions/YYYY/MM/DD/*.jsonl`. |
+| `CALLS_DIR` | `$GARY_CLIENT_HOME/calls` | Where each resident's tool server logs its body calls, `<Name>.jsonl` (`CALL_LOG` in `run-session.sh`). |
 | `SYNAPSE_TOKEN_FILE` | `~/.synapse/token`, then `<GAME_DIR>/config/synapse/token` | Token sent as `X-Synapse-Token` (the file `synapse.sh` reads). |
 | `GARY_SYNAPSE_URL` | `http://127.0.0.1:25599` | Gary's client. Other residents: `SYNAPSE_URL` in `instances/<Name>.env`. |
 | `COMMONS_UNITS` | `<name>-run` per resident, `overseer-run` | Run units to show, space or comma separated. Client units are added by themselves. |
@@ -67,14 +68,28 @@ worked out.
   40 lines of chat, player events and commands, a box to send a command, a
   switch to show everything, and a link to the Console panel.
 - **Activity**: the Codex session files, told apart by the `cwd` in their first
-  line. Each file is read once and then only its new bytes. Tool calls come
-  from the harness's finished `McpToolCall` items (falling back to the script
-  text and its output when a harness does not log those), events from the
-  lines after `Since last time:` in each tool result, remarks from assistant
-  messages, thoughts from reasoning summaries (nothing while those are empty).
-  "Routine" lines (status, wait, picture, screen, inventory, shell commands,
-  arrivals, hurt, Baritone chatter) are hidden until asked for. The figures per
-  resident cover the last 60 minutes.
+  line, and each resident's call log. Each file is read once and then only its
+  new bytes. The session files give remarks (assistant messages), thoughts
+  (reasoning summaries; nothing while those are empty), token counts and shell
+  commands. "Routine" lines (status, wait, picture, screen, inventory, shell
+  commands, arrivals, hurt, Baritone chatter) are hidden until asked for. The
+  figures per resident cover the last 60 minutes.
+
+  Body calls, their replies and the events in them (the lines after
+  `Since last time:` in each reply) come from the call log the resident's tool
+  server writes, `CALLS_DIR/<Name>.jsonl`: one line per call,
+  `{t, ms, tool, args, error, text}` (`toolserver/src/calllog.ts`). The session
+  files cannot serve for this: under Codex's code mode a model calls its tools
+  from JavaScript it writes itself, and one that wraps them in a helper of its
+  own (`await b("look", {...})`) leaves no call site to find. From the start
+  of the first call in a resident's log, the log alone supplies its body
+  calls; before that, and for a resident with no log, they are read from the
+  session files as before: the harness's finished `McpToolCall` items, or the
+  script text and its output when a harness does not log those. A call reads
+  the same from either source, timed by when its reply came back. A missing
+  log is not an error, a half-written last line waits for its end, and a log
+  that is removed or begun again makes the app read that resident's files
+  afresh and the page reload its feed.
 - **Map**: the `positions` table (this app writes one row per online resident
   every 10 s), `places.json` of each resident, `resident/shared/places.json`,
   and deaths from `places.json` plus `died` events in the session files.

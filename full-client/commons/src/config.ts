@@ -35,6 +35,8 @@ export interface Config {
   /** In-game names of the people who own and play on the server; the console keeps mod lines that mention them. */
   owners: string[];
   sessionsDir: string;
+  /** Where each resident's tool server writes its body calls, `<Name>.jsonl`. */
+  callsDir: string;
   overseerDir: string;
   sharedPlaces: string;
   publicDir: string;
@@ -120,6 +122,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     tokenFile: expandHome(env.COMMONS_TOKEN_FILE ?? join(dirname(dbPath), "token")),
     token: env.COMMONS_TOKEN, chatUrl: env.CHAT_URL || undefined,
     sessionsDir: join(expandHome(env.CODEX_HOME ?? join(home, "codex-home")), "sessions"),
+    callsDir: expandHome(env.CALLS_DIR ?? join(home, "calls")),
     overseerDir: join(home, "overseer"),
     sharedPlaces: join(home, "resident", "shared", "places.json"),
     publicDir: join(packageRoot, "public"),

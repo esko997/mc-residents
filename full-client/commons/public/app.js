@@ -306,7 +306,7 @@ $("#activity-quiet").addEventListener("change", event => { activity.quiet = even
 async function loadActivity() {
   const data = await get(`api/activity?boot=${encodeURIComponent(activity.boot)}&after=${activity.after}&limit=500`);
   if (data.boot !== activity.boot) {
-    // The app restarted and numbers its entries from 1 again: rows on screen with those numbers are other entries.
+    // The app restarted, or read a file again from its start: the numbers of the rows on screen now belong to other entries, or to none.
     activity.entries.clear(); activity.after = 0; activity.boot = data.boot; activity.first = true;
     $("#feed").replaceChildren();
   }

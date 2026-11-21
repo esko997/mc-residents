@@ -1,13 +1,19 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { appendFileSync, openSync, writeSync, closeSync } from "node:fs";
+import { appendFileSync, openSync, rmSync, writeSync, closeSync } from "node:fs";
 import { join } from "node:path";
-import { callsInScript, compactArgs, RolloutTail, splitResult } from "../src/rollouts.ts";
-import { fixture, reply, rollout, tempHome, type Home } from "./helpers.ts";
+import { callsInScript, compactArgs, RolloutTail, splitResult, type Entry } from "../src/rollouts.ts";
+import { callLine, fixture, reply, rollout, tempHome, type Home } from "./helpers.ts";
 
 let home: Home;
 const T = Date.parse("2026-11-21T15:00:00Z");
 const residents = () => [{ name: "Gary", dir: join(home.dir, "resident", "gary") }, { name: "Margo", dir: join(home.dir, "resident", "margo") }];
-const tailer = (now = T + 60_000) => new RolloutTail(join(home.dir, "sessions"), residents(), { now: () => now });
+const tailer = (now = T + 60_000, callsDir?: string) => new RolloutTail(join(home.dir, "sessions"), residents(), { now: () => now, callsDir });
+const callsDir = () => join(home.dir, "calls");
+/** What the page shows of an entry: all of it but its number and which file it was read from. */
+const shown = (entries: Entry[]) => entries.map(({ id, session, ...rest }) => rest);
+/** Each entry with where it was read from: a session, or (no session) a call log. */
+const sources = (entries: Entry[]) => entries.map(entry => `${entry.session || "log"} ${entry.tool ?? entry.type ?? entry.kind}`);
+const isBodyCall = (entry: Entry) => entry.kind === "event" || entry.kind === "said" || (entry.kind === "call" && entry.tool !== "shell");
 const session = (name: string, lines: string[]) => home.put(`sessions/2026/11/21/${name}.jsonl`, lines.join("\n") + "\n");
 
 beforeEach(() => { home = tempHome(); });
@@ -245,4 +251,187 @@ test("calls are found in a script even when their text holds brackets", () => {
     { tool: "go_to", args: { x: 1, z: -2 }, raw: "{x:1,\n z:-2}" },
   ]);
   expect(callsInScript("const names = ALL_TOOLS.map(x => x.name)")).toEqual([]);
+});
+
+test("the sample session's calls show the same read from Margo's call log as read from the rollout: feed, counts, loop signs", async () => {
+  home.put("sessions/2026/11/21/rollout-sample.jsonl", fixture("rollout-sample.jsonl"));
+  const now = Date.parse("2026-11-21T15:15:00Z");
+  const fromRollout = tailer(now);
+  await fromRollout.refresh();
+  // The same five calls as her tool server logged them; the rollout still holds its own copy of each.
+  home.put("calls/Margo.jsonl", fixture("calls-sample.jsonl"));
+  const fromLog = tailer(now, callsDir());
+  await fromLog.refresh();
+
+  const before = fromRollout.recent({ resident: "Margo", limit: 1000 }), after = fromLog.recent({ resident: "Margo", limit: 1000 });
+  // The two really are read from different files.
+  expect(before.every(entry => entry.session === "01a1feab-e506-7353-afda-8c05d5d35de6")).toBe(true);
+  expect(after.filter(entry => entry.kind === "call").length).toBe(5);
+  expect(after.filter(isBodyCall).every(entry => entry.session === "")).toBe(true);
+  expect(after.filter(entry => !isBodyCall(entry)).map(entry => entry.kind)).toEqual(["remark", "remark", "prompt"]);
+
+  expect(shown(after)).toEqual(shown(before));
+  expect(fromLog.indicators("Margo")).toEqual(fromRollout.indicators("Margo"));
+  expect(fromLog.indicators("Margo")).toMatchObject({ calls: 5, navigationStopped: 1, reflexes: 7, hurt: 2 });
+  // Tokens and the model's name are the rollout's in both.
+  expect(fromLog.tokenTotals("Margo")).toEqual(fromRollout.tokenTotals("Margo"));
+  expect(fromLog.tokenTotals("Margo").session!.tokens!.total).toBe(244290);
+});
+
+test("what was said, errors, events and repeated actions count the same from either source", async () => {
+  const stop = "Started #goto 9 9.\n\nSince last time:\n4 stopped_short distance=6.4";
+  const calls: [at: number, tool: string, args: object, reply: string, options?: { isError?: boolean; ms?: number }][] = [
+    [1000, "go_to", { x: 9, z: 9 }, stop],
+    [2000, "status", {}, "Position 1, 64, 2\n\nSince last time:\n5 hurt from=18 to=16\n6 reflex text=fleeing from minecraft:zombie"],
+    [3000, "go_to", { x: 9, z: 9 }, stop],
+    [4000, "say", { text: "Margo, the path is blocked" }, "Sent.\n\nSince last time:\n7 chat from=Margo text=try the bridge\n8 arrived goal=goto 9 9"],
+    [5000, "craft", { item: "torch", count: 4 }, "Error: no coal or charcoal in the inventory.", { isError: true, ms: 1500 }],
+    [7000, "status", {}, "Health 0/20\n\nSince last time:\n9 died at=1,64,2 dimension=minecraft:overworld"],
+  ];
+  session("gary", [
+    rollout.meta(T, join(home.dir, "resident", "gary")), rollout.remark(T + 500, "Trying the east path."),
+    ...calls.flatMap(([at, ...call]) => rollout.call(T + at, ...call)),
+    rollout.remark(T + 9000, "I died on the east path."),
+  ]);
+  const fromRollout = tailer();
+  await fromRollout.refresh();
+  home.put("calls/Gary.jsonl", calls.map(([at, ...call]) => callLine(T + at, ...call)).join("\n") + "\n");
+  const fromLog = tailer(undefined, callsDir());
+  await fromLog.refresh();
+
+  expect(fromLog.recent().filter(isBodyCall).every(entry => entry.session === "")).toBe(true);
+  expect(shown(fromLog.recent())).toEqual(shown(fromRollout.recent()));
+  const signs = fromLog.indicators("Gary");
+  expect(signs).toEqual(fromRollout.indicators("Gary"));
+  expect(signs).toMatchObject({ calls: 6, errors: 1, said: 1, chatHeard: 1, arrived: 1, stoppedShort: 2, deaths: 1, reflexes: 1, hurt: 1 });
+  expect(signs.repeats.map(repeat => `${repeat.action} x${repeat.times}`)).toEqual(["go_to x=9 z=9 x2"]);
+});
+
+test("calls made through a helper of the model's own leave no call site in the rollout; the call log has them", async () => {
+  // Gary on Sol: one script loads his helper and makes two body calls through it.
+  session("gary", [
+    rollout.meta(T, join(home.dir, "resident", "gary")),
+    rollout.remark(T + 500, "Opening the chest by the door."),
+    ...rollout.scriptCall(T + 1000, 'let b=eval(load("helper"));await b("look",{x:1,y:2,z:3});await b("use")', ["minecraft:chest at 1,2,3", "A screen opened: Chest."]),
+    ...rollout.scriptCall(T + 2000, 'const r = await tools.exec_command({cmd:"cat memory.md"}); text(r.output);', ["# Gary\nFirst evening."]),
+  ]);
+  const feed = (tail: RolloutTail) => tail.recent().map(entry => `${entry.kind} ${entry.tool ?? entry.type ?? ""} ${entry.args ?? entry.text}`);
+  const blind = tailer();
+  await blind.refresh();
+  expect(feed(blind)).toEqual(["call shell cat memory.md", "remark  Opening the chest by the door."]);
+  expect(blind.indicators("Gary").calls).toBe(0);
+
+  home.put("calls/Gary.jsonl", [
+    callLine(T + 1010, "look", { x: 1, y: 2, z: 3 }, "minecraft:chest at 1,2,3, 2.1 blocks away.\n\nSince last time:\n3 chat from=Margo text=is that chest yours?", { ms: 15 }),
+    callLine(T + 1030, "use", undefined, "Used minecraft:chest. A screen opened: Chest.\n\nSince last time:\nnone", { ms: 10 }),
+  ].join("\n") + "\n");
+  const tail = tailer(undefined, callsDir());
+  await tail.refresh();
+  expect(feed(tail)).toEqual([
+    "call shell cat memory.md",
+    "call use ",
+    "event chat from=Margo text=is that chest yours?",
+    "call look x=1 y=2 z=3",
+    "remark  Opening the chest by the door.",
+  ]);
+  expect(tail.recent().find(entry => entry.tool === "use")).toMatchObject({ result: "Used minecraft:chest. A screen opened: Chest.", ms: 10, t: T + 1040, quiet: false });
+  expect(tail.indicators("Gary")).toMatchObject({ calls: 2, chatHeard: 1, byTool: [{ tool: "look", count: 1 }, { tool: "use", count: 1 }] });
+});
+
+test("calls from before a resident's call log began are still read from the rollout, and every call appears once", async () => {
+  session("gary", [
+    rollout.meta(T, join(home.dir, "resident", "gary"), "s1"),
+    ...rollout.call(T + 1000, "go_to", { x: 1, z: 2 }, "Started #goto 1 2."),
+    ...rollout.call(T + 2000, "mine", { block: "oak_log" }, "Started mining.\n\nSince last time:\n1 arrived goal=goto 1 2"),
+    // From here on his tool server keeps a log.
+    ...rollout.call(T + 3000, "craft", { item: "stick" }, "Crafted 4 stick."),
+    ...rollout.scriptCall(T + 3500, 'const r = await tools.exec_command({cmd:"cat memory.md"}); text(r.output);', ["# Gary"]),
+    ...rollout.call(T + 4000, "eat", {}, "Ate bread.\n\nSince last time:\n2 hurt from=20 to=18"),
+  ]);
+  home.put("calls/Gary.jsonl", [
+    callLine(T + 3000, "craft", { item: "stick" }, "Crafted 4 stick."),
+    callLine(T + 4000, "eat", {}, "Ate bread.\n\nSince last time:\n2 hurt from=20 to=18"),
+  ].join("\n") + "\n");
+  // Margo has no log: her calls stay the rollout's, whenever they were made.
+  session("margo", [rollout.meta(T, join(home.dir, "resident", "margo"), "s2"), ...rollout.call(T + 3200, "status", {}, "Health 20/20")]);
+  const tail = tailer(undefined, callsDir());
+  await tail.refresh();
+  expect(sources(tail.recent({ resident: "Gary" }))).toEqual(["log hurt", "log eat", "s1 shell", "log craft", "s1 arrived", "s1 mine", "s1 go_to"]);
+  expect(sources(tail.recent({ resident: "Margo" }))).toEqual(["s2 status"]);
+  expect(tail.indicators("Gary")).toMatchObject({ calls: 4, arrived: 1, hurt: 1 });
+});
+
+test("a call log is read as it grows: half a last line waits for its end, a broken line is skipped, no call is read twice", async () => {
+  session("gary", [rollout.meta(T, join(home.dir, "resident", "gary"))]);
+  const whole = [
+    callLine(T + 1000, "go_to", { x: 1, z: 2 }, "Started #goto 1 2.\n\nSince last time:\nnone"),
+    '{"t":"2026-11-21T15:00:01.500Z","ms":3,"tool":"sta',
+    callLine(T + 2000, "mine", { block: "oak_log", count: 4 }, "Started mining.\n\nSince last time:\n1 arrived goal=goto 1 2"),
+  ].join("\n") + "\n";
+  // Stop in the middle of the last line, as a reader racing the tool server would see it.
+  const cut = whole.indexOf('"tool":"mine"') + 5;
+  const path = home.put("calls/Gary.jsonl", whole.slice(0, cut));
+  const tail = tailer(undefined, callsDir());
+  await tail.refresh();
+  expect(tail.recent().map(entry => entry.tool)).toEqual(["go_to"]);
+  const boot = tail.boot;
+
+  // Deface what was already read (same length, so nothing else moves), then let the writer finish.
+  const file = openSync(path, "r+");
+  writeSync(file, "XXXXX", whole.indexOf('"tool":"go_to"') + 8);
+  closeSync(file);
+  appendFileSync(path, whole.slice(cut));
+  await tail.refresh();
+  await tail.refresh();
+  const entries = tail.recent();
+  expect(entries.map(entry => entry.kind === "event" ? `event ${entry.type}` : entry.tool)).toEqual(["event arrived", "mine", "go_to"]);
+  expect(new Set(entries.map(entry => entry.id)).size).toBe(3);
+  expect(entries[1].args).toBe("block=oak_log count=4");
+  // Nothing was taken back, so a page keeps the ids it has.
+  expect(tail.boot).toBe(boot);
+});
+
+test("a call log that appears while the app runs takes over without doubling a call; removed or begun again, the rollout serves again", async () => {
+  const mine = [T + 2000, "mine", { block: "stone" }, "Started mining."] as const, eat = [T + 3000, "eat", {}, "Ate bread."] as const;
+  const rolloutPath = session("gary", [
+    rollout.meta(T, join(home.dir, "resident", "gary"), "s1"),
+    ...rollout.call(T + 1000, "go_to", { x: 1, z: 2 }, "Started #goto 1 2."), ...rollout.call(...mine),
+  ]);
+  const tail = tailer(undefined, callsDir());
+  await tail.refresh();
+  expect(sources(tail.recent())).toEqual(["s1 mine", "s1 go_to"]);
+  const boot = tail.boot;
+
+  // The log's first line is a call the rollout already gave.
+  const log = home.put("calls/Gary.jsonl", callLine(...mine) + "\n");
+  await tail.refresh();
+  expect(sources(tail.recent())).toEqual(["log mine", "s1 go_to"]);
+  // Entries were taken back: a page holding their ids has to start over.
+  expect(tail.boot).not.toBe(boot);
+  appendFileSync(rolloutPath, rollout.call(...eat).join("\n") + "\n");
+  appendFileSync(log, callLine(...eat) + "\n");
+  await tail.refresh();
+  expect(sources(tail.recent())).toEqual(["log eat", "log mine", "s1 go_to"]);
+
+  rmSync(log);
+  await tail.refresh();
+  expect(sources(tail.recent())).toEqual(["s1 eat", "s1 mine", "s1 go_to"]);
+  // Begun again with the later call only: the rollout is the record of the earlier ones.
+  home.put("calls/Gary.jsonl", callLine(...eat) + "\n");
+  await tail.refresh();
+  expect(sources(tail.recent())).toEqual(["log eat", "s1 mine", "s1 go_to"]);
+  expect(tail.indicators("Gary").calls).toBe(3);
+});
+
+test("a log that reaches back before the window is the record only inside it: nothing is doubled or lost at the edge", async () => {
+  const longAgo = T - 11 * 86_400_000;
+  // A session file still being written is loaded whole, old lines too; old lines of the log are passed over.
+  session("gary", [
+    rollout.meta(longAgo, join(home.dir, "resident", "gary"), "s1"),
+    ...rollout.call(longAgo, "eat", {}, "Ate bread."), ...rollout.call(T + 1000, "go_to", { x: 1, z: 2 }, "Started #goto 1 2."),
+  ]);
+  home.put("calls/Gary.jsonl", [callLine(longAgo, "eat", {}, "Ate bread."), callLine(T + 1000, "go_to", { x: 1, z: 2 }, "Started #goto 1 2.")].join("\n") + "\n");
+  const tail = tailer(undefined, callsDir());
+  await tail.refresh();
+  expect(sources(tail.recent())).toEqual(["log go_to", "s1 eat"]);
 });

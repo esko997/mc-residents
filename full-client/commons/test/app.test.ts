@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createApp, type App, type Replies } from "../src/app.ts";
 import { trail } from "../src/db.ts";
 import { resolveToken } from "../src/server.ts";
-import { fakeSynapse, fixture, png, rollout, tempHome, type FakeSynapse, type Home } from "./helpers.ts";
+import { callLine, fakeSynapse, fixture, png, rollout, tempHome, type FakeSynapse, type Home } from "./helpers.ts";
 
 const TOKEN = "test-token-123";
 let home: Home, app: App | undefined, fakes: FakeSynapse[];
@@ -552,6 +552,20 @@ test("activity reaches the page newest first, then only what is new, and starts 
   // A page that remembers ids from before a restart gets everything again, under the new boot marker.
   const restarted = await api("activity", `?boot=old&after=${first.entries[0].id}`);
   expect(restarted.entries.length).toBe(3);
+});
+
+test("body calls reach the page from the residents' call logs: under their home, or where CALLS_DIR says", async () => {
+  home.put("sessions/2026/11/21/gary.jsonl", [
+    rollout.meta(clock - 60_000, join(home.dir, "resident", "gary")), rollout.remark(clock - 40_000, "Opening the chest."),
+  ].join("\n") + "\n");
+  home.put("calls/Gary.jsonl", callLine(clock - 50_000, "look", { x: 1, y: 2, z: 3 }, "minecraft:chest at 1,2,3.") + "\n");
+  home.put("elsewhere/Gary.jsonl", callLine(clock - 30_000, "use", undefined, "A screen opened: Chest.") + "\n");
+  const feed = async () => (await api("activity")).entries.map(entry => `${entry.resident} ${entry.kind} ${entry.tool ?? entry.text}`);
+  start({ CODEX_HOME: home.dir });
+  expect(await feed()).toEqual(["Gary remark Opening the chest.", "Gary call look"]);
+  app!.stop();
+  start({ CODEX_HOME: home.dir, CALLS_DIR: join(home.dir, "elsewhere") });
+  expect(await feed()).toEqual(["Gary call use", "Gary remark Opening the chest."]);
 });
 
 test("caretaker notes are listed newest first with the note and the maintainers' line apart", async () => {
