@@ -261,7 +261,7 @@ describe("reflexes and interactions", () => {
       eat: { item: "minecraft:bread" }, click_slot: { slot: 0 }, click_button: { index: 0 },
       type_text: { text: "hello" }, press_key: { key: "ENTER" }, write_sign: { lines: ["hello"] },
       find_item: { query: "bread" }, recipes: { item: "minecraft:bread" }, uses: { item: "minecraft:bread" },
-      guide: { query: "bread" }, note_difficulty: { text: "test" },
+      guide: { query: "bread" }, craft: { item: "minecraft:bread" }, note_difficulty: { text: "test" },
     };
     for (const tool of Object.keys(definitions)) {
       f.state.hotbar = [{ slot: 0, item: tool === "write_sign" ? "minecraft:oak_sign" : "minecraft:bread", count: 2 }];
@@ -269,7 +269,7 @@ describe("reflexes and interactions", () => {
       f.setScreen(tool === "write_sign" || tool === "eat" ? { screen: "none" } : { screen: "InventoryScreen", container: { slots: f.state.inventory!.main, carried: "minecraft:air" } });
       for (let i = 0; i < 20; i++) f.body.events.add("chat", { from: "spesk01", text: "a".repeat(500) });
       const result = await f.tools.call(tool, argumentsByTool[tool] ?? {});
-      if (!["find_item", "recipes", "uses", "guide"].includes(tool)) expect(result.isError).toBe(false);
+      if (!["find_item", "recipes", "craft", "uses", "guide"].includes(tool)) expect(result.isError).toBe(false);
       expect(text(result).length).toBeLessThan(1500); expect(text(result)).toContain("Since last time:");
     }
   });

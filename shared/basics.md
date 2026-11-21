@@ -85,6 +85,9 @@ its own food supply, so that hunger and nights stop being emergencies.
 
 ## Crafting with your body
 
+For a known recipe use `craft`: one call lays the pattern and takes the result,
+at an open crafting table or, for 2x2 recipes, with no screen open.
+
 Look at a crafting table, furnace or machine and `use` it, then `screen` shows
 the slots. Slot numbers in the common screens:
 

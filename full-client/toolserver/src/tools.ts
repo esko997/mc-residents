@@ -5,6 +5,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Body } from "./body.ts";
 import { hostileEntity, nonempty, playerEntity, type Stack } from "./synapse.ts";
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
+import { craft } from "./craft.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -39,14 +40,15 @@ export const definitions = {
   write_sign: { description: "Place selected sign on the looked-at block, write up to four lines, finish.", schema: z.object({ lines: z.array(z.string().max(90).refine(s => !/[\r\n]/.test(s), "One line per entry.")).min(1).max(4) }) },
   find_item: { description: "Search modpack item ids and display names.", schema: z.object({ query: z.string().min(1).max(200) }) },
   recipes: { description: "Recipes producing an item id, including shaped grids.", schema: z.object({ item: itemId }) },
+  craft: { description: "Craft an item in one call: looks up the recipe, lays it out in the grid and takes the result into your inventory; prefer it to click_slot. Works at an open crafting table (3x3); recipes that fit 2x2 also work with no screen open, because it opens your own inventory itself. count is the number of crafting operations, not items (one craft of sticks gives 4); default 1. The screen stays open afterwards.", schema: z.object({ item: itemId, count: z.number().int().min(1).max(16).optional() }).strict() },
   uses: { description: "Recipes consuming an item id (including matching tags).", schema: z.object({ item: itemId }) },
   guide: { description: "Search the modpack's own guide books.", schema: z.object({ query: z.string().min(1).max(200) }) },
   note_difficulty: { description: "Tell body maintainers what is hard; append dated position and last error to difficulties.md.", schema: z.object({ text: z.string().min(1).max(4000) }) },
   set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
 };
 export type ToolName = keyof typeof definitions;
-const knowledgeNames = ["find_item", "recipes", "uses", "guide"];
-const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "click_button", "type_text", "press_key", "write_sign", "stop"];
+const knowledgeNames = ["find_item", "recipes", "craft", "uses", "guide"];
+const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "stop"];
 function stackText(stack: Stack, mark = "") {
   const durability = stack.durability === undefined ? "" : ` (${stack.durability}/${stack.maxDurability})`;
   return `${mark}${stack.slot}: ${stack.count} x ${stack.item}${durability}`;
@@ -68,6 +70,8 @@ function recipeText(recipe: RecipeSummary) {
 type Command = { [K in ToolName]: [K, z.infer<(typeof definitions)[K]["schema"]>] }[ToolName];
 export class Tools {
   lastError?: string;
+  /** How long craft waits for the server to show a crafting result or deliver it. */
+  craftWaitMs = 2000;
   constructor(readonly body: Body, readonly knowledge?: Knowledge, private knowledgeError = "KNOWLEDGE_DB is not configured.") {}
   get registeredNames(): ToolName[] {
     return (Object.keys(definitions) as ToolName[]).filter(n => this.knowledge || !knowledgeNames.includes(n));
@@ -290,6 +294,10 @@ export class Tools {
         }
         const prefix = matchedId ? `Using ${matchedId} (matched ${args.item}).\n` : "";
         return recipes.length ? prefix + recipes.map(recipeText).join("\n") : `No indexed recipes for ${args.item}. Mod-specific or runtime recipes may not be exported.`;
+      }
+      case "craft": {
+        if (!this.knowledge) throw new Error(`Knowledge unavailable: ${this.knowledgeError}`);
+        return craft(body, this.knowledge, args.item, args.count ?? 1, { waitMs: this.craftWaitMs, signal });
       }
       case "note_difficulty": {
         let position = "unavailable";

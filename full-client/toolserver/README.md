@@ -58,6 +58,7 @@ KNOWLEDGE_DB = "/home/your-user/gary-client/knowledge.sqlite"
 - `open_inventory` — Open your own inventory, without replacing another screen.
 - `screen` — Screen title, indexed non-empty slots, buttons and text fields.
 - `click_slot` — Click a menu slot with optional button/mode; these are **screen** indexes, not inventory indexes.
+- `craft` — Craft a shaped or shapeless recipe in one call (database required): at an open crafting table, or in the player's own 2x2 grid, which it opens when no screen is open. `count` is 1..16 crafting operations. One item per cell per operation, every click read back from `/gui`; the output is taken only when it shows the requested item, and on any failure the grid and cursor are emptied back into the inventory.
 - `click_button` — Press a widget by label or index.
 - `type_text` — Type into the current editor, including signs and books.
 - `press_key` — Press ENTER, ESCAPE, BACKSPACE, TAB, arrows or DELETE; report the screen open afterwards.
