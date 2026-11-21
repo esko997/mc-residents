@@ -112,7 +112,13 @@ run_mind() { # <seconds> <prompt>
 # fresh mind that reads its notes, so starting another one is cheap and keeps
 # the resident in the world for the whole session.
 status=0
-opening="It is $(date +%H:%M). Play until $end.${SESSION_NOTE:+ $SESSION_NOTE}"
+# memory.md is read at every start; past a couple of pages it crowds out play
+# and old conclusions pile up (Margo's reached 127 KB in one night).
+memory_note() {
+  local bytes=0; [ -f "$home/memory.md" ] && bytes=$(wc -c < "$home/memory.md")
+  [ "$bytes" -gt 8000 ] && printf ' Your memory.md has grown to %d KB. Before playing, rewrite it down to a page or two: keep what is still true and matters, and move detail into files under notes/.' $((bytes / 1000))
+}
+opening="It is $(date +%H:%M). Play until $end.${SESSION_NOTE:+ $SESSION_NOTE}$(memory_note)"
 # A fresh run needs a few minutes to be worth starting: near the end, Margo's
 # restarts each read her notes, said goodbye in chat and stopped, three times in
 # two minutes.
@@ -129,7 +135,7 @@ while :; do
   [ "$status" -ne 0 ] && break
   # A run that never touched the body would otherwise restart in a tight loop.
   [ "$(body_calls)" -eq "${calls_before:-0}" ] && break
-  opening="It is $(date +%H:%M) and the session runs until $end. You stopped a moment ago; your notes say where you left off. If you already said goodbye in chat, no need to say it again."
+  opening="It is $(date +%H:%M) and the session runs until $end. You stopped a moment ago; your notes say where you left off. If you already said goodbye in chat, no need to say it again.$(memory_note)"
 done
 
 # The unit must fail when the mind did: a login, model or tool-server problem
