@@ -30,6 +30,8 @@ finish() {
   git -C "$base/resident" commit -q -m "journal($persona): session $(date '+%F %H:%M')" || true
 }
 trap finish EXIT
+# Stopping the unit must still take the body offline and commit his notes.
+trap 'exit 143' TERM INT HUP
 
 # A client left over from an earlier run has an old log; always start fresh.
 systemctl --user stop "$unit" 2>/dev/null
