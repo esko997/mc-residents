@@ -77,11 +77,15 @@ run_mind() { # <seconds> <prompt>
         "$base/bin/bun" "$base/toolserver/src/main.ts" "$(body_env)" > "$mcp"
       # Its own config directory keeps the owner's Claude settings, memory and
       # MCP servers out. dontAsk refuses everything not listed, so it can use its
-      # body, its own notes and the clock, and nothing else.
-      CLAUDE_CONFIG_DIR=$base/claude-home DISABLE_AUTOUPDATER=1 \
+      # body, its own notes and the clock, and nothing else. --tools drops the
+      # other built-ins (Haiku spawned Task agents and set wakeups), and with tool
+      # search off the body's schemas are in the prompt: deferred, Haiku spent
+      # 41 calls loading them and guessed arguments ("Invalid input").
+      CLAUDE_CONFIG_DIR=$base/claude-home DISABLE_AUTOUPDATER=1 ENABLE_TOOL_SEARCH=false \
       CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=30 MCP_TOOL_TIMEOUT=180000 \
         timeout "$1" "$base/bin/claude" -p "$2" --model "${model#claude:}" \
         --mcp-config "$mcp" --strict-mcp-config --permission-mode dontAsk \
+        --tools "Read,Edit,Write,Bash" \
         --allowedTools "mcp__body" "Read(./**)" "Edit(./**)" "Write(./**)" "Bash(date)" "Bash(date:*)" \
         --output-format stream-json --verbose < /dev/null >> "$session_log" 2>&1
       local rc=$?; rm -f "$mcp"; return "$rc" ;;
