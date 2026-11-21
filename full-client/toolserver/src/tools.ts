@@ -22,7 +22,7 @@ export const definitions = {
   stop: { description: "Stop Baritone and release held keys.", schema: z.object({}) },
   status: { description: "Brief body, surroundings, navigation and screen status.", schema: z.object({}) },
   inventory: { description: "Non-empty inventory stacks; H marks hotbar (slots 0..8).", schema: z.object({}) },
-  say: { description: "Speak plain chat, independently of walking; not commands.", schema: z.object({ text: z.string().min(1).max(256) }) },
+  say: { description: "Speak plain chat, independently of walking; not commands. Text longer than one chat line (256 characters) is sent as up to three lines.", schema: z.object({ text: z.string().min(1).max(768) }) },
   look: { description: "Look by yaw/pitch, world block coordinates (floats use the containing block), or nearby player name.", schema: z.union([z.object({ yaw: finite, pitch: finite.min(-90).max(90) }).strict(), z.object({ x: blockCoordinate, y: blockCoordinate, z: blockCoordinate }).strict(), z.object({ player: name }).strict()]) },
   use: { description: "Right-click; optionally hold use 1..200 ticks (20 ticks/s).", schema: z.object(hold) },
   attack: { description: "Left-click; optionally hold attack to mine by hand.", schema: z.object(hold) },
@@ -114,9 +114,21 @@ export class Tools {
       case "stop":
         await api.player({ action: "release" }); await api.chat("#stop"); body.navigation = undefined;
         return "Stopped navigation and released keys.";
-      case "say":
+      case "say": {
         if (/^[#/]/.test(args.text.trimStart()) || /[\r\n]/.test(args.text)) throw new Error("Plain chat only; use movement tools for # commands. Slash commands are not a resident tool.");
-        await api.chat(args.text); return "Said.";
+        // Minecraft refuses chat lines over 256 characters; break between words.
+        const lines: string[] = [];
+        let rest = args.text.trim();
+        while (rest.length > 256) {
+          const cut = rest.lastIndexOf(" ", 256);
+          const at = cut > 128 ? cut : 256;
+          lines.push(rest.slice(0, at).trimEnd());
+          rest = rest.slice(at).trimStart();
+        }
+        if (rest) lines.push(rest);
+        for (const line of lines) await api.chat(line);
+        return lines.length === 1 ? "Said." : `Said, in ${lines.length} lines.`;
+      }
       case "status": {
         const state = await api.state(true);
         const nearby = state.nearbyEntities ?? [];

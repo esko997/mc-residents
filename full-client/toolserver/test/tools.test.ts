@@ -205,6 +205,15 @@ describe("reflexes and interactions", () => {
     expect((await f.tools.call("say", { text: " /kill" })).isError).toBe(true);
     await f.tools.call("say", { text: "hello" }); expect(f.body.navigation).toBeDefined(); expect(f.requests.at(-1)?.body.text).toBe("hello");
   });
+  test("say sends a long message as several chat lines, each within Minecraft's limit and split between words", async () => {
+    const f = await fixture();
+    const words = Array.from({ length: 90 }, (_, i) => `word${i}`).join(" ");
+    expect(text(await f.tools.call("say", { text: words }))).toContain("in 3 lines");
+    const sent = f.requests.filter(r => r.path === "/chat").map(r => String(r.body.text));
+    expect(sent).toHaveLength(3);
+    for (const line of sent) expect(line.length).toBeLessThanOrEqual(256);
+    expect(sent.join(" ")).toBe(words);
+  });
   test("write sign opens editor, types lines and clicks Done", async () => {
     const f = await fixture(); f.state.hotbar = [{ slot: 0, count: 1, item: "minecraft:oak_sign" }]; f.state.lookingAt = { type: "block", block: "minecraft:stone" };
     expect(text(await f.tools.call("write_sign", { lines: ["Gary", "lives here"] }))).toContain("editor closed (Done)");
