@@ -129,6 +129,18 @@ test("A23 retreat follows the newest safer crumb and re-aims twice a second", as
   expect(events).toContain("retreat rescue started"); expect(events).toContain("clear of threat");
 });
 
+test("A23 retreat never heads for a crumb on the far side of the threat", async () => {
+  const f = await fixture(); await f.body.poll();
+  // He walked west along z=0 from x=6 to x=0; a lit creeper now stands at x=2, between him and those crumbs.
+  for (const x of [6, 5, 4, 3, 2, 1, 0]) { moveTo(f, x, 64, 0); await f.body.poll(); }
+  f.state.nearbyEntities = [{ id: 5, type: "minecraft:creeper", hostile: true, distance: 2, pos: [2, 64, 0], health: 20, fuse: true }];
+  f.tick(1000); await f.body.poll(); await f.body.api.state();
+  const look = f.requests.filter(r => r.body.action === "look").at(-1)?.body;
+  // Yaw 90 faces west (-x), away from the creeper; -90 would run east past it.
+  expect(look?.yaw as number).toBeCloseTo(90);
+  expect(f.body.events.consume()).toContain("retreat rescue started");
+});
+
 test("A23 direct-away fallback walks and stops as soon as ground is lost", async () => {
   const f = await fixture(); await f.body.poll(); f.state.health = 18;
   f.state.nearbyEntities = [{ id: 9, type: "minecraft:zombie", hostile: true, distance: 2, pos: [2, 64, 0], health: 20 }];
@@ -213,8 +225,8 @@ test("A12 lava rescue jumps and sprints toward the last safe crumb until out", a
   expect(f.requests.filter(r => r.body.text === "#resume")).toHaveLength(1);
 });
 
-test("A11 fire rescue places and retrieves water, restoring view and hotbar", async () => {
-  const f = await fixture(); await f.body.poll();
+test("A11 fire rescue places and retrieves water when bucket use is on, restoring view and hotbar", async () => {
+  const f = await fixture(); f.body.reflexes.water_bucket = true; await f.body.poll();
   f.state.hotbar = [{ slot: 2, item: "minecraft:water_bucket", count: 1 }]; f.state.onFire = true;
   await f.body.poll();
   expect(f.state.selectedSlot).toBe(2); expect(f.state.rotation.pitch).toBe(90);
@@ -231,11 +243,23 @@ test("A11 fire rescue places and retrieves water, restoring view and hotbar", as
   expect(events).toContain("no longer burning");
 });
 
+test("A11 a missed water pickup is reported, not claimed as retrieved", async () => {
+  const f = await fixture(); f.body.reflexes.water_bucket = true; await f.body.poll();
+  f.state.hotbar = [{ slot: 2, item: "minecraft:water_bucket", count: 1 }]; f.state.onFire = true;
+  await f.body.poll();
+  f.state.hotbar = [{ slot: 2, item: "minecraft:bucket", count: 1 }]; f.state.onFire = false;
+  f.tick(1000); await f.body.poll();
+  const events = f.body.events.consume();
+  expect(events).toContain("NOT picked back up");
+  expect(events).not.toContain("placed and retrieved");
+});
+
 test.each([
-  ["no bucket", "minecraft:overworld", [], "no water bucket"],
-  ["Nether", "minecraft:the_nether", [{ slot: 2, item: "minecraft:water_bucket", count: 1 }], "Nether"],
-] as const)("A11 fire without usable water is report-only (%s)", async (_label, dimension, hotbar, expected) => {
-  const f = await fixture(); await f.body.poll();
+  ["no bucket", "minecraft:overworld", [], true, "no water bucket"],
+  ["Nether", "minecraft:the_nether", [{ slot: 2, item: "minecraft:water_bucket", count: 1 }], true, "Nether"],
+  ["bucket use off by default", "minecraft:overworld", [{ slot: 2, item: "minecraft:water_bucket", count: 1 }], false, "water bucket use is off"],
+] as const)("A11 fire without usable water is report-only (%s)", async (_label, dimension, hotbar, bucket, expected) => {
+  const f = await fixture(); if (bucket) f.body.reflexes.water_bucket = true; await f.body.poll();
   f.state.dimension = dimension; f.state.hotbar = [...hotbar]; f.state.onFire = true;
   await f.body.poll(); let events = f.body.events.consume();
   expect(events).toContain("fire rescue started"); expect(events).toContain(expected);

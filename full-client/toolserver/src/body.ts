@@ -10,6 +10,9 @@ export interface Navigation {
 export interface Reflexes {
   auto_eat: boolean; eat_below: number; when_attacked: "auto" | "fight" | "flee" | "nothing";
   surface: boolean; escape_fire: boolean; avoid_creepers: boolean;
+  /** Douse fire with a hotbar water bucket. Off by default: live, the placed
+   * water pushed him back into lava and was left flowing where it fell. */
+  water_bucket: boolean;
 }
 interface Meal {
   item: string; before: number; slot: number; rotation: State["rotation"]; doneAt: number;
@@ -351,7 +354,7 @@ export class Body {
     const inheritedPause = await this.interruptForRescue();
     let current = state;
     if (kind === "fire") current = await this.api.state();
-    const bucket = kind === "fire" ? current.hotbar.find(s => nonempty(s) && s.item === "minecraft:water_bucket") : undefined;
+    const bucket = kind === "fire" && this.reflexes.water_bucket ? current.hotbar.find(s => nonempty(s) && s.item === "minecraft:water_bucket") : undefined;
     const usesControls = kind !== "fire" || (bucket !== undefined && current.dimension !== "minecraft:the_nether");
     const rescue: Rescue = {
       kind, reason, started: this.now(), paused: inheritedPause || usesControls, busy: false, lastAim: -Infinity,
@@ -359,7 +362,7 @@ export class Body {
       ...(kind === "fire" && usesControls ? { rotation: { ...current.rotation }, slot: current.selectedSlot, bucketSlot: bucket!.slot } : {}),
     };
     this.rescue = rescue;
-    if (kind === "fire" && !usesControls) rescue.detail = current.dimension === "minecraft:the_nether" ? "water cannot be used in the Nether" : "no water bucket in the hotbar";
+    if (kind === "fire" && !usesControls) rescue.detail = current.dimension === "minecraft:the_nether" ? "water cannot be used in the Nether" : !this.reflexes.water_bucket ? "water bucket use is off" : "no water bucket in the hotbar";
     this.events.add("reflex", { text: `${kind} rescue started: ${reason}${rescue.detail ? `; ${rescue.detail}; reported only` : ""}` });
     try {
       if (usesControls) await this.api.chat("#pause");
@@ -400,7 +403,13 @@ export class Body {
       if (!this.retreatSensors(state)) { await this.finishRescue("survival senses disappeared"); return; }
       if (rescue.busy) return;
       if (this.now() - rescue.lastAim >= 500) {
-        const crumb = [...this.crumbs].reverse().find(p => distance(p, threat) > separation && distance(p, state.pos) > 0.75);
+        // The crumb must lie on his side, away from the threat: one merely
+        // farther from it can be behind it, and live he ran past a lit creeper
+        // toward ground he had walked on the far side.
+        const away = { x: state.pos.x - threat.x, z: state.pos.z - threat.z };
+        const crumb = [...this.crumbs].reverse().find(p =>
+          distance(p, threat) > separation && distance(p, state.pos) > 0.75 &&
+          (p.x - state.pos.x) * away.x + (p.z - state.pos.z) * away.z >= 0);
         const target = crumb ?? { x: state.pos.x * 2 - threat.x, y: state.eye.y, z: state.pos.z * 2 - threat.z };
         await this.lookAt({ x: target.x, y: state.eye.y, z: target.z }, state);
         rescue.lastAim = this.now();
@@ -456,7 +465,12 @@ export class Body {
     if (rescue.placedAt === undefined || this.now() - rescue.placedAt < 1000) return;
     await this.api.player({ action: "look", yaw: rescue.rotation!.yaw, pitch: 90 });
     await this.api.player({ action: "use" });
-    await this.finishRescue(state.onFire === false ? "water placed and retrieved; no longer burning" : "water placed and retrieved; still burning");
+    // Report what the hotbar shows, not what was attempted: live, flowing water
+    // had moved him off the source and the pickup silently missed.
+    const after = await this.api.state();
+    const retrieved = after.hotbar.find(s => s.slot === rescue.bucketSlot)?.item === "minecraft:water_bucket";
+    const water = retrieved ? "water placed and retrieved" : "water placed but NOT picked back up; it is still flowing there";
+    await this.finishRescue(`${water}; ${state.onFire === false ? "no longer burning" : "still burning"}`);
   }
   private async finishRescue(outcome: string) {
     const rescue = this.rescue;
