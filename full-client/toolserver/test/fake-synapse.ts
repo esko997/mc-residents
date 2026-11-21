@@ -249,6 +249,13 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
         show({ screen: "SignEditScreen", widgets: [{ index: 0, label: "Done", button: true, active: true, visible: true }] });
       }
       if (body.action === "use" && !body.ticks && state.lookingAt.block === "minecraft:crafting_table") openMenu("CraftingScreen");
+      // Planting: a seed leaves the hand and the crop is what the crosshair then rests on.
+      const hand = state.hotbar.find(s => s.slot === state.selectedSlot);
+      if (body.action === "use" && !body.ticks && hand?.item === "minecraft:wheat_seeds" && state.lookingAt.block === "minecraft:farmland") {
+        hand.count -= 1;
+        const [x, y, z] = state.lookingAt.blockPos!;
+        state.lookingAt = { type: "block", block: "minecraft:wheat", blockPos: [x, y + 1, z] };
+      }
       if (body.action === "selectHotbar") state.selectedSlot = body.slot as number;
       if (body.action === "look") state.rotation = { yaw: body.yaw as number, pitch: body.pitch as number };
       if (body.action === "use" && body.ticks === 40) {

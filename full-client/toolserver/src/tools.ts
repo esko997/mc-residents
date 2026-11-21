@@ -237,8 +237,20 @@ export class Tools {
         // The use already happened; a failed read-back must not become an error.
         const after = await api.state().catch(() => undefined);
         if (!after) return `Used ${held} on ${target} (screen read-back unavailable).`;
-        const screen = after.screen !== "none" && after.screen !== before.screen ? `${after.screen} opened` : "no screen opened";
-        return `Used ${held} on ${target}; ${screen}.`;
+        const opened = after.screen !== "none" && after.screen !== before.screen;
+        // Planting, placing and filling open no screen. Margo could not tell
+        // whether a seed had gone in: say what the hand and the sights show now.
+        const effects: string[] = [];
+        const has = (stack?: Stack): stack is Stack => stack !== undefined && nonempty(stack);
+        const handBefore = before.hotbar.find(s => s.slot === before.selectedSlot), handAfter = after.hotbar.find(s => s.slot === before.selectedSlot);
+        const countBefore = has(handBefore) ? handBefore.count : 0, countAfter = has(handAfter) ? handAfter.count : 0;
+        if (has(handBefore) && has(handAfter) && handAfter.item !== handBefore.item) effects.push(`your hand now holds ${handAfter.item}`);
+        else if (countAfter < countBefore) effects.push(`${countBefore - countAfter} ${held} used up, ${countAfter} left`);
+        const sights = (l: typeof at) => l.type === "block" ? `${l.block}${l.blockPos ? ` at ${l.blockPos.join(",")}` : ""}` : l.type === "entity" ? String(l.entity) : "nothing";
+        if (!opened && sights(after.lookingAt) !== sights(at)) effects.push(`now in your sights: ${sights(after.lookingAt)}`);
+        const result = opened ? `${after.screen} opened` : "no screen opened";
+        const told = effects.join("; ");
+        return `Used ${held} on ${target}; ${result}.${told ? ` ${told[0].toUpperCase()}${told.slice(1)}.` : opened ? "" : " Nothing your body can see changed."}`;
       }
       case "select_hotbar": await api.player({ action: "selectHotbar", slot: args.slot }); return `Selected H${args.slot}.`;
       case "eat": {

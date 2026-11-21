@@ -238,6 +238,13 @@ describe("reflexes and interactions", () => {
     f.state.lookingAt = { type: "block", block: "minecraft:crafting_table", blockPos: [109, 120, -209] };
     expect(text(await f.tools.call("use", {}))).toContain("on minecraft:crafting_table at 109,120,-209; CraftingScreen opened.");
   });
+  test("use says whether a seed went in: what left the hand and what is in the sights now", async () => {
+    const f = await fixture(); f.state.hotbar = [{ slot: 0, count: 3, item: "minecraft:wheat_seeds" }]; f.state.selectedSlot = 0;
+    f.state.lookingAt = { type: "block", block: "minecraft:farmland", blockPos: [96, 113, -196] };
+    expect(text(await f.tools.call("use", {}))).toContain("Used minecraft:wheat_seeds on minecraft:farmland at 96,113,-196; no screen opened. 1 minecraft:wheat_seeds used up, 2 left; now in your sights: minecraft:wheat at 96,114,-196.");
+    f.state.lookingAt = { type: "block", block: "minecraft:grass_block", blockPos: [97, 113, -196] };
+    expect(text(await f.tools.call("use", {}))).toContain("on minecraft:grass_block at 97,113,-196; no screen opened. Nothing your body can see changed.");
+  });
   test("difficulty includes position and previous error", async () => {
     const f = await fixture(); await f.tools.call("say", { text: "/kill" }); await f.tools.call("note_difficulty", { text: "Machine labels confuse me." });
     const saved = await Bun.file(join(f.dir, "difficulties.md")).text();
