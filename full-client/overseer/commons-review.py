@@ -12,15 +12,23 @@ it in the Commons web app. Exits at once when there is nothing new.
 import argparse, json, os, re, sqlite3, subprocess, sys, tempfile, time
 
 BASE = os.path.expanduser(os.environ.get("GARY_CLIENT_HOME", "~/gary-client"))
-LOOKED = "reviewer != 'auto'"
+# "Looked at" means a person or the caretaker reviewed THIS revision: a review
+# made at or after the item's last change. Saving a skill again (new version,
+# back to draft, verified again) changes `updated_at`, so the new revision
+# comes up for review once more. Automatic acceptance does not count.
+LOOKED = "reviewer != 'auto' AND at >= {table}.updated_at"
+
+
+def looked(kind, table):
+    return f"EXISTS (SELECT 1 FROM reviews WHERE kind = '{kind}' AND target_id = {table}.id AND {LOOKED.format(table=table)})"
 
 
 def pending(db):
     # A note still `proposed` (the web app's automatic acceptance is off or has not run) is reviewed too.
-    notes = db.execute(f"""SELECT id, author, topic, text FROM shared_notes WHERE status IN ('proposed', 'curated')
-        AND NOT EXISTS (SELECT 1 FROM reviews WHERE kind = 'note' AND target_id = shared_notes.id AND {LOOKED})""").fetchall()
-    skills = db.execute(f"""SELECT id, name, author, description, code, expect_json, version FROM skills WHERE status = 'verified'
-        AND NOT EXISTS (SELECT 1 FROM reviews WHERE kind = 'skill' AND target_id = skills.id AND {LOOKED})""").fetchall()
+    notes = db.execute(f"""SELECT id, author, topic, text, status, updated_at FROM shared_notes
+        WHERE status IN ('proposed', 'curated') AND NOT {looked('note', 'shared_notes')}""").fetchall()
+    skills = db.execute(f"""SELECT id, name, author, description, code, expect_json, version, status, updated_at FROM skills
+        WHERE status = 'verified' AND NOT {looked('skill', 'skills')}""").fetchall()
     return notes, skills
 
 
@@ -32,7 +40,8 @@ def main():
     args = parser.parse_args()
     if not os.path.exists(args.db):
         return 0
-    db = sqlite3.connect(args.db, timeout=5)
+    # Autocommit: each verdict is applied in its own explicit transaction below.
+    db = sqlite3.connect(args.db, timeout=5, isolation_level=None)
     db.row_factory = sqlite3.Row
     notes, skills = pending(db)
     if not notes and not skills:
@@ -73,27 +82,41 @@ Items:
         print(f"commons review: no answer (codex exit {result.returncode})", file=sys.stderr)
         return 1
 
-    known = {("note", row["id"]) for row in notes} | {("skill", row["id"]) for row in skills}
-    now = int(time.time() * 1000)
+    # What was read before the model call; a verdict is only applied to that same revision.
+    seen = {("note", row["id"]): row for row in notes} | {("skill", row["id"]): row for row in skills}
     applied = []
     for kind, target, verdict, reason in re.findall(r"^(note|skill) (\d+): (keep|comment|reject)\b\s*-?\s*(.*)$", answer, re.M):
         key = (kind, int(target))
-        if key not in known:
-            continue  # an id the model made up
-        known.discard(key)
+        before = seen.pop(key, None)
+        if before is None:
+            continue  # an id the model made up, or a second line for the same item
+        table = "shared_notes" if kind == "note" else "skills"
+        label = f"{kind} {target}" + (f" v{before['version']}" if kind == "skill" else "")
         reason = reason.strip()[:300]
-        applied.append(f"{kind} {target}: {verdict} - {reason}")
         if args.dry_run:
+            applied.append(f"{label}: {verdict} - {reason}")
             continue
-        db.execute("INSERT INTO reviews (kind, target_id, reviewer, verdict, text, at) VALUES (?, ?, 'caretaker', ?, ?, ?)", (kind, int(target), verdict, reason, now))
-        if verdict == "reject":
-            table = "shared_notes" if kind == "note" else "skills"
-            db.execute(f"UPDATE {table} SET status = 'rejected', updated_at = ? WHERE id = ?", (now, int(target)))
-        elif kind == "note":
-            db.execute("UPDATE shared_notes SET status = 'curated', updated_at = ? WHERE id = ? AND status = 'proposed'", (now, int(target)))
-        elif verdict == "keep":
-            db.execute("UPDATE skills SET status = 'curated', updated_at = ? WHERE id = ? AND status = 'verified'", (now, int(target)))
-    db.commit()
+        # The model took seconds to answer. If the author saved a new revision or
+        # someone reviewed it meanwhile, this verdict is about something else: drop it.
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            current = db.execute(f"SELECT status, updated_at FROM {table} WHERE id = ?", (int(target),)).fetchone()
+            reviewed = db.execute(f"SELECT {looked(kind, table)} FROM {table} WHERE id = ?", (int(target),)).fetchone()
+            if current is None or current["updated_at"] != before["updated_at"] or current["status"] != before["status"] or (reviewed and reviewed[0]):
+                db.execute("ROLLBACK")
+                applied.append(f"{label}: SKIPPED, it changed or was reviewed while the caretaker was reading ({verdict} - {reason})")
+                continue
+            now = int(time.time() * 1000)
+            text = (f"v{before['version']}: " if kind == "skill" else "") + reason
+            db.execute("INSERT INTO reviews (kind, target_id, reviewer, verdict, text, at) VALUES (?, ?, 'caretaker', ?, ?, ?)", (kind, int(target), verdict, text, now))
+            status = "rejected" if verdict == "reject" else "curated" if (kind == "note" or verdict == "keep") else None
+            if status and status != current["status"]:
+                db.execute(f"UPDATE {table} SET status = ?, updated_at = ? WHERE id = ?", (status, now, int(target)))
+            db.execute("COMMIT")
+            applied.append(f"{label}: {verdict} - {reason}")
+        except Exception:
+            db.execute("ROLLBACK")
+            raise
     with open(os.path.join(BASE, "overseer", "commons-reviews.md"), "a") as log:
         log.write(f"\n## {time.strftime('%F %H:%M')} ({args.model}{', dry run' if args.dry_run else ''})\n" + "\n".join(applied or ["(no usable verdict lines)"]) + "\n")
     print("\n".join(applied))
