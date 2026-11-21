@@ -12,7 +12,7 @@ export interface State {
   pos: Position; dimension: string; health: number; food: number;
   eye: Position; rotation: { yaw: number; pitch: number };
   hotbar: Stack[]; selectedSlot: number; screen: string;
-  lookingAt: { type: string; block?: string; entity?: string; entityId?: number };
+  lookingAt: { type: string; block?: string; blockPos?: number[]; entity?: string; entityId?: number };
   nearbyEntities?: Entity[];
   inventory?: { main: Stack[]; armor: Stack[]; offhand: Stack };
   air?: number; maxAir?: number;

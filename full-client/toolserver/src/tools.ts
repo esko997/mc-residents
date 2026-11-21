@@ -177,9 +177,21 @@ export class Tools {
         } else await body.lookAt(args);
         return "Looked.";
       }
-      case "use": case "attack":
+      case "use": case "attack": {
+        const before = tool === "use" && !args.hold_ticks ? await api.state() : undefined;
         await api.player({ action: tool, ...(args.hold_ticks === undefined ? {} : { ticks: args.hold_ticks }) });
-        return args.hold_ticks ? `Holding ${tool} for ${args.hold_ticks} ticks.` : `${tool === "use" ? "Used" : "Attacked"}.`;
+        if (args.hold_ticks) return `Holding ${tool} for ${args.hold_ticks} ticks.`;
+        if (!before) return "Attacked.";
+        // A bare "Used." left Margo right-clicking for an hour without knowing
+        // she was facing air or a wall, not her crafting table.
+        await Bun.sleep(300);
+        const after = await api.state();
+        const held = before.hotbar.find(s => s.slot === before.selectedSlot && s.item !== "minecraft:air")?.item ?? "empty hand";
+        const at = before.lookingAt;
+        const target = at.type === "block" ? `${at.block}${at.blockPos ? ` at ${at.blockPos.join(",")}` : ""}` : at.type === "entity" ? at.entity : "nothing in reach (air, or more than about 4.5 blocks away)";
+        const screen = after.screen !== "none" && after.screen !== before.screen ? `${after.screen} opened` : "no screen opened";
+        return `Used ${held} on ${target}; ${screen}.`;
+      }
       case "select_hotbar": await api.player({ action: "selectHotbar", slot: args.slot }); return `Selected H${args.slot}.`;
       case "eat": {
         const before = await api.state();

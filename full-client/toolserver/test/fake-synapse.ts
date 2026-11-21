@@ -67,6 +67,9 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
       if (body.action === "use" && !body.ticks && state.hotbar.some(s => s.item.endsWith("_sign"))) {
         screen = { screen: "SignEditScreen", widgets: [{ index: 0, label: "Done", button: true, active: true, visible: true }] }; state.screen = screen.screen;
       }
+      if (body.action === "use" && !body.ticks && state.lookingAt.block === "minecraft:crafting_table") {
+        screen = { screen: "CraftingScreen" }; state.screen = screen.screen;
+      }
       if (body.action === "selectHotbar") state.selectedSlot = body.slot as number;
       if (body.action === "look") state.rotation = { yaw: body.yaw as number, pitch: body.pitch as number };
       if (body.action === "use" && body.ticks === 40) {

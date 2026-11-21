@@ -219,6 +219,13 @@ describe("reflexes and interactions", () => {
     expect(text(await f.tools.call("write_sign", { lines: ["Gary", "lives here"] }))).toContain("editor closed (Done)");
     expect(f.requests.filter(r => r.path === "/gui" && r.body.action).map(r => r.body)).toEqual([{ action: "keys", text: "Gary" }, { action: "key", key: "ENTER" }, { action: "keys", text: "lives here" }, { action: "clickButton", index: 0 }]);
   });
+  test("use reports what was in hand, what it was used on, and whether a screen opened", async () => {
+    const f = await fixture(); f.state.hotbar = [{ slot: 0, count: 4, item: "minecraft:oak_planks" }]; f.state.selectedSlot = 0;
+    f.state.lookingAt = { type: "miss" };
+    expect(text(await f.tools.call("use", {}))).toContain("Used minecraft:oak_planks on nothing in reach (air, or more than about 4.5 blocks away); no screen opened.");
+    f.state.lookingAt = { type: "block", block: "minecraft:crafting_table", blockPos: [109, 120, -209] };
+    expect(text(await f.tools.call("use", {}))).toContain("on minecraft:crafting_table at 109,120,-209; CraftingScreen opened.");
+  });
   test("difficulty includes position and previous error", async () => {
     const f = await fixture(); await f.tools.call("say", { text: "/kill" }); await f.tools.call("note_difficulty", { text: "Machine labels confuse me." });
     const saved = await Bun.file(join(f.dir, "difficulties.md")).text();
