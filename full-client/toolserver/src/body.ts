@@ -301,6 +301,9 @@ export class Body {
       if (this.now() >= this.eating.doneAt) {
         try { this.events.add("reflex", { text: `ate ${await this.finishEating(this.eating, state)}` }); }
         catch (error) { this.events.add("reflex", { text: error instanceof Error ? error.message : "Eating failed." }); }
+        // The snapshot still has the meal's upward aim and food slot. Observe
+        // restored controls before another automatic meal captures its baseline.
+        state = await this.api.state();
       } else if (!hurt) return;
     }
     if (this.combat) {
