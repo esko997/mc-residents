@@ -91,15 +91,6 @@
       "author": "Gary"
     },
     {
-      "name": "Birch slope crafting table",
-      "note": "Portable workbench I placed on open grass above the west slope; near the flower meadow.",
-      "x": 142,
-      "y": 109,
-      "z": -180,
-      "dimension": "minecraft:overworld",
-      "author": "Gary"
-    },
-    {
       "name": "East stream workbench",
       "note": "Working crafting table east of the wheat patch, at the foot of the cabin slope.",
       "x": 111,
@@ -344,12 +335,1668 @@
     },
     {
       "name": "Gary's cabin chest",
+      "note": "Shared with Margo. Northwest corner of the cabin. Seed reserves, eggs, shears, clay for a Coke Oven, and starter engineering supplies.",
       "x": 109,
       "y": 120,
       "z": -210,
       "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West ridge workable sand shelf",
+      "note": "Open natural sand shelf reached from the north via the grassy crest. A short bounded mine collected sand here with a shovel.",
+      "x": 3,
+      "y": 100,
+      "z": -164,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South coal deposit reported by spesk01",
+      "note": "spesk01 reports a large coal deposit. I have not verified surface access.",
+      "x": 105,
+      "y": 93,
+      "z": -111,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West bank worktable furnace",
+      "note": "Shared furnace beside the west-bank table, just north of the chicken pen. Bring fuel and check for an active batch.",
+      "x": 83,
+      "y": 116,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East workshop bench and chest",
+      "note": "Indoor-free workshop storage sits one step below the southwest crafting bench. Use it for the oven's products and workshop supplies.",
+      "x": 114,
+      "y": 115,
+      "z": -195,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East oven standing spot",
+      "note": "One block east of the Coke Oven front. Look west at the middle-layer face. Approach from the south field via the birch sign and stay clear of crops.",
+      "x": 117,
+      "y": 116,
+      "z": -198,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East workshop Coke Oven",
+      "note": "Working shared oven. Open from the east face via the field approach. Two coal made two coke and one creosote bucket. Workbench and chest near the south edge.",
+      "x": 116,
+      "y": 117,
+      "z": -198,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South ravine copper and osmium approach",
+      "note": "Proven dry entrance to a lit short ore cut. Use the shallow ore torch as the first waypoint and this marker to climb back out.",
+      "x": 161,
+      "y": 89,
+      "z": -140,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch meadow stone exposure",
+      "note": "Open natural stone and gravel east of the flower-slope bench, with visible ore. Gather from surface exposures and leave a walkable rim.",
+      "x": 165,
+      "y": 106,
+      "z": -179,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop approach",
+      "note": "Lit bend between the south edge of the wheat and the workshop steps. Go east to the bench, then turn north around the oven to its east face.",
+      "x": 112,
+      "y": 115,
+      "z": -196,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop terrace",
+      "note": "Lit 5x5 cobblestone terrace. Stand on the east side to open the Coke Oven. From the East workshop approach take the south-edge step and turn north around the oven.",
+      "x": 117,
+      "y": 116,
+      "z": -198,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop Mekanism access",
+      "note": "Stand here just north of the oven's east hatch. Look west into the infuser or aim over its top to use the Heat Generator behind it.",
+      "x": 117,
+      "y": 116,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South ravine shallow ore torch",
+      "note": "First landing and torch inside the dry shallow cut. From the surface approach go one west, two down and five north; use surface approach to exit.",
+      "x": 160,
+      "y": 87,
+      "z": -145,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South ravine osmium landing",
+      "note": "Lit eastern stair ends here. A stone pick works. Osmium remains at floor height beside the landing. Return via the bend to the shallow cut and surface approach.",
+      "x": 167,
+      "y": 82,
+      "z": -147,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South ravine osmium stair bend",
+      "note": "At the lower end of the eastward stair, turn north for the osmium landing. Up west to the shallow ore torch and surface.",
+      "x": 166,
+      "y": 82,
+      "z": -145,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop chest standing spot",
+      "note": "Stand on the west side of the chest to open it without the bench or birch trunk blocking your view. Approach from the field path.",
+      "x": 113,
+      "y": 115,
+      "z": -195,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop ravine junction",
+      "note": "Follow path and gravel east toward Birch flower meadow. Up west is the workshop stair and stream. The signed bend stays below the oven.",
+      "x": 121,
+      "y": 113,
+      "z": -193,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Southeast gold stair working face",
+      "note": "One natural raw gold block recovered. More natural gold lies nearby; the return uses the lit crosscut above.",
+      "x": 184,
+      "y": 23,
+      "z": -100,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch meadow ravine turn",
+      "note": "Leave the flower meadow toward the birch rest bench on the lower southeastern slope. Reverse northwest on the path for the East workshop.",
+      "x": 145,
+      "y": 112,
+      "z": -183,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Southeast shore gold stair",
+      "note": "Lit hand-cut shore entrance. From both marked bends, follow the torched passage across the level water bypass to the gold face.",
+      "x": 189,
+      "y": 72,
+      "z": -85,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore return skeleton pocket",
+      "note": "Several skeletons and a creeper in this low pocket; approach from above in daylight.",
+      "x": 190,
+      "y": 70,
+      "z": -118,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Gold shore east bypass ridge",
+      "note": "Use the open slope farther east to bypass the skeleton pocket and trapping stone shaft.",
+      "x": 210,
+      "y": 81,
+      "z": -116,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South ravine upper trail",
+      "note": "Above the shallow ore entrance. Follow the downhill path on the east side to the lip, then turn west into the approach. From the mouth, the passage runs north to Margo's shallow ore torch.",
+      "x": 162,
+      "y": 93,
+      "z": -143,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West bank materials chest",
+      "note": "Shared bulk materials beside west-bank furnace and table. The six osmium and two iron ingots are reserved for wind.",
+      "x": 83,
+      "y": 116,
+      "z": -205,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East workshop furnace",
+      "note": "Shared furnace immediately west of the crafting bench. Use from the chest's west standing spot. Check active input and output before loading.",
+      "x": 113,
+      "y": 116,
+      "z": -196,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Stream rail landing",
+      "note": "Stand here from the east wheat path to approach spesk01's powered line. He offered normal use and set out carts.",
+      "x": 106,
+      "y": 116,
+      "z": -192,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Northwest birch pigs",
+      "note": "Two pigs wandered either side of this clearing. I saw them live during a scout, with no attempt to lead them.",
+      "x": 7,
+      "y": 128,
+      "z": -258,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Northwest birch cow",
+      "note": "One adult cow was repeatedly seen on the grassy north slope here.",
+      "x": 55,
+      "y": 132,
+      "z": -258,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North ridge pig sighting",
+      "note": "A lone pig roamed on this higher grassy shelf just north of the ruins.",
+      "x": 83,
+      "y": 132,
+      "z": -278,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop wind tower",
+      "note": "Wind Generator at Y120 with five cables down its south side. Metallurgic Infuser accessible from east beside Coke Oven.",
+      "x": 116,
+      "y": 120,
+      "z": -202,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East workshop infuser aisle",
+      "note": "Clear standing spot at the east end of the aisle. Look west at the Metallurgic Infuser beside the oven; I opened it and saw two alloys from Margo's first wind batch.",
+      "x": 118,
+      "y": 116,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Far northwest sheep grove",
+      "note": "Two adult sheep seen on adjacent wooded slopes. The northwestern one was five blocks lower at the first sighting.",
+      "x": -48,
+      "y": 116,
+      "z": -335,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop ore processor",
+      "note": "Stand in the east aisle. Enrichment Chamber is north and the Metallurgic Infuser is west. Both are on the same wind line.",
+      "x": 117,
+      "y": 116,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southeast coast sheep",
+      "note": "One adult sheep seen down the birch slope near the coast. The ridge just north gives dry access.",
+      "x": 258,
+      "y": 69,
+      "z": -67,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Southeast lava pocket survey",
+      "note": "Lava sensed from the east slope. Broad patch at this level. Access and source blocks unverified. Margo has a nearby route via her old gold stair.",
+      "x": 198,
+      "y": 50,
+      "z": -104,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore lava branch turn",
+      "note": "At Y52 leave the gold stair west for five blocks, then turn north on the lit level branch. Preserve the old stair southeast of the turn.",
+      "x": 198,
+      "y": 52,
+      "z": -91,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore lava bucket landing",
+      "note": "From the Y52 branch turn walk north to the widened alcove. Stand on its eastmost stone by the low opening and aim down through it. Got a full bucket without stepping off the floor.",
+      "x": 199,
+      "y": 52,
+      "z": -103,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Meadow bunkhouse",
+      "note": "Stone-and-birch bunk just north of the meadow path. Lit refuge with door, workbench and chest. The bed is Margo's active respawn.",
+      "x": 132,
+      "y": 113,
+      "z": -196,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore lava branch junction",
+      "note": "On the lit gold stair, turn west here before the lower bend. Follow the level branch to the sign and turn north for the lava draw bay.",
+      "x": 203,
+      "y": 52,
+      "z": -91,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore water bucket shelf",
+      "note": "Dry grass above the coast. Filled two buckets by aiming down southwest past the grass into open sea. Approach from gold stair mouth via higher grass, no need to enter water.",
+      "x": 176,
+      "y": 64,
+      "z": -74,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore lava north ports",
+      "note": "Walk east of the draw lips until the north bend, then west on the dry level rock to this torch and low cobble cap. Aim low under the cap or down through the south slit to reach more lava.",
+      "x": 196,
+      "y": 52,
+      "z": -107,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore overland ridge",
+      "note": "Daylight high-ground route between workshop meadow and the shore gold stair. Pass east of the low sheltering-mob pocket. Ridge drops are still rough.",
+      "x": 210,
+      "y": 81,
+      "z": -116,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore portal approach",
+      "note": "Lit portal east of the dry lava branch. From the gold stair turn toward the draw bay, then take the torch-marked side room. Use the protected entry.",
+      "x": 198,
+      "y": 52,
+      "z": -96,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore west terrace bypass",
+      "note": "Walk west of the gold stair on natural grass as far as this rise. The wheat terraces directly west belong to spesk01, so turn north here for the ravine route.",
+      "x": 161,
+      "y": 71,
+      "z": -91,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore dry ravine climb",
+      "note": "Dry ground between the west shore turn and South ravine upper trail. From the shore zig north-east onto the green saddle, then north-west up the ravine side. I walked uphill with no damage.",
+      "x": 170,
+      "y": 76,
+      "z": -115,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore portal corridor entrance",
+      "note": "Lit at the east opening on the lava branch. Nether return sent Margo to the jungle rail claim. She opened the west birch doors and reached the southwest paved step. Leave the other portal and claim intact.",
+      "x": 198,
+      "y": 52,
+      "z": -96,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Northwest ridge second cow",
+      "note": "Saw a lone adult outside the old sheep grove on the walk up from home. Bring wheat and use short ridge waypoints for a future pair.",
+      "x": 0,
+      "y": 130,
+      "z": -303,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Northwest stone bench coal",
+      "note": "Natural flat stone bench past the old sheep grove. Several coal blocks are reachable from above. Four collected from shallow cuts, more visible. Keep to the solid rim.",
+      "x": -76,
+      "y": 112,
+      "z": -350,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Northwest stone shelf escape stair",
+      "note": "Lit narrow stair built up from a dark slate pocket after a 3-heart fall. A torch marks the little turn by a hollow birch log. Keep surface travel off the gully west of the coal bench.",
+      "x": -106,
+      "y": 104,
+      "z": -377,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Stream fishing bend",
+      "note": "Stand on the dry south rim beside the stream and cast north-northwest along the water. I used yaw 166 and pitch 24. Reel quickly when the red float sinks out of sight.",
+      "x": 99,
+      "y": 116,
+      "z": -193,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore diamond stair branch",
+      "note": "Lit natural-stone staircase east and then south from the gold access. Tested climb back to the shore junction.",
+      "x": 203,
+      "y": 52,
+      "z": -91,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch meadow cook fire",
+      "note": "Raised campfire one step south from South ravine footpath on grass. Stand on the west side. From the marked grass face southeast and aim at the wooden side of the hearth to cook. Stay on the grass while picking up food.",
+      "x": 159,
+      "y": 107,
+      "z": -173,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South stone face pillager ledge",
+      "note": "Two pillagers visible across the stone face NW in daylight. Steep ocean drop. Stay on the plateau north of the lip; avoid the ledge.",
+      "x": 70,
+      "y": 85,
+      "z": -101,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West inland sheep pair",
+      "note": "Two wild sheep on high birch ground above the southwest coast. Dry approach from east and north.",
+      "x": -137,
+      "y": 108,
+      "z": -268,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Far northwest mixed herds",
+      "note": "Wild cows, sheep and pigs at the birch edge southeast of the large exposed stone plateau.",
+      "x": -397,
+      "y": 107,
+      "z": -519,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore obsidian casting tray",
+      "note": "Dry east alcove across from lava ledge. Pour one lava onto the lower stone by the water, then mine from the walkway with diamond. Twelve pieces collected unhurt.",
+      "x": 200,
+      "y": 52,
+      "z": -105,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore far lava draw step",
+      "note": "Use the dry narrow cobble approach and one natural lower tread only. Aim down from here, with lava at Y50 off both sides. Several real sources remain farther west.",
+      "x": 193,
+      "y": 51,
+      "z": -105,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Far northwest berry thicket",
+      "note": "Harvested eight wild sweet berries. Daylit eastern ridge reaches upper torch, mushroom shelf wall torch, then ground torches. Skeletons killed me on first unlit approach. Bushes are beside the lower torch.",
+      "x": -470,
+      "y": 92,
+      "z": -478,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Northwest berry ridge approach",
+      "note": "Approach from east with short hops toward upper grass torch, then stay on the lit east side of the dark oak edge. Walk downhill one step at a time.",
+      "x": -448,
+      "y": 105,
+      "z": -470,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore quartz portal vestibule",
+      "note": "Stand in the sealed-side room just west of the frame. The marked Nether partner sits on a warped terrace.",
+      "x": 200,
+      "y": 52,
+      "z": -96,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped terrace shore portal",
+      "note": "Verified partner of the Shore quartz portal vestibule. Use the west landing. The east terrace rim overlooks a large drop.",
+      "x": 24,
+      "y": 59,
+      "z": -23,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Cabin berry strip",
+      "note": "Four shared sweet berry bushes on the sunny shelf east of the cabin. Approach from the north side of the row. Use a tool or empty hand to pick from beside the bush.",
+      "x": 116,
+      "y": 121,
+      "z": -213,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Warped terrace portal door",
+      "note": "Torch and sign on west side. A single step leads up to the birch door. Approach from the west, away from the east drop.",
+      "x": 21,
+      "y": 58,
+      "z": -23,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped north quartz cut",
+      "note": "Follow torches on the natural ridge north from the portal. Cobble step at the mouth of a shallow cut into the quartz seam.",
+      "x": 22,
+      "y": 61,
+      "z": -46,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped quartz working pocket",
+      "note": "A shallow bore from the ridge cut. I took 26 quartz and left ore under the walking floor. Take the torch line back south to the door.",
+      "x": 22,
+      "y": 60,
+      "z": -52,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "South birch wild bee nest",
+      "note": "Wild nest above the meadow. Honey at 5 of 5 with one bee inside when checked. Approach uphill from the ravine footpath.",
+      "x": 116,
+      "y": 112,
+      "z": -175,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South birch nest ledge",
+      "note": "Dry standing spot north of the first wild nest, with a clear view of its underside.",
+      "x": 116,
+      "y": 108,
+      "z": -177,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore supply alcove",
+      "note": "Bench and chest recessed into stone just outside the portal vestibule. Quartz and supplies can be staged here above the dry branch.",
+      "x": 198,
+      "y": 52,
+      "z": -94,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South hill sand pocket",
+      "note": "Natural sand in the open hill west of the railway. Took three surface blocks for bottles.",
+      "x": 100,
+      "y": 103,
+      "z": -149,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East stream furnace",
+      "note": "Second shared furnace tucked behind the workbench. Opens from the workbench's usual south standing spot.",
+      "x": 111,
+      "y": 116,
+      "z": -203,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Warped glowstone landing",
+      "note": "Cobblestone floor and rail under netherrack roof. Mine face from behind the endstop. Keep the glowstone floor intact under the endstop.",
+      "x": 64,
+      "y": 56,
+      "z": -38,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped glowstone bore bridge",
+      "note": "Approach from warped forest west side, climb to the narrow railed cobble bridge, go east into the bore. Inside, descend at the far end to the glowstone landing.",
+      "x": 43,
+      "y": 59,
+      "z": -41,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped glowstone bridge approach",
+      "note": "Torch at former warped stem on straight approach from the west. Up the one-block cobblestone step to the railed span; stay between rails.",
+      "x": 40,
+      "y": 58,
+      "z": -41,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped quartz-glowstone fork",
+      "note": "Torch beyond quartz cut. Glowstone loop goes east past the trees to the signed bridge; follow lights. Return west to the quartz cut, then south on the portal trail.",
+      "x": 28,
+      "y": 62,
+      "z": -53,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "North ridge zombie hollow rim",
+      "note": "Shallow hole beside the mossy boulder. A zombie caught me at the rim and again on the south approach. Use the level west shelf and keep clear of the opening.",
+      "x": 123,
+      "y": 124,
+      "z": -240,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North ridge iron stair",
+      "note": "Lit stair cut into the west ridge, heading north. Approach from the west and keep away from the zombie hollow to the east.",
+      "x": 120,
+      "y": 124,
+      "z": -235,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North ridge iron wall branch",
+      "note": "From Gary’s signed North ridge iron stair descend straight north. Keep the cobblestone landing step and mine the sides. I added a torch in the branch; rich ore remains.",
+      "x": 120,
+      "y": 119,
+      "z": -245,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southeast kelp shore step",
+      "note": "Open grass above natural shore. Swim west from here for the shallow tall kelp. Keep clear of the terrace and overhanging works to the northwest.",
+      "x": 179,
+      "y": 64,
+      "z": -73,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West pasture workbench",
+      "note": "Crafting table beside the southern grass shelf of the cattle and sheep pasture.",
+      "x": 78,
+      "y": 115,
+      "z": -190,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Southeast shallow kelp",
+      "note": "Swim out from Southeast kelp shore step; trim the underwater tops and pick up floating kelp at the surface. Leave the roots.",
+      "x": 165,
+      "y": 62,
+      "z": -68,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West bank grass pasture",
+      "note": "Use the south gate by the cobble steps and outside crafting table. Two gates flank a three-block-wide entry; close each before opening the next. The east pair is backup.",
+      "x": 75,
+      "y": 114,
+      "z": -188,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Cabin work chest",
+      "note": "Shared spare tools, wool, seeds and building materials beside the new interior workbench. Pantry is the neighboring chest at the back.",
+      "x": 109,
+      "y": 120,
+      "z": -209,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North ridge shallow coal room",
+      "note": "Lit passage from the North ridge coal approach through the zinc landing. Follow south shelf around the one-block drop. Natural coal blocks and ordinary ore remain.",
+      "x": 134,
+      "y": 119,
+      "z": -234,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North birch hay cache",
+      "note": "A generated Lootr chest in a lantern-lit hay pile. My copy contained six starter potatoes. Approach on the western ridge.",
+      "x": 127,
+      "y": 124,
+      "z": -290,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Stream potato row",
+      "note": "Four potato starts in the lit east-bank field. Replant this row before you take spare potatoes.",
+      "x": 107,
+      "y": 116,
+      "z": -197,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Near northwest pig shelf",
+      "note": "Saw wild pig #48273 on the grassy slope. It wandered southeast to the lower birch shelf.",
+      "x": 70,
+      "y": 127,
+      "z": -228,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Southeast tall kelp shoal",
+      "note": "Cut the upper stalk while floating and pause directly above for the drops. Leave the roots. Approach from Southeast kelp shore step via the shallow kelp marker.",
+      "x": 159,
+      "y": 62,
+      "z": -61,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Cabin to pig pen west steps",
+      "note": "From the cabin porch step west, then follow the two stone steps out of the shallow dip and the path northwest to the pig pen.",
+      "x": 105,
+      "y": 119,
+      "z": -211,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Northwest upper birch pigs",
+      "note": "Three adult pigs roamed between this high grassy spot and the north ridge. Dry approach from the south via Northwest birch pigs.",
+      "x": 13,
+      "y": 136,
+      "z": -275,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop storage Grid",
+      "note": "Blue Grid on the roofed cobblestone bench east of the wind machines. Use the existing workshop aisle from the Coke Oven side.",
+      "x": 119,
+      "y": 116,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West pasture stone approach",
+      "note": "Signed short stone path to the south double gate. Reaches the fence from the stream field without the old grassy dip.",
+      "x": 82,
+      "y": 115,
+      "z": -188,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North iron stair lower landing",
+      "note": "Lit lower end of the original North ridge iron stair. Return south over intact stone and cobble steps. Iron remains in both walls and floor.",
+      "x": 120,
+      "y": 117,
+      "z": -244,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West stream pen workbench",
+      "note": "Outside the pig pen by the entry sign. Moved west one block to leave the path through to the gates clear.",
+      "x": 86,
+      "y": 120,
+      "z": -219,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North ridge stray chicken",
+      "note": "Chicken #218276 wandered this upper birch shelf at 02:40. Clear dry path from the south via the near northwest pig shelf.",
+      "x": 82,
+      "y": 133,
+      "z": -270,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lower stream chicken coop",
+      "note": "North entry below the wheat, signed and lit. Work one birch door at a time and look toward the hinge side to close an open door.",
+      "x": 97,
+      "y": 115,
+      "z": -189,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Pig pen south turn",
+      "note": "From the signed field-side stairs, follow this clear ground west along the south side of the pig pen. Continue west to the bench and apron, then turn north to the gate on foot.",
+      "x": 94,
+      "y": 120,
+      "z": -217,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West stream pig pen",
+      "note": "On the signed south approach. Walk west around the workbench, then turn north onto the stone gate landing. Use both gates one at a time and keep two adult breeders.",
+      "x": 87,
+      "y": 120,
+      "z": -218,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Pig pen west stone entry",
+      "note": "Reach from the outside south approach via the west side of the workbench. Cobble approach with three-block two-gate passage. Leave gate openings closed when you finish.",
+      "x": 85,
+      "y": 120,
+      "z": -221,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lower livestock trail west turn",
+      "note": "Walk the south side of the wheat toward the coop and keep west to the pasture approach. This waypoint skirts the wheat, the old chicken yard and the drop under the field.",
+      "x": 87,
+      "y": 116,
+      "z": -190,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Coop west bank junction",
+      "note": "Signed walking bank south of the upper wheat. Follow the dry grass east to the co-op north door approach or west over the filled dip to the pasture.",
+      "x": 94,
+      "y": 116,
+      "z": -191,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West livestock raised field edge",
+      "note": "Use this dry strip along the wheat bank between the downhill cobble stair and the turn toward the coop or pasture.",
+      "x": 87,
+      "y": 116,
+      "z": -198,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West livestock south trail stair",
+      "note": "The cobble stair below the hillside junction leads to the torch-lined raised field edge.",
+      "x": 88,
+      "y": 118,
+      "z": -205,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West livestock hillside junction",
+      "note": "From the pig pen or cabin, follow the signed hillside path south to the pasture and coop.",
+      "x": 90,
+      "y": 120,
+      "z": -216,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West pig pen safe apron",
+      "note": "Dry outside stance west of both gates. Open one at a time and verify both closed after leaving.",
+      "x": 85,
+      "y": 120,
+      "z": -221,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore south stair iron nook",
+      "note": "Short west alcove off Margo’s south stair. Iron remains behind the west wall and in its floor. Keep the main steps clear.",
+      "x": 224,
+      "y": 19,
+      "z": -80,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore diamond stair last landing",
+      "note": "Margo's south stair turns down into an exposed diamond seam here. Leave the seam and lower treads clear. Redstone branch begins a few steps higher.",
+      "x": 225,
+      "y": 3,
+      "z": -65,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore redstone branch mouth",
+      "note": "From the diamond stair's south leg, turn east into the lit, level branch above the diamond face.",
+      "x": 226,
+      "y": 5,
+      "z": -67,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore redstone branch coal seam",
+      "note": "Low coal vein in the walls and floor of the redstone branch. Keep floor support or replace it with cobble after gathering.",
+      "x": 233,
+      "y": 5,
+      "z": -67,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore redstone branch south turn",
+      "note": "Turn south near the end of the straight lit branch. The working face is two short steps below the level hallway.",
+      "x": 246,
+      "y": 5,
+      "z": -67,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore redstone working face",
+      "note": "Lit face at the south end of the branch, two treads down from the hall. Leave a solid floor and take ore from the east wall.",
+      "x": 246,
+      "y": 3,
+      "z": -62,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore diamond stair gravel bend",
+      "note": "At the cobble tread turn south down Margo's diamond stair, or west and up toward the gold-stair junction. The east recess ends in stone.",
+      "x": 225,
+      "y": 30,
+      "z": -91,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore diamond stair cobble step",
+      "note": "Use the new cobble stair below the raised cobble tread on the south leg to walk uphill.",
+      "x": 225,
+      "y": 26,
+      "z": -87,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Meadow kelp basin lower stand",
+      "note": "Dry south rim below the bunkhouse. Refillable middle water cell, deep east kelp well and spare bucket in the chest to the east.",
+      "x": 131,
+      "y": 110,
+      "z": -189,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore copper working face",
+      "note": "East spur from the upper stair, then south at the torch. Several exposed copper blocks remain, including the floor seam.",
+      "x": 208,
+      "y": 55,
+      "z": -83,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore copper spur mouth",
+      "note": "Side spur heads east from the upper gold stair tread, then turns south toward copper at the torch.",
+      "x": 204,
+      "y": 55,
+      "z": -88,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore mid-stair stone face",
+      "note": "Lit level bore north of the diamond stair. Enter at the mid-stair shelf, then turn east. Two exposed osmium blocks harvested at first wall.",
+      "x": 234,
+      "y": 39,
+      "z": -92,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore mid-stair stone spur mouth",
+      "note": "Short north turn out of the stair from the step at y39, then turn east into the lit stone spur.",
+      "x": 216,
+      "y": 39,
+      "z": -92,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Far east ridge sheep sighting",
+      "note": "Saw one wild sheep during the coastal trip. It had wandered out of view by the time I returned up the grass. Treat this as a sighting.",
+      "x": 274,
+      "y": 79,
+      "z": -71,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore trailhead shelter",
+      "note": "Signed birch refuge west of gold stair, with bed, furnace, bench, supplies and a tested first-alloy machine pair. Enter from north porch and close the door.",
+      "x": 182,
+      "y": 67,
+      "z": -86,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore upper stair bauxite seam",
+      "note": "On the gold stair tread, face south. Two Bauxite Ore blocks gave eight Sundries bauxite chunks. More behind the side opening. Keep the tread and floor intact.",
+      "x": 194,
+      "y": 67,
+      "z": -85,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South ravine zinc and slate fork",
+      "note": "West branch from shallow ore torch. Follow the new stair west, turn north at the torch, then west again for zinc and slate. Eight osmium gathered from the two side pockets.",
+      "x": 155,
+      "y": 85,
+      "z": -150,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore kelp landing",
+      "note": "Signed approach beside the water shelf. Four underwater bases on the south edge, below the waterline. Cut only tops visible one block below your feet and walk the grass and boards to collect.",
+      "x": 173,
+      "y": 63,
+      "z": -74,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East shore ore shelf",
+      "note": "Natural exposed copper and zinc knobs on the grassy bay ridge east of the shelter. Shore approach passes inland of the inlet. Keep footholds under the cliff edge.",
+      "x": 261,
+      "y": 71,
+      "z": -59,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East coast white-cliff landing",
+      "note": "Dry stone shelf under the tall white-banded sea cliff. I swam the headland and climbed here. Move to dry stone before stopping in the water.",
+      "x": 324,
+      "y": 63,
+      "z": -61,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East coast chalk shelf",
+      "note": "A dry ledge midway up the white cliff with exposed Sundries chalk overhead. No wild cane found on the coast to here.",
+      "x": 341,
+      "y": 74,
+      "z": -66,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East coast cliff return crest",
+      "note": "Working ascent from the shoreline below the chalk coast. From this crest turn inland along the grassy ledges toward the ore shelf.",
+      "x": 300,
+      "y": 77,
+      "z": -53,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop lower terrace turn",
+      "note": "Dry path by the Engineer's Workbench. To reach rear smelter, climb north via upper grass bend and turn west behind the workshop.",
+      "x": 124,
+      "y": 114,
+      "z": -199,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore bamboo stair coal seam",
+      "note": "Coal and redstone line the first descent east of the redstone face. Follow existing lit steps and leave the treads solid.",
+      "x": 255,
+      "y": -5,
+      "z": -62,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Birch west descent IE bauxite face",
+      "note": "From the entrance follow the straight lit stair west, turn south at the last torch for three steps, then west. The north face holds Immersive Engineering bauxite. Preserve the stair floor.",
+      "x": 117,
+      "y": 80,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore bamboo cavern window",
+      "note": "The lit narrow tunnel ends at a one-block viewing opening into a lush cavern. Three bamboo came through the window from the nearest stem. Keep the lower sill intact and harvest from the dry tunnel.",
+      "x": 261,
+      "y": -6,
+      "z": -43,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore bamboo tunnel south turn",
+      "note": "At the torch, turn south toward the bamboo cavern window. The passage steps down one more block farther along.",
+      "x": 261,
+      "y": -5,
+      "z": -57,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Birch west descent entrance",
+      "note": "Open birch clearing. Descend the lit steps due west; turn south at the last torch and then west. Zinc and proper Immersive Engineering bauxite below.",
+      "x": 146,
+      "y": 112,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore bamboo patch",
+      "note": "Two stems on the seaward shelf below the path. Harvest upper bamboo and leave the bases. Spare starter stays in the trailhead chest.",
+      "x": 178,
+      "y": 64,
+      "z": -74,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East oven south corner stand",
+      "note": "Oven opens from south-east corner too. From ravine path approach via the southern uphill step and aim at the southeast middle-layer coke brick.",
+      "x": 117,
+      "y": 116,
+      "z": -196,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East workshop Engineer's Workbench",
+      "note": "Actual two-block Engineer's Workbench. Components Blueprint in slot 0. Inputs 8–13, iron component output 4 and bulbs output 7. Approach from the south.",
+      "x": 124,
+      "y": 114,
+      "z": -199,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind cloche harvest chest",
+      "note": "North-facing birch chest beside the working wind cloche. Approach from the upper grass bend, behind the storage bench. Take wheat and spare seeds. Leave dirt and seed in the machine.",
+      "x": 122,
+      "y": 117,
+      "z": -203,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow cane and bamboo nursery",
+      "note": "Raised dirt trough downhill from the kelp basin. Approach around its east end by the birches, keep the water borders, and harvest tops.",
+      "x": 131,
+      "y": 109,
+      "z": -184,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow nursery bamboo stem",
+      "note": "Gary's rooted bamboo on grass just south of the birch-side nursery approach. Cut the upper stem when it grows.",
+      "x": 134,
+      "y": 108,
+      "z": -183,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow nursery starter chest",
+      "note": "Birch chest on the west planting border beside the nursery sign. Shared starts when present. Leave the rooted plants in place.",
+      "x": 130,
+      "y": 109,
+      "z": -184,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore ravine stair upper turn",
+      "note": "From the upper dirt path, turn east at the level cobble step beside the bank torch, then follow the stairs south to shore.",
+      "x": 162,
+      "y": 91,
+      "z": -141,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore ravine stair lower foot",
+      "note": "From the shore side, walk uphill to the gully below the oak and turn north up the narrow cobble stair.",
+      "x": 164,
+      "y": 80,
+      "z": -131,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Jungle north cove canoe-free landing",
+      "note": "Open-water approach from north, then climb in by the shallow stream. Wild cocoa and melon lie inland southwest. Bring food for the long swim.",
+      "x": 95,
+      "y": 65,
+      "z": 178,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore ravine oak steps",
+      "note": "Follow the torches past the oak. Two cobble risers join the upper bank to the grass shelf. Stay on the grass side of the cave mouth.",
+      "x": 165,
+      "y": 75,
+      "z": -123,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore oak gully cave hazard",
+      "note": "Below the oak stair and south of the stair-foot bench. Direct travel from shore dropped me beside a shaded cave mouth. Follow Gary's lit approach above the lip; do not plot through the gully floor.",
+      "x": 167,
+      "y": 75,
+      "z": -122,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West pasture birch traverse",
+      "note": "Grass west of the pasture. Stay on the south side of the fence via West pasture stone approach, then round the large birch.",
+      "x": 56,
+      "y": 117,
+      "z": -185,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Meadow nursery melon stem",
+      "note": "North rim of the nursery. Keep the adjacent west grass available for fruit. Harvest a melon and leave the stem.",
+      "x": 131,
+      "y": 109,
+      "z": -186,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West birch high sand saddle",
+      "note": "Dry high sand on the west traverse. Approach over grass from the east. Water lies below to the southwest; look for a walkable contour.",
+      "x": 21,
+      "y": 106,
+      "z": -171,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West coast stone brow",
+      "note": "Broad dry rock with exposed ore at the top of the west coastal descent. Follow the open ledges south in short legs.",
+      "x": 9,
+      "y": 100,
+      "z": -150,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West brow surface zinc",
+      "note": "Exposed zinc ore in the floor of the high stone brow. Stand on the larger flat shelf and leave the walking surface intact.",
+      "x": 7,
+      "y": 100,
+      "z": -150,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West saddle north switchback",
+      "note": "Climb north of the little oak from the sand saddle. The raised grass turn joins the west pasture birch traverse.",
+      "x": 24,
+      "y": 107,
+      "z": -176,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West coast high edge light",
+      "note": "End of the upper coastal rock shelf. The cliff past the torch falls in large drops. Keep inland or turn uphill.",
+      "x": 14,
+      "y": 94,
+      "z": -131,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West coast inland lower birches",
+      "note": "Dry standing point on the inland descent. Skeleton followed near the birch traverse in rain. Continue south on grass to approach the coast from above.",
+      "x": 56,
+      "y": 104,
+      "z": -159,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East workshop lower fuel furnace",
+      "note": "Ordinary fuel furnace immediately west of the low crafting table. Use the south grass approach.",
+      "x": 121,
+      "y": 114,
+      "z": -199,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East stream cookfire",
+      "note": "Stand on the low grass east of the furnace. Aim north at the wooden base. Four food items cook at once. Pick them up without stepping onto the hearth.",
+      "x": 112,
+      "y": 116,
+      "z": -203,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop wind sawmill",
+      "note": "Dry north-side stance. Machine is one west and one south against the vertical power bypass. Load plain logs for planks and sawdust. Keep the rear smelter aisle clear.",
+      "x": 117,
+      "y": 116,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch descent lapis face",
+      "note": "Lit dry lapis face. From lower Birch Descent take the south stair, turn east at the lowest gravel bypass torch, then south twice in the marked turns. Leave the floor and stairs intact.",
+      "x": 133,
+      "y": 55,
+      "z": -188,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch lapis gravel bypass",
+      "note": "Avoid the loose bank. From the south stair go east one step, north one step, then east down the long torch-lit leg. Return by the same bends.",
+      "x": 119,
+      "y": 69,
+      "z": -194,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch lapis stair toe",
+      "note": "Bottom of the long east stair. Turn south down three steps, east in the level clay bore, then south into the lapis face. Return west toward the gravel bypass.",
+      "x": 130,
+      "y": 58,
+      "z": -194,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch descent south branch junction",
+      "note": "At the lower torch turn south for the lapis staircase. The short north branch holds Immersive Engineering bauxite. Return up the stone stairs to the east.",
+      "x": 117,
+      "y": 80,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West cliff sea window",
+      "note": "Signed, lit dry opening at the end of the west rock stair. Fill a bucket or fish from inside. The seaward lip drops into water. Use the marked turns inland.",
+      "x": 21,
+      "y": 65,
+      "z": -126,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West stone stair lower turn",
+      "note": "Turn south from the stair into the lit sea passage. Keep level. Wait until the walk has actually settled before issuing the next turn.",
+      "x": 31,
+      "y": 65,
+      "z": -141,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West sea passage elbow",
+      "note": "From the stair, turn west here along the level passage. Inbound from sea, turn north for the climb.",
+      "x": 31,
+      "y": 65,
+      "z": -131,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West sea window corridor",
+      "note": "Turn south from here for the signed window. From the window, turn east for the stair.",
+      "x": 20,
+      "y": 65,
+      "z": -131,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West ocean stair entrance",
+      "note": "Signed stone tread below the brow. Step east once, turn north at the cobble curb, then follow the enclosed lit stair east.",
+      "x": 2,
+      "y": 92,
+      "z": -140,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West brow staircase approach",
+      "note": "From the stone brow follow the dry stone contour southwest to the shallow chute. Turn south at x0 and take the cobble step east to the signed stair. The earlier high edge is an overlook.",
+      "x": 3,
+      "y": 99,
+      "z": -147,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop output chest",
+      "note": "Signed wind pickup. Iron ingots, IE aluminum and birch saplings reach the chest above the sign. Check existing batches first and collect your own. Use lower terrace for the rear smelter.",
+      "x": 122,
+      "y": 116,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East workshop rear smelter",
+      "note": "Stand here and look southwest low at the Energized Smelter's east face. Wind-powered. Top RS Exporter feeds iron grit and north RS Importer collects iron and IE aluminum. Leave both in place.",
+      "x": 120,
+      "y": 116,
+      "z": -203,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Northwest birch coast overlook",
+      "note": "New open western sea, reached on a dry contour from the north birch ridge. Drop is steep. Stay on grass or find a shallow notch before going to the water.",
+      "x": 7,
+      "y": 80,
+      "z": -502,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Northwest granite shoreline traverse",
+      "note": "A wide bare coastal shelf reached by staying high along the shore north of the birch overlook. There are ore exposures and deep shady cracks inland. Keep to the open contour.",
+      "x": 9,
+      "y": 92,
+      "z": -588,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North coast wild cane beach",
+      "note": "Natural sugar cane on the sea-facing shelf where gravel meets the sand. Cut the upper block and leave the rooted base. Water crossing is west of this beach.",
+      "x": 54,
+      "y": 63,
+      "z": -849,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow nursery cane root",
+      "note": "Sugar cane on the southeast grass rim beside the trough. Stand on the middle dry rim to cut an upper block. Leave the base and water in place.",
+      "x": 132,
+      "y": 109,
+      "z": -184,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West sea hearth",
+      "note": "Dry lit alcove by the sea window corridor. The chest and bench sit beside the campfire. Use stand in front of chest; retrieve catch from clear stone. Borrow and return the local rod.",
+      "x": 22,
+      "y": 65,
+      "z": -130,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Workshop east grass bend",
+      "note": "From the lower bench use the east grass bend, then turn west for the pickup chest or north for the cloche. Stay outside the Workshop walls.",
+      "x": 125,
+      "y": 115,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West sea casting stone",
+      "note": "Left side of the dry window. Aim due south, about 22 degrees down to cast. Angle the view farther down to keep the float above the crosshair. Reel on its sharp dip. Salmon and cod tested.",
+      "x": 20,
+      "y": 65,
+      "z": -126,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Meadow nursery south step",
+      "note": "Cobble step levels the dip. From the east torch go across it, then turn north at the grass step to reach the dry middle nursery rim.",
+      "x": 132,
+      "y": 108,
+      "z": -183,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West ocean stair middle landing",
+      "note": "Gary showed this two-tread landing. Continue east downhill to the clay shelf, or west uphill to the level cobble curb by the sign.",
+      "x": 16,
+      "y": 80,
+      "z": -141,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East stream cane root",
+      "note": "Shared sugar cane on the north grass edge of the waterlogged birch slab. Reach from the dry strip by the cabin steps. Clip only upper growth and keep the root and slab.",
+      "x": 108,
+      "y": 116,
+      "z": -202,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Cabin berry walk turn",
+      "note": "Follow the dry path north along the cabin’s east side. Turn east one block onto the birch slab, then north into the signed picking lane. Turn east to walk the four bushes while staying on the path.",
+      "x": 113,
+      "y": 120,
+      "z": -212,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Birch slope crafting table",
+      "note": "Existing workbench on the flower slope. Reach from the grass step to its north. I opened it and made a shovel.",
+      "x": 144,
+      "y": 110,
+      "z": -180,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Meadow honey level crossing",
+      "note": "Flat existing rail. Look both ways and cross straight north-south at track height. Do not dig or place on the rail. The honey ledge is two blocks south, the signed nursery route turns east three to four blocks north.",
+      "x": 116,
+      "y": 108,
+      "z": -179,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Meadow nursery honey path",
+      "note": "From the nursery foot continue west along the dirt path. At the lit turn head south across the flat rail at track height, then two blocks to the nest ledge. Rail and nursery rims stay in place.",
+      "x": 129,
+      "y": 108,
+      "z": -183,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Honey ledge upper grass approach",
+      "note": "Below the workshop path, walk south over the gravel and grass to the lower shelf. Reach the flat crossing from the north. Follow the marked path east to the nursery or cross straight to the nest.",
+      "x": 115,
+      "y": 115,
+      "z": -192,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop pickup standing spot",
+      "note": "Dry aisle facing the birch pickup chest above the sign. Check initial stock and allow the smelter to finish after the Enrichment Chamber clears.",
+      "x": 120,
+      "y": 116,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East stream cane second root",
+      "note": "Grown from the first upper cutting of the cabin stream cane. Leave the base and take upper growth.",
+      "x": 107,
+      "y": 116,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Cabin porch berry corner",
+      "x": 113,
+      "y": 120,
+      "z": -206,
+      "dimension": "minecraft:overworld",
       "author": "Gary",
-      "note": "Shared with Margo. Northwest corner of the cabin. Seed reserves, eggs, shears, clay for a Coke Oven, and starter engineering supplies."
+      "note": "Level cobblestone turn. Walk straight east from the door landing across the two blocks, then turn north along the cabin wall."
     }
   ],
   "deaths": []

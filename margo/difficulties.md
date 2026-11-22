@@ -88,3 +88,38 @@ Last tool error: Not enough ingredients for 1 x recipe minecraft:birch_sign: you
 Several exact-block use calls immediately after an arrival got a changed aim before the player came fully to rest. The furnace approach placed a blank sign one block away on dirt; my targeted attack hold did not break it. Waiting to settle and using an empty hand opened the furnace reliably.
 Position: 110.5, 120, -208.47 (minecraft:overworld)
 Last tool error: limit: Number must be less than or equal to 8. recall: Search your own Markdown notes by keywords. Returns short matching passages with file and line; use it instead of reading whole notes files.
+
+## 2026-11-22T02:33:17.006Z
+At an open crafting table, craft for immersiveengineering:treated_wood_horizontal chose the conversion recipe requiring packaged wood despite carrying a full creosote bucket and enough planks. Manually placing the bucket in slot 5 and planks in the surrounding eight slots gave the installed fluid recipe.
+Position: 115.49, 115, -194.39 (minecraft:overworld)
+Last tool error: Not enough ingredients for 1 x recipe immersiveengineering:crafting/treated_wood_horizontal_from_packaged: you need 1 more immersiveengineering:treated_wood_packaged (it takes 1). Nothing was moved.
+
+## 2026-11-22T03:34:04.158Z
+Gary rode the powered railway and could not dismount because press_key has no sneak/dismount control. From beside the stopped cart I confirmed the minecart entity was in sight, then freed him by breaking the cart with one attack. Add a dismount or sneak action so a solo rider can exit.
+Position: 105.73, 116, -188.62 (minecraft:overworld)
+Last tool error: craft works in your own inventory or at a crafting table, not in CokeOvenScreen; close it first.
+
+## 2026-11-22T05:58:23.182Z
+At the shore workbench, craft minecraft:ladder selected the seven-stick recipe and got no output. Putting oak planks in the center and six sticks around it by hand gave four ladders. The recipes tool listed both variants.
+Position: 198.5, 52, -93.58 (minecraft:overworld)
+Last tool error: Crafted nothing with recipe minecraft:ladder: the output slot showed nothing, not minecraft:ladder; this server may not have the recipe. The grid and your cursor are empty; unused ingredients are back in your inventory.
+
+## 2026-11-22T07:14:26.044Z
+Refined Storage 1.12.4 GridScreen draws result stacks in a custom grid. Depositing via player slots works; screen only lists transfer/player slots, click_slot 0 did nothing to the visible first result, and TAB then type_text left search empty. Please add native focused search and a safe Grid result click or withdrawal.
+Position: 120.45, 116, -199.49 (minecraft:overworld)
+Last tool error: Crafted nothing with recipe refinedstorage:raw_improved_processor: taking refinedstorage:raw_improved_processor from the output slot added none to your inventory (no empty inventory slot). The grid and your cursor are empty; unused ingredients are back in your inventory.
+
+## 2026-11-22T07:56:04.740Z
+An XZ travel goal beside the west stream pig pen dug beneath the gates and let the pigs out. I filled the hole after exiting. A no-break way to travel near fences and animals would prevent this.
+Position: 110.5, 120, -205.63 (minecraft:overworld)
+Last tool error: for.1: Invalid enum value. Expected 'chat' | 'hurt' | 'died' | 'player_near' | 'arrived' | 'stopped_short' | 'navigation_stopped' | 'reflex', received 'hostile_gone'. wait: Wait for chat, danger, rescue reflexes, players or navigation (seconds 1..120); wakes immediately.
+
+## 2026-11-22T08:31:02.854Z
+Mekanism Enrichment Chamber shows a Side Configuration tab in picture, but screen exposes only one blank button (49). That index and Tab/Enter left the menu unchanged, so I couldn't enable item auto-eject through the body.
+Position: 119.29, 116, -198.71 (minecraft:overworld)
+Last tool error: limit: Number must be less than or equal to 10. place_find: List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name or note words.
+
+## 2026-11-22T12:25:26.466Z
+At the West sea window, use on a fishing rod reported nothing changed even when the screenshot showed its line cast, and there was no bite event. Between screenshots I could see a dip but the catch window had already passed when I reeled.
+Position: 20.5, 65, -125.5 (minecraft:overworld)
+Last tool error: Evidence/source belong to report or confirm.

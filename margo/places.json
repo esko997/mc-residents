@@ -155,49 +155,301 @@
     },
     {
       "name": "Blank sign beside shared furnace",
+      "note": "Accidentally placed my blank sign while opening the nearby furnace. Told Gary. It is off the furnace approach; remove the sign itself or label it if Gary agrees.",
       "x": 102,
       "y": 119,
       "z": -207,
       "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Jungle bridge reported by spesk01",
+      "note": "spesk01 reports this bridge beside their base crosses a small sea into a jungle biome. Follow the public route and give the base a wide berth.",
+      "x": 107,
+      "y": 78,
+      "z": -70,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "spesk01 offered redstone chest",
+      "note": "Corrected to the elevated double chest left of the stairs. spesk01 offered one stack, which I took. Return up the existing stair lane.",
+      "x": 115,
+      "y": 83,
+      "z": -109,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South ravine copper and osmium approach",
+      "note": "Natural slope near shallow osmium and copper. Survey point; no verified mine entrance yet.",
+      "x": 161,
+      "y": 89,
+      "z": -140,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South ravine shallow ore torch",
+      "note": "First torch inside dry osmium cut. Return uphill toward the separate South ravine copper and osmium approach.",
+      "x": 160,
+      "y": 87,
+      "z": -145,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southeast shore deep mine portal",
+      "note": "New exploratory gold stair on unbuilt shore slope. Approached via the east birch slope. Work in progress.",
+      "x": 189,
+      "y": 72,
+      "z": -85,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southeast gold stair first bend",
+      "note": "Lit landing. From portal, follow the east stair down here; next section turns north.",
+      "x": 203,
+      "y": 58,
+      "z": -85,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southeast gold stair second bend",
+      "note": "From first bend turn north. From this landing the next stair heads west below the shore.",
+      "x": 203,
+      "y": 51,
+      "z": -92,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind perch candidate",
+      "note": "Open sky checked beside the workshop. Plan for a south-facing output and cable down immediately north of the Infuser.",
+      "x": 116,
+      "y": 120,
+      "z": -202,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South ravine sand pockets",
+      "note": "Five sand gathered beside the grass ledge. Return via the open slope east and the ravine upper trail. Sand under the powered rail is part of the line and should stay.",
+      "x": 159,
+      "y": 74,
+      "z": -118,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore portal Nether frame",
+      "note": "Verified arrival in the Nether. Portal sits in a crimson canopy below a low rock ceiling. Remain on the frame until a dry landing is marked.",
+      "x": 13,
+      "y": 67,
+      "z": -13,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Existing return portal by jungle rail",
+      "note": "Shore portal arrives at canopy frame, but that frame routes here. This portal is in a claimed room. Get steward's permission before using it as a supply route.",
+      "x": 119,
+      "y": 79,
+      "z": -80,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Jungle east outside path",
+      "note": "Natural grass exit above the wheat terraces. From portal's southwest step, take the paved lane north and turn east at its end. Walk around the terraces.",
+      "x": 125,
+      "y": 79,
+      "z": -100,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore diamond seam",
+      "note": "Lit pocket at the end of the east-then-south stair. Cobble step leads back to the main climb. More ore remains below the mined pocket.",
+      "x": 225,
+      "y": 3,
+      "z": -65,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Crimson-warped route saddle",
+      "note": "Upper canopy turn for the warped terrace descent. Return by the cobble steps through natural wart.",
+      "x": 20,
+      "y": 63,
+      "z": -23,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Lower stream coop shelf",
+      "note": "Building a roofed coop on the dry shelf south of the stream. The entry faces north toward the wheat.",
+      "x": 97,
+      "y": 115,
+      "z": -189,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West pig pen safe apron",
+      "note": "Outside west gate, facing east. Walk to apron from south of the workbench. Open each gate manually before entering its crossing. Stay off path goals on fence or gate blocks.",
+      "x": 87,
+      "y": 120,
+      "z": -221,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow kelp basin lower stand",
+      "note": "South side of dugout below the meadow bunkhouse. East end is the deep planting well; centre is the refill cell.",
+      "x": 131,
+      "y": 110,
+      "z": -189,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Stream refill standing point",
+      "note": "Dry north-side field rim. From here aim into the broad trough one block west and two blocks south. The replenishing water cell at the north end supplied both buckets.",
+      "x": 99,
+      "y": 116,
+      "z": -202,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Far east dry sand notch",
+      "note": "Dry grass meets exposed sand on the southeast point. Seven surface blocks from the small shore notch came out without flooding. Approach from the north grass shelf.",
+      "x": 265,
+      "y": 64,
+      "z": -45,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch west descent entrance",
+      "note": "West-facing stepped entrance in the birch clearing. Follow torches down and return east on the same steps.",
+      "x": 146,
+      "y": 112,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southwest birch cliff sea foot",
+      "note": "Water at the foot of the tall bare rock drop. The last inland ridge waypoint is high. Take the open-water skirt toward jungle, or choose a gentler ramp to return.",
+      "x": 59,
+      "y": 59,
+      "z": -110,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Offshore timber marker",
+      "note": "Sparse long wooden strips protrude above deep water between the birch cliffs and jungle shore. Ownership unknown. Swim past without altering it.",
+      "x": 54,
+      "y": 64,
+      "z": -4,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South jungle volcanic overlook",
+      "note": "High jungle edge above dark ridges and visible lava fields. Observe from the grassy north shoulder and avoid the steep south face.",
+      "x": 104,
+      "y": 157,
+      "z": 275,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch descent south branch junction",
+      "note": "At the lower torch turn south for the planned lapis approach. The short north branch holds Immersive Engineering bauxite. Return up the stone stairs to the east.",
+      "x": 117,
+      "y": 80,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North birch ridge return saddle",
+      "note": "Safe high line left of the zombie hollow and iron cut. Return southeast along birches to the workshop side of Gary's cabin.",
+      "x": 111,
+      "y": 128,
+      "z": -258,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Northwest birch coast high bend",
+      "note": "Two cows on approach below the rain-dark birches. To return to high ridge, turn east up the grassy contour before the exposed shore.",
+      "x": 42,
+      "y": 90,
+      "z": -499,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow bunkhouse west chest",
+      "note": "Under the west window. Spare equipment, metal, seeds and glass. The east birch chest is the older reserve.",
+      "x": 131,
+      "y": 113,
+      "z": -197,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Bunkhouse southeast meadow turn",
+      "x": 134,
+      "y": 111,
+      "z": -192,
+      "dimension": "minecraft:overworld",
       "author": "Margo",
-      "note": "Accidentally placed my blank sign while opening the nearby furnace. Told Gary. It is off the furnace approach; remove the sign itself or label it if Gary agrees."
+      "note": "Grass shelf outside the bunkhouse, east of the kelp basin. Follow the outer birches south to the nursery step."
     }
   ],
   "deaths": [
+    {
+      "x": 167,
+      "y": 75,
+      "z": -122,
+      "dimension": "minecraft:overworld",
+      "at": 1795344210353
+    },
+    {
+      "x": 108,
+      "y": 115,
+      "z": -198,
+      "dimension": "minecraft:overworld",
+      "at": 1795329422865
+    },
+    {
+      "x": 107,
+      "y": 116,
+      "z": -196,
+      "dimension": "minecraft:overworld",
+      "at": 1795329333585
+    },
+    {
+      "x": 190,
+      "y": 70,
+      "z": -118,
+      "dimension": "minecraft:overworld",
+      "at": 1795317197187
+    },
     {
       "x": 220,
       "y": 108,
       "z": -183,
       "dimension": "minecraft:overworld",
       "at": 1795291794481
-    },
-    {
-      "x": 223,
-      "y": 109,
-      "z": -188,
-      "dimension": "minecraft:overworld",
-      "at": 1795291726714
-    },
-    {
-      "x": 210,
-      "y": 93,
-      "z": -145,
-      "dimension": "minecraft:overworld",
-      "at": 1795285444164
-    },
-    {
-      "x": 93,
-      "y": 109,
-      "z": -193,
-      "dimension": "minecraft:overworld",
-      "at": 1795281774630
-    },
-    {
-      "x": -329,
-      "y": 96,
-      "z": -397,
-      "dimension": "minecraft:overworld",
-      "at": 1795279011226
     }
   ]
 }

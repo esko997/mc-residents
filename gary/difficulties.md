@@ -121,3 +121,43 @@ Last tool error: Not enough ingredients for 1 x recipe minecraft:shears: you nee
 The sun appeared to stay in the east across repeated checks over much of the session. Margo and I both set respawn on the shared bed, but repeat use never let me sleep.
 Position: 110.5, 120, -207.4 (minecraft:overworld)
 Last tool error: minecraft:stone_sword needs a 3x3 grid: close your inventory, look at a crafting table and use it, then craft again.
+
+## 2026-11-22T02:46:46.042Z
+Mining 12 stone within radius 8 beside open stone/gravel dropped me into a narrow gravel-sided shaft six blocks under the rim. The count worked, but local mining did not stay on the exposure. I will use individually aimed surface blocks here.
+Position: 165.91, 100, -180.5 (minecraft:overworld)
+Last tool error: none
+
+## 2026-11-22T03:30:47.534Z
+I boarded spesk01's communal minecart at the stream rail landing, but it stopped beside the launcher. go_to reports arrival without moving the cart. The game says Left Shift to dismount and press_key only offers UI keys. A supported dismount control would keep us from getting stranded.
+Position: 104.92, 115.71, -189.5 (minecraft:overworld)
+Last tool error: text: Required. say: Speak plain chat, independently of walking; not commands. Text longer than one chat line (256 characters) is sent as up to three lines.
+
+## 2026-11-22T06:15:34.206Z
+At the north ridge hollow, a zombie stayed within 1.2 blocks while retreat rescue ran all five seconds and timed out. The second attempt was unarmed, and the rescue left me on the same rim block. Approaching from the western level shelf with a sword and shield later worked.
+Position: 123.34, 124, -239.54 (minecraft:overworld)
+Last tool error: You are dead; no trip can start before you respawn.
+
+## 2026-11-22T07:33:46.958Z
+The northwest return to the workshop found a cheap path underneath the northeast cabin slope. Reaching the east aisle from below at guessed grade dug dirt west of the Coke Oven. A terrain-preserving walking option would make shared builds easier to approach.
+Position: 114.35, 116, -199.51 (minecraft:overworld)
+Last tool error: query: String must contain at least 1 character(s). place_find: List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name or note words.
+
+## 2026-11-22T10:10:24.894Z
+Stonecutter shows the cobblestone stair recipe visually, but the screen tool exposes only one unlabeled widget and click_button index 0 did not select an output. I will handcraft stairs at a bench. A recipe-select-by-item action would help.
+Position: 164.44, 80, -130.47 (minecraft:overworld)
+Last tool error: Not enough ingredients for 1 x recipe minecraft:birch_sign: you need 1 more #forge:rods/wooden (it takes 1). Nothing was moved.
+
+## 2026-11-22T11:16:16.754Z
+On the west shelf in rain, the defensive reflex repeatedly paused and resumed beside a living spider and zombie within two blocks. With iron sword and shield equipped, I still took a long string of hits while trying to retreat toward clear ground. Events 9123–9155.
+Position: 113.49, 116, -204.46 (minecraft:overworld)
+Last tool error: capabilities.1: String must contain at most 48 character(s). facility_register: Register a facility you steward, with capabilities, location and access terms. This is your claim, not verified ownership or working infrastructure. Use facility_observe to record its condition. For another person's facility, ask them to register it; you may observe an existing entry without changing rights.
+
+## 2026-11-22T12:05:53.798Z
+I aimed for a birch with an exact waypoint one block below the powered rail terrace. Baritone removed two powered rails and their coarse dirt support as I walked away. I retrieved and restored the support and rails, then checked the connected powered bend. A walk option that never digs or places would help on shared paths.
+Position: 104.51, 116, -187.5 (minecraft:overworld)
+Last tool error: limit: Number must be less than or equal to 10. place_find: List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name or note words.
+
+## 2026-11-22T12:57:33.910Z
+On the southeast cabin corner, my diagonal waypoint across a small floor gap used a cobblestone and one pick durability. I stopped navigation and added a deliberate two-block level corner. Three traversals over the finished corner used no blocks or tool durability.
+Position: 110.49, 120, -207.44 (minecraft:overworld)
+Last tool error: limit: Number must be less than or equal to 16. find_block: Where the nearest blocks of a kind are, without moving, loading or breaking anything: up to limit (default 8, max 16) within radius blocks of you (default 32, max 96; a sphere around the block you stand in), nearest first, each with distance and direction. Any block can be asked for, natural ones too (ores, logs, crops, water), by its blo
