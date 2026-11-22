@@ -14,6 +14,12 @@ interface Facility {
 interface KnowledgeGap {
   id: number; question: string; scope: string; status: string; occurrences: number;
   attempts: number; reason: string; updatedAt: number; requests: string;
+  kind: "knowledge" | "capability"; blockedBy: string | null; parked: number;
+}
+interface CapabilityGap {
+  id: number; capability: string; detail: string; status: "open" | "provided" | "declined";
+  occurrences: number; resolution: string; updatedAt: number; resolvedAt: number | null;
+  reporters: string | null; references: string | null; parkedRequests: number; reportsSinceResolution: number;
 }
 interface Reference {
   gapId: number; revision: number; title: string; scope: string; answer: string;
@@ -43,13 +49,32 @@ export function communityOverview(db: Database, now: number) {
     ORDER BY f.updated_at DESC, f.id DESC LIMIT 50`).all(now) as Facility[];
   const knowledgeGaps = db.query(`SELECT g.id, g.question, g.scope, g.status, g.occurrences,
     g.attempts, g.reason, g.updated_at AS updatedAt,
+    (g.next_attempt_at=9007199254740991) AS parked,
+    CASE WHEN g.status='unavailable' AND EXISTS (
+      SELECT 1 FROM capability_reports cr JOIN capability_gaps c ON c.id=cr.capability_id
+      WHERE cr.gap_id=g.id AND cr.revision=g.revision AND cr.blocking=1 AND c.status!='provided'
+    ) THEN 'capability' ELSE 'knowledge' END AS kind,
+    (SELECT group_concat('cap-' || c.id || ' ' || c.capability || ' [' || c.status || ']', '; ')
+      FROM capability_reports cr JOIN capability_gaps c ON c.id=cr.capability_id
+      WHERE cr.gap_id=g.id AND cr.revision=g.revision AND cr.blocking=1) AS blockedBy,
     COALESCE((SELECT group_concat(resident || CASE WHEN project='' THEN '' ELSE ' (' || project || ')' END, '; ')
       FROM knowledge_requests WHERE gap_id=g.id), '') AS requests
     FROM knowledge_gaps g ORDER BY g.updated_at DESC, g.id DESC LIMIT 50`).all() as KnowledgeGap[];
+  const capabilityGaps = db.query(`SELECT c.id, c.capability, c.detail, c.status, c.occurrences,
+    c.resolution, c.last_at AS updatedAt, c.resolved_at AS resolvedAt,
+    (SELECT group_concat(DISTINCT reporter) FROM capability_reports WHERE capability_id=c.id) AS reporters,
+    (SELECT group_concat(DISTINCT 'ref-' || gap_id) FROM capability_reports
+      WHERE capability_id=c.id AND gap_id>0) AS "references",
+    (SELECT count(*) FROM capability_reports cr JOIN knowledge_gaps g ON g.id=cr.gap_id AND g.revision=cr.revision
+      WHERE cr.capability_id=c.id AND cr.blocking=1 AND g.status='unavailable'
+        AND g.next_attempt_at=9007199254740991) AS parkedRequests,
+    (SELECT count(*) FROM capability_reports WHERE capability_id=c.id
+      AND c.resolved_at IS NOT NULL AND at>c.resolved_at) AS reportsSinceResolution
+    FROM capability_gaps c ORDER BY (c.status='open') DESC, c.last_at DESC, c.id DESC LIMIT 50`).all() as CapabilityGap[];
   const references = db.query(`SELECT r.gap_id AS gapId, r.revision, r.title, r.scope, r.answer,
     r.prerequisites_json AS prerequisites, r.controls_json AS controls, r.sources_json AS sources,
     r.caveats, r.published_at AS publishedAt, (g.revision != r.revision) AS stale
     FROM knowledge_references r JOIN knowledge_gaps g ON g.id=r.gap_id AND g.published_revision=r.revision
     ORDER BY r.published_at DESC, r.gap_id DESC LIMIT 30`).all() as Reference[];
-  return { collaborations, facilities, knowledgeGaps, references };
+  return { collaborations, facilities, knowledgeGaps, capabilityGaps, references };
 }

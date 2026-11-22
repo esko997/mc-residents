@@ -125,10 +125,11 @@ shared farm or home counts; coordinate rather than duplicating every facility.
 
 ## Getting unstuck
 
-- If `go_to` stops short again and again from the same place, Baritone is
-  probably trying to break a block it may not (claims, spawn) or cannot find a
-  way. Repeating the same `go_to` will not help. Try a nearer open spot first,
-  or `follow` someone who can walk out, then carry on from there.
+- `go_to`, `follow` and `explore` default to `mode:"walk"`: no digging or
+  placing for that trip. If blocked, inspect the route and try a nearer open
+  spot or follow someone out. On wild ground or in a mine, explicitly choosing
+  `mode:"excavate"` permits digging and building; it can damage constructed
+  blocks too, so do not use it as a shortcut through a settlement.
 - `mine` is local gathering: it stops if its route or next target goes beyond
   the radius around where you started (default 32 blocks, maximum 96).
   `find_block` searches the client-loaded terrain without moving or digging;
@@ -137,6 +138,11 @@ shared farm or home counts; coordinate rather than duplicating every facility.
 - A mine count measures gained target items or known vanilla drops, not blocks
   broken. Unknown modded drops may not count: check inventory and `stop` when
   you have enough. Do not send mining trips through buildings.
+- `place_save` can record a refuge's access, hazards and when you checked it.
+  A lit waystation and a known return route can help underground; a saved
+  label is not proof that the route or room is still safe.
+- While coming up for air or escaping lava, your body keeps the controls.
+  `stop` deliberately overrides that rescue; ordinary `look` or use actions do not.
 
 ## Crafting with your body
 
@@ -173,17 +179,40 @@ the slots. Slot numbers in the common screens:
   A modded machine is working only when it actually processes an input into
   the expected output. Check its guide, power, inputs and output; placement
   alone is not proof, and repeatedly clicking an uncertain slot is not a fix.
+- An open Refined Storage Grid has its own `storage_grid` search and
+  `storage_grid_take` withdrawal tools; network results are not menu slots.
+  Mekanism's `machine_sides` and `machine_sides_set` expose the open machine's
+  configuration. Both use normal permissions; guides explain their limits.
 - To give someone an item, stand a block or two from them, `look` at them,
   open your inventory and `click_slot` the stack with mode `THROW` (button 1
   throws all of it, button 0 one item). A thrown item can be picked up by
   anyone after two seconds, you included: if it lands at your feet it comes
   straight back, so throw toward them and step back if they are slow.
 
+## Vehicles
+
+`vehicle` lists nearby rideable entities and what you are riding. Use `mount`
+and `dismount` rather than breaking a cart to get out. `vehicle_control` holds
+native controls briefly and reports movement; `vehicle_inventory` opens a
+mounted inventory. Aircraft are not boats: `guide {query:"vehicles"}` explains
+fuel, steering and landing. Foot rescues and automatic eating are suspended
+while mounted so they cannot eject you or interfere with flight.
+
+
 ## Building
 
-Select the block's hotbar slot, `look` at the face of a block you want to build
-against, and `use`. Building around yourself is easiest from inside: stand where
-the room will be and place walls at arm's reach.
+Select the block's hotbar slot, `look` at the face you want to build against,
+and `use`. Work from somewhere you can reach without boxing yourself in;
+leave the approach, doorway and working space open while placing the rest.
+
+Places other people use work best when they can be found and walked to without
+your coordinates: a lit route with stairs or slabs rather than a dug shortcut,
+room to stand beside machines you will need to reach again, a sign or an agreed
+shared place name. Walk mode cannot dig or place shortcuts; excavating travel
+can. Even a successful pathfinder route is worth trying as a visitor: clear
+approaches and usable entrances matter more than arrival alone. Style, size
+and decoration are up to you; nothing is graded. `guide {query:"settlement"}`
+has optional sections on layout, routes, names, visits and renovation.
 
 ## Projects, references and learning
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readPlaces } from "../src/ideas.ts";
 import { createNotes, notesDefinitions, type NotesPosition } from "../src/notes.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -154,5 +155,44 @@ describe("places", () => {
   test("place_save requires all three coordinates when any coordinate is supplied", () => {
     expect(notesDefinitions.place_save.schema.safeParse({ name: "bad", x: 1 }).success).toBe(false);
     expect(notesDefinitions.place_save.schema.safeParse({ name: "good", x: 1.9, y: 64, z: -2.1 }).success).toBe(true);
+  });
+
+  test("refuge notes are shown as reported, with the age of the last check, and found by the word refuge", async () => {
+    const dir = await tempDir();
+    const start = Date.UTC(2026, 10, 22, 6);
+    let time = start;
+    const a = resident(dir, "A", at(0, 64, 0), () => time);
+    const b = resident(dir, "B", at(0, 64, 0), () => time);
+    expect(await a.place_save({ name: "hut", note: "stone hut", x: 10, y: 64, z: 0, shared: true, refuge: { access: "door on the west side", hazards: "dark inside", checked: true } }))
+      .toBe('Saved shared place "hut" at (10,64,0) in minecraft:overworld with refuge notes (checked now).');
+    await a.place_save({ name: "field", x: 3, y: 64, z: 0, shared: true });
+    time = start + 3 * 3_600_000;
+    expect(await b.place_find({ query: "refuge" })).toBe("hut (10,64,0) distance 10 blocks east; stone hut; refuge as reported: access: door on the west side; hazards: dark inside; checked 3 h ago; by A");
+    expect(await b.place_find({ query: "dark" })).toContain("hut (10,64,0)");
+
+    // Saved again without a fresh check: the report changes, the time of the last check does not.
+    expect(await a.place_save({ name: "hut", x: 10, y: 64, z: 0, shared: true, refuge: { hazards: "creeper seen nearby" } })).toContain("with refuge notes (last checked 3 h ago)");
+    time = start + 50 * 3_600_000;
+    expect(await a.place_find({ query: "hut" })).toBe("hut (10,64,0) distance 10 blocks east; refuge as reported: hazards: creeper seen nearby; checked 2 days ago");
+
+    expect(await a.place_save({ name: "cave", x: 0, y: 40, z: 0, refuge: {} })).toContain("with refuge notes (never checked)");
+    expect(await a.place_find({ query: "cave" })).toContain("refuge as reported: never checked");
+  });
+
+  test("a place with refuge notes is still a saved place to readers that do not know them", async () => {
+    const dir = await tempDir();
+    const notes = resident(dir, "A", at(0, 64, 0), () => 1000);
+    await notes.place_save({ name: "hut", x: 1, y: 64, z: 1, refuge: { access: "ladder", checked: true } });
+    const stored = JSON.parse(await readFile(join(dir, "A", "places.json"), "utf8"));
+    expect(stored.places[0].refuge).toEqual({ access: "ladder", checkedAt: 1000 });
+    expect((await readPlaces(join(dir, "A"), join(dir, "shared"))).places.map(place => place.name)).toEqual(["hut"]);
+    expect(await notes.place_find({})).toContain("hut (1,64,1)");
+  });
+
+  test("refuge notes take only access, hazards and checked, each kept short", () => {
+    const schema = notesDefinitions.place_save.schema;
+    expect(schema.safeParse({ name: "hut", refuge: { access: "door", hazards: "none known", checked: true } }).success).toBe(true);
+    expect(schema.safeParse({ name: "hut", refuge: { safe: true } }).success).toBe(false);
+    expect(schema.safeParse({ name: "hut", refuge: { access: "x".repeat(121) } }).success).toBe(false);
   });
 });

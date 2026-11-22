@@ -88,6 +88,18 @@ describe("offline practical guide routing", () => {
     expect(lookupGuide({ query: "wool for a bed", section: "books" }, kb)).toContain("Altar of Birthing");
   });
 
+  test("settlement place questions reach their section without capturing home or machine topics", () => {
+    expect(lookupGuide({ query: "how should we lay out the village?" })).toContain("Section: layout");
+    expect(lookupGuide({ query: "settlement maintenance room" })).toContain("Section: layout");
+    expect(lookupGuide({ query: "a path between our homes" })).toContain("Section: routes");
+    expect(lookupGuide({ query: "where should I put signs" })).toContain("Section: names");
+    expect(lookupGuide({ query: "invite Margo to visit my workshop" })).toContain("Section: visits");
+    expect(lookupGuide({ query: "renovate a cramped workshop" })).toContain("Section: renovation");
+    expect(lookupGuide({ query: "settlement" })).toContain("Section: overview");
+    expect(lookupGuide({ query: "how do I build a house" })).toContain("query=shelter;");
+    expect(lookupGuide({ query: "how to start mekanism" })).toContain("query=mekanism;");
+  });
+
   test("all curated sections survive pagination with provenance and recoverable next handles", () => {
     let continuations = 0;
     for (const guide of referenceGuides) {

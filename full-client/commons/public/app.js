@@ -117,8 +117,12 @@ function pips(kind, value, max) {
 }
 const stackText = stack => `${stack.item} ×${stack.count}${stack.maxDurability ? ` (${stack.durability}/${stack.maxDurability} uses left)` : ""}`;
 
-function residentInfo(resident) {
+const observerFresh = health => health && ["ok", "degraded"].includes(health.status)
+  && health.snapshotAgeMs !== null && health.snapshotAgeMs <= 30_000;
+
+function residentInfo(resident, observer) {
   const s = resident.state, tokens = resident.tokens, session = tokens.session;
+  const observation = resident.serverObservation, body = observation?.body ?? observation?.lastSeen;
   const live = !s ? "" : html`
     <div class="vitals">
       <span class="label">Health</span>${pips("health", s.health, s.maxHealth)}<span class="data">${s.health} / ${s.maxHealth}</span>
@@ -143,6 +147,11 @@ function residentInfo(resident) {
     </dl>`;
   return html`${live}
     <dl class="facts" ${s ? html`style="margin-top:10px"` : ""}>
+      ${observation ? html`<dt>Server observation</dt><dd>
+        ${observerFresh(observer) ? "Observed" : "Historical observation"} at ${stamp(observation.checkedAt)}:
+        ${observation.online ? "present on the server" : "not present on the server"}.
+        ${body ? html`<span class="data">${body.pos.x}, ${body.pos.y}, ${body.pos.z}</span> (${body.dimension}); body seen ${stamp(body.at)}.` : ""}
+        <span class="fine">Independent of client connection and session health.</span></dd>` : ""}
       <dt>memory.md</dt><dd>${resident.memoryBytes === null ? "no file" : html`<span class="data">${size(resident.memoryBytes)}</span>${resident.memoryBytes > 8000
         ? html` <span class="warn">over 8 KB: its next session opens with a request to rewrite it</span>` : ""}`}</dd>
       <dt>Units</dt><dd>${resident.units.map(unit => html`<span class="unit"><span class="data">${unit.unit}</span> <span class="pill ${unit.state}">${unit.state}</span></span> `)}</dd>
@@ -179,7 +188,7 @@ function showPicture(name) {
   if (record.url && image.dataset.url !== record.url) { image.src = record.url; image.dataset.url = record.url; }
   image.hidden = !record.url;
   blank.hidden = Boolean(record.url);
-  blank.textContent = online ? (record.problem || "Fetching what it sees…") : `${name} is not in the world; there is nothing to see.`;
+  blank.textContent = online ? (record.problem || "Fetching what it sees…") : `No current picture: ${name}'s client is unreachable. Server presence is reported separately.`;
   box.classList.toggle("stale", Boolean(record.url) && !online);
   $(".when", box).textContent = record.url ? `${online ? "Seen" : "Last seen"} ${clock(record.at)}` : "";
   $("button", box).hidden = !online;
@@ -199,18 +208,18 @@ function renderResidents(data) {
     }
     const words = {
       online: `looked ${ago(resident.checkedAt)}`,
-      offline: resident.lastOnlineAt ? `last in the world ${stamp(resident.lastOnlineAt)} (${ago(resident.lastOnlineAt)})` : "not seen since this app started watching",
+      offline: resident.lastOnlineAt ? `client last reachable ${stamp(resident.lastOnlineAt)} (${ago(resident.lastOnlineAt)})` : "client not reached since this app started watching",
       unchecked: "not looked at yet",
     }[resident.status] ?? resident.detail;
     const health = resident.sessionHealth;
-    setHtml($("header", card), html`<h2>${resident.name}</h2><span class="pill ${resident.status}">${resident.status}</span><span class="meta">${words}</span>
+    setHtml($("header", card), html`<h2>${resident.name}</h2><span class="pill ${resident.status}">client ${resident.status}</span><span class="meta">${words}</span>
       ${health ? html`<p class="${["paused", "failed"].includes(health.status) ? "error" : "fine"}">
         Session ${health.status}: ${health.reason || "body health watched"}.
         ${health.auto_restart ? `Automatic recovery enabled. Stops ${stamp(health.end_at * 1000)}.` : ""}
         ${health.restart_count ? `Restarts: ${health.restart_count}.` : ""}
         ${health.next_retry_at ? `Retry ${stamp(health.next_retry_at * 1000)}.` : ""}
         Recorded ${ago(health.updated_at * 1000)}.</p>` : ""}`);
-    setHtml($(".info", card), residentInfo(resident));
+    setHtml($(".info", card), residentInfo(resident, data.observer));
   }, "article");
   // After the cards are in the page: a new card is filled before it is attached.
   for (const resident of data.residents) showPicture(resident.name);
@@ -220,6 +229,7 @@ function renderResidents(data) {
     ${data.sharedUnits.map(unit => html`<span class="unit"><span class="data">${unit.unit}</span> <span class="pill ${unit.state}">${unit.state}</span></span>`)}
     ${quota ? html`<span>Codex quota: ${quota.usedPercent}% of the ${quota.windowMinutes ? `${Math.round(quota.windowMinutes / 1440)}-day` : ""} window used${
       quota.resetsAt ? `, resets ${stamp(quota.resetsAt)}` : ""} (read ${ago(quota.at)})</span>` : ""}
+    ${data.observer ? html`<span>Server observer: ${data.observer.status}${data.observer.detail ? ` — ${data.observer.detail}` : ""}.</span>` : ""}
     <span>State and position are read every ${data.sampleSeconds} s; pictures at most every ${data.pictureSeconds} s while this panel is open.</span>`);
 }
 
@@ -230,7 +240,7 @@ async function loadResidents() {
   state.residents = data;
   state.names = data.residents.map(resident => resident.name);
   const online = data.residents.filter(resident => resident.status === "online").length;
-  $("#pulse").textContent = `${online} of ${data.residents.length} in the world, read ${clock(data.now)}`;
+  $("#pulse").textContent = `${online} of ${data.residents.length} clients reachable, read ${clock(data.now)}`;
   renderResidents(data);
   setChat(data.chatUrl);
   setBadge("commons", data.pending);
@@ -684,13 +694,45 @@ function referenceSource(source) {
     ${source.supports ? html`<br>${source.supports}` : ""}${source.version_evidence ? html`<br><span class="fine">${source.version_evidence}</span>` : ""}</li>`;
 }
 
+function observedStock(contents) {
+  return html`<p>${contents.items.length ? contents.items.map(item =>
+    `${item.count} ${item.item}${item.nbtStacks ? ` (${item.nbtStacks} stacks have item data)` : ""}`).join(", ") : "No items reported."}</p>
+    <p class="fine">${contents.usedSlots} of ${contents.slots} sampled slots occupied.
+      ${contents.slotsTruncated || contents.itemsTruncated ? "Partial inventory: scan limit reached." : ""}
+      ${contents.energy ? `Energy: ${contents.energy.stored} / ${contents.energy.max}.` : ""}
+      ${contents.fluids.map(fluid => `${fluid.fluid}: ${fluid.amount} / ${fluid.capacity}`).join("; ")}</p>`;
+}
+
+function renderObserver(observation) {
+  const health = observation?.health, world = observation?.world;
+  setHtml($("#g-observer-health"), html`Server observer: ${health?.status ?? "unconfigured"}.
+    ${health?.detail ?? ""}
+    ${health?.missedEvents ? "Some server events were missed; this is not a complete history." : ""}
+    ${world ? `Snapshot taken ${stamp(world.builtAt)}. No remote chunk loading or resident control.` : "No server snapshot available."}`);
+  const facilities = world?.facilities ?? [];
+  patch($("#g-observed-facilities"), facilities, item => item.id, (card, item) => {
+    card.className = "card";
+    const recent = observerFresh(health) && item.status === "observed" && serverNow() - item.checkedAt <= 30_000;
+    const contents = item.contents ?? item.lastKnown;
+    setHtml(card, html`<header><h3>${item.label}</h3><span class="pill">${item.status}</span></header>
+      <p>${item.pos.join(", ")} (${item.dimension}); ${item.side ? `access side ${item.side}` : "unsided inventory"}.</p>
+      <p>${item.detail ?? ""} Checked ${stamp(item.checkedAt)}.</p>
+      ${contents ? html`<p><b>${recent ? "Observed stock" : "Historical stock — not a current count"}</b>,
+        ${item.status === "observed" ? stamp(item.checkedAt) : item.lastObservedAt !== null ? stamp(item.lastObservedAt) : "time not recorded"}. Not a reservation.</p>
+        ${observedStock(contents)}` : html`<p>No stock observation available. Unloaded or inaccessible does not mean empty.</p>`}`);
+  }, "article");
+  $("#g-observed-empty").hidden = facilities.length > 0;
+}
+
 function renderCommons() {
   const data = commons.data, body = $("#commons-body");
   if (!body.firstChild) {
     body.innerHTML = html`
       <section class="group"><h2>Shared facilities</h2><p class="fine">Last reported condition and stock, not live inventory. Access terms still apply. Latest 50 registrations.</p><p id="g-facilities-empty" class="empty">Residents have not registered any shared facilities yet.</p><div id="g-facilities"></div></section>
+      <section class="group"><h2>Server-observed facilities</h2><p class="fine">Read-only observations of registered blocks, separate from residents' reports. Access terms still apply.</p><p id="g-observer-health" role="status"></p><p id="g-observed-empty" class="empty">No registered facilities in the available server snapshot.</p><div id="g-observed-facilities"></div></section>
       <section class="group"><h2>Collaboration and handoffs</h2><p class="fine">Voluntary agreements. Reported delivery is not confirmation by the recipient. Latest 50 updates.</p><p id="g-collaborations-empty" class="empty">No requests or offers recorded yet.</p><div id="g-collaborations"></div></section>
       <section class="group"><h2>Knowledge gaps</h2><p class="fine">Unanswered questions and reported guide problems. The caretaker researches bounded batches without waiting for human approval. Latest 50 questions.</p><p id="g-gaps-empty" class="empty">No knowledge gaps recorded yet.</p><div id="g-gaps"></div></section>
+      <section class="group"><h2>Missing body controls</h2><p class="fine">Reported capabilities for maintainers, not research chores for residents. “Provided” is a maintainer resolution, not proof every use works. Latest 50 entries, open first.</p><p id="g-capabilities-empty" class="empty">No missing body controls reported.</p><div id="g-capabilities"></div></section>
       <section class="group"><h2>Researched references</h2><p class="fine">Source-backed guidance, not live-tested skills. Installed recipes and observed results take precedence. Latest 30 publications.</p><p id="g-references-empty" class="empty">No caretaker references published yet.</p><div id="g-references"></div></section>
       <section class="group"><h2>New, not looked at yet <small id="g-new-n"></small></h2><p id="g-new-empty" class="empty" hidden>
         Nothing new. A shared note shows up here as soon as a resident offers it, a skill once it has passed its own check. Residents can already see and use them; this is where you look afterwards, and edit or remove what is wrong.</p><div id="g-new"></div></section>
@@ -699,6 +741,7 @@ function renderCommons() {
       <section class="group"><details data-d="group:draft"><summary id="g-draft-n"></summary><p class="fine grouped">Only its author sees and runs a draft, until a run passes its check.</p><div id="g-draft"></div></details></section>
       <section class="group"><h2>Caretaker notes <small>written hourly by the overseer; read-only here</small></h2><div id="g-caretaker"></div></section>`.text;
   }
+  renderObserver(data.observer);
   patch($("#g-facilities"), data.community.facilities, item => item.id, (card, item) => {
     card.className = "card";
     setHtml(card, html`<header><h3>${item.name}</h3><span class="pill">${item.conditionFreshness}</span></header>
@@ -720,11 +763,22 @@ function renderCommons() {
   $("#g-collaborations-empty").hidden = data.community.collaborations.length > 0;
   patch($("#g-gaps"), data.community.knowledgeGaps, item => item.id, (card, item) => {
     card.className = "card";
-    setHtml(card, html`<header><h3>#${item.id} ${item.question}</h3><span class="pill">${item.status}</span></header>
+    setHtml(card, html`<header><h3>#${item.id} ${item.question}</h3><span class="pill">${item.status}</span><span class="pill">${item.kind}</span></header>
       <p>${item.requests || "Requester not recorded"}; ${item.occurrences} reports, ${item.attempts} research attempts.</p>
+      ${item.parked ? html`<p>Automatic research paused.${item.blockedBy ? ` Waiting on ${item.blockedBy}.` : ""}</p>` : ""}
       ${item.reason ? html`<p>${item.reason}</p>` : ""}<p class="fine">Updated ${stamp(item.updatedAt)}. ${item.scope}</p>`);
   }, "article");
   $("#g-gaps-empty").hidden = data.community.knowledgeGaps.length > 0;
+  patch($("#g-capabilities"), data.community.capabilityGaps, item => item.id, (card, item) => {
+    card.className = "card";
+    setHtml(card, html`<header><h3>cap-${item.id}: ${item.capability}</h3><span class="pill">${item.status}</span></header>
+      <p>${item.detail}</p><p>${item.reporters || "Reporter not recorded"}; ${item.occurrences} reports.
+        ${item.references ? `References: ${item.references}.` : ""} ${item.parkedRequests} parked requests.</p>
+      ${item.resolution ? html`<p><b>Resolution:</b> ${item.resolution}</p>` : ""}
+      ${item.reportsSinceResolution ? html`<p class="warn">${item.reportsSinceResolution} reports since that resolution; the limitation may still exist.</p>` : ""}
+      <p class="fine">Updated ${stamp(item.updatedAt)}.</p>`);
+  }, "article");
+  $("#g-capabilities-empty").hidden = data.community.capabilityGaps.length > 0;
   patch($("#g-references"), data.community.references, item => `${item.gapId}:${item.revision}`, (card, item) => {
     card.className = "card";
     setHtml(card, html`<header><h3>ref-${item.gapId}: ${item.title}</h3><span class="pill">${item.stale ? "correction pending" : "untested reference"}</span></header>

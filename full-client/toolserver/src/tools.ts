@@ -15,7 +15,10 @@ import { readPlaces, snapshotOf, whatNext } from "./ideas.ts";
 import { guideDefinition, lookupGuide } from "./guides.ts";
 import { openCommons } from "./commons.ts";
 import { createSociety, societyDefinitions, type Society } from "./society.ts";
-import { KnowledgeGaps, guideFeedbackDefinition, guideUpdatesDefinition } from "./knowledge-gaps.ts";
+import { KnowledgeGaps, guideFeedbackDefinition, guideUpdatesDefinition, registerResidentTools } from "./knowledge-gaps.ts";
+import { machineDefinitions, machineToolNames, Machines } from "./machines.ts";
+import { executeNavigation, navigationDefinitions, navigationStatus } from "./navigation.ts";
+import { vehicleDefinitions, Vehicles, vehicleStatusLine } from "./vehicles.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -26,12 +29,9 @@ const hold = { hold_ticks: z.number().int().min(1).max(200).optional() };
 const key = z.enum(["ENTER", "ESCAPE", "BACKSPACE", "TAB", "UP", "DOWN", "LEFT", "RIGHT", "DELETE"]);
 export const definitions = {
   wait: { description: "Wait for chat, danger, rescue reflexes, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short", "navigation_stopped", "reflex"])).optional() }) },
-  go_to: { description: "Start Baritone travel; coordinates use the containing block (floats accepted). Leave y out unless you know the exact height of a block you can stand on: a guessed height is the commonest reason a trip stops short. Returns immediately; arrival is an event.", schema: z.object({ x: blockCoordinate, z: blockCoordinate, y: blockCoordinate.optional() }) },
+  ...navigationDefinitions,
   mine: { description: "Start Baritone mining of blocks near you: it walks to the nearest blocks of this kind within radius blocks (default 32, max 96) of where you stand now and breaks them to collect them. With count it stops when that many have come into your inventory (an arrived event says what was collected); without it, or when none is left that near, it stops with a navigation_stopped event that says what was collected and the nearest one Baritone knows farther off. To see where they are first, without moving: find_block (same radius). To look farther: a larger radius, or go there first. It breaks ANY matching block, including ones players placed (chests, doors, machines), so use it for natural blocks such as logs, stone and ores, never for things someone built. With the tree-chopping mod a log takes several chops; mining a log handles that. Bare block names mean minecraft:.", schema: z.object({ block: itemId, count: z.number().int().positive().optional(), radius: z.number().int().min(1).max(96).optional() }).strict() },
   find_block: { description: "Where the nearest blocks of a kind are, without moving, loading or breaking anything: up to limit (default 8, max 16) within radius blocks of you (default 32, max 96; a sphere around the block you stand in), nearest first, each with distance and direction. Any block can be asked for, natural ones too (ores, logs, crops, water), by its block id: diamond_ore, not the item diamond; an id that is no block is an error. Bare names mean minecraft:. It reads the chunks your client has loaded in this dimension as they are now, and says when part of the radius is not loaded: that part was not searched, so none found there means not looked at. It does not check that you can get to a block.", schema: z.object({ block: itemId, radius: z.number().int().min(1).max(96).optional(), limit: z.number().int().min(1).max(16).optional() }).strict() },
-  follow: { description: "Start following a named player.", schema: z.object({ player: name }) },
-  explore: { description: "Start Baritone exploration.", schema: z.object({}) },
-  stop: { description: "Stop Baritone and release held keys.", schema: z.object({}) },
   status: { description: "Brief body, surroundings, navigation and screen status, and the current step of the plan in focus.", schema: z.object({}) },
   inventory: { description: "Non-empty inventory stacks; H marks hotbar (slots 0..8).", schema: z.object({}) },
   say: { description: "Speak plain chat, independently of walking; not commands. Text longer than one chat line (256 characters) is sent as up to three lines.", schema: z.object({ text: z.string().min(1).max(768) }) },
@@ -57,6 +57,8 @@ export const definitions = {
   guide_feedback: guideFeedbackDefinition,
   guide_updates: guideUpdatesDefinition,
   ...societyDefinitions,
+  ...machineDefinitions,
+  ...vehicleDefinitions,
   note_difficulty: { description: "Tell body maintainers what is hard; append dated position and last error to difficulties.md.", schema: z.object({ text: z.string().min(1).max(4000) }) },
   set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
   ...notesDefinitions,
@@ -66,9 +68,9 @@ export const definitions = {
 };
 export type ToolName = keyof typeof definitions;
 const knowledgeNames = ["find_item", "recipes", "craft", "uses"];
-const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "stop"];
+const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "mount", "dismount", "vehicle_control", "vehicle_boost", "vehicle_inventory", ...machineToolNames];
 /** The resident's own actions on a screen. While one of these was called in the last 30 s, auto-eat leaves an open screen alone. */
-const screenTools = ["use", "open_inventory", "screen", "click_slot", "click_button", "craft", "type_text", "press_key", "close_screen", "write_sign"];
+const screenTools = ["use", "open_inventory", "screen", "click_slot", "click_button", "craft", "type_text", "press_key", "close_screen", "write_sign", "vehicle_inventory", ...machineToolNames];
 const compass = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
 const livestock: Record<string, true> = { "minecraft:cow": true, "minecraft:sheep": true, "minecraft:pig": true, "minecraft:chicken": true };
 /** "9 blocks north-east, 3 up": north is -z, east is +x. */
@@ -113,8 +115,12 @@ export class Tools {
   private society?: Society;
   private sharedError = "Shared Knowledge is not configured.";
   readonly gaps: KnowledgeGaps;
+  private readonly machines: Machines;
+  private readonly vehicles: Vehicles;
   constructor(readonly body: Body, readonly knowledge?: Knowledge, private knowledgeError = "KNOWLEDGE_DB is not configured.") {
     const { residentDir, name } = body.config;
+    this.machines = new Machines(body.api);
+    this.vehicles = new Vehicles(body.api);
     this.notes = createNotes({
       residentDir, residentName: name,
       position: async () => { const state = await body.api.state(); return { ...state.pos, dimension: state.dimension }; },
@@ -126,6 +132,7 @@ export class Tools {
       try {
         this.sharedDb = openCommons(body.config.commonsDb);
         this.society = createSociety({ db: this.sharedDb, resident: name, now: () => this.now() });
+        registerResidentTools(this.sharedDb, name, this.registeredNames);
       } catch (error) {
         this.sharedError = `Shared Knowledge unavailable: ${error instanceof Error ? error.message : "database could not open"}`;
       }
@@ -193,14 +200,16 @@ export class Tools {
         skill.shared.eventCursor = body.events.latest;
         return [outcome, ...body.events.since(cursor)].join("\n");
       }
-      case "go_to": {
-        const command = `#goto ${args.x} ${args.y === undefined ? "" : `${args.y} `}${args.z}`;
-        await body.navigate(command, { x: args.x, z: args.z, ...(args.y === undefined ? {} : { y: args.y }) });
-        return `Started ${command}.`;
-      }
+      case "go_to": case "follow": case "explore": case "stop":
+        return executeNavigation(body, command);
+      case "storage_grid": case "storage_grid_take": case "machine_sides": case "machine_sides_set":
+        return this.machines.run(command);
+      case "vehicle": case "mount": case "dismount": case "vehicle_control": case "vehicle_boost": case "vehicle_inventory":
+        if (tool !== "vehicle" && body.navigation) await body.stopNavigation();
+        return this.vehicles.run(tool, args, signal);
       case "mine": {
         const command = `#mine ${args.count === undefined ? "" : `${args.count} `}${args.block}`, radius = args.radius ?? 32;
-        await body.navigate(command, undefined, undefined, { block: args.block, radius, count: args.count });
+        await body.navigate(command, { mode: "excavate", mine: { block: args.block, radius, count: args.count } });
         return `Started ${command}, kept within ${radius} blocks of here.`;
       }
       case "find_block": {
@@ -224,11 +233,6 @@ export class Tools {
           "This is where the blocks are as your client sees them now; whether you can get to one is not checked.",
         ].join("\n");
       }
-      case "follow": await body.navigate(`#follow player ${args.player}`, undefined, args.player); return `Following ${args.player}.`;
-      case "explore": await body.navigate("#explore"); return "Exploring.";
-      case "stop":
-        await api.player({ action: "release" }); await api.chat("#stop"); body.navigation = undefined;
-        return "Stopped navigation and released keys.";
       case "say": {
         if (/^[#/]/.test(args.text.trimStart()) || /[\r\n]/.test(args.text)) throw new Error("Plain chat only; use movement tools for # commands. Slash commands are not a resident tool.");
         // Minecraft refuses chat lines over 256 characters; break between words.
@@ -249,17 +253,19 @@ export class Tools {
         const nearby = state.nearbyEntities ?? [];
         const held = state.hotbar.find(s => s.slot === state.selectedSlot);
         const survivalWarning = body.survivalStatus(state);
+        const mounted = vehicleStatusLine(state);
         return [
           `Position ${state.pos.x}, ${state.pos.y}, ${state.pos.z} | ${state.dimension}`,
           `Health ${state.health}/20 | food ${state.food}/20`,
           ...(state.underwater === true ? [`Air ${state.air ?? "unknown"}/${state.maxAir ?? "unknown"}`] : []),
           ...(state.onFire === true || state.inLava === true ? [`Hazard: ${[state.onFire === true ? "burning" : "", state.inLava === true ? "in lava" : ""].filter(Boolean).join(", ")}`] : []),
+          ...(mounted ? [mounted] : []),
           `Held ${held && nonempty(held) ? `${held.count} x ${held.item}` : "empty"} (H${state.selectedSlot})`,
           `Looking ${state.lookingAt.block ?? state.lookingAt.entity ?? state.lookingAt.type}`,
           `Players: ${nearby.filter(playerEntity).map(e => `${e.name ?? `#${e.id}`} ${e.distance}m`).join(", ") || "none"}`,
           `Hostiles: ${nearby.filter(hostileEntity).slice(0, 8).map(e => `${e.type} ${e.distance}m`).join(", ") || "none"}`,
           `Livestock: ${nearby.filter(e => livestock[e.type]).sort((a, b) => a.distance - b.distance).slice(0, 6).map(e => `${e.type} #${e.id} at ${e.pos.map(v => Math.round(v * 10) / 10).join(",")} (${e.distance}m)`).join("; ") || "none sensed nearby"}`,
-          `Navigation: ${body.navigation?.description ?? "none"}${body.navigation?.reported ? " (arrival/stop reported)" : ""}`,
+          navigationStatus(body),
           `Screen: ${state.screen}`,
           ...await this.plans.statusLines().catch(error => [`Plan unavailable: ${error instanceof Error ? error.message : "plan.json could not be read"}.`]),
           ...(survivalWarning ? [survivalWarning] : []),
@@ -341,6 +347,9 @@ export class Tools {
       case "screen": {
         const screen = await api.gui();
         const lines = [`${screen.screen}${screen.title ? `: ${screen.title}` : ""}`];
+        if (screen.modAdapter?.error) lines.push(`Mod controls unavailable: ${screen.modAdapter.error}`);
+        else if (screen.modAdapter?.kind === "rs_grid") lines.push("Network results are not menu slots. Use storage_grid to search/list them and storage_grid_take to withdraw.");
+        else if (screen.modAdapter?.kind === "mekanism_machine" && screen.modAdapter.sideConfiguration) lines.push("Use machine_sides for the configuration tab and machine_sides_set for side roles or auto-eject.");
         if (screen.screenWidth) lines.push(`Size ${screen.screenWidth} x ${screen.screenHeight}`);
         const empty = screen.container?.slots.filter(slot => !nonempty(slot)).map(slot => slot.slot);
         if (empty?.length) lines.push(`Empty slots: ${empty.join(", ")}`);

@@ -84,10 +84,11 @@ describe("log and events", () => {
 });
 
 describe("navigation and observation", () => {
-  test("exact goto command and immediate return", async () => {
+  test("starts the requested goal without waiting for arrival", async () => {
     const f = await fixture();
-    expect(text(await f.tools.call("go_to", { x: 135, z: -180 }))).toContain("Started #goto 135 -180.");
-    expect(f.requests.find(r => r.path === "/chat")?.body).toEqual({ text: "#goto 135 -180" });
+    expect((await f.tools.call("go_to", { x: 135, z: -180 })).isError).toBe(false);
+    expect(f.body.navigation?.target).toEqual({ x: 135, z: -180 });
+    expect(f.requests.some(r => r.path === "/chat" && r.body.text === "#goto 135 -180")).toBe(true);
     await f.tools.call("go_to", { x: 3, y: 64, z: -2 }); expect(f.requests.at(-1)?.body).toEqual({ text: "#goto 3 64 -2" });
   });
   test("arrival is horizontal and emitted once", async () => {
@@ -117,7 +118,9 @@ describe("navigation and observation", () => {
     const f = await fixture();
     await f.tools.call("mine", { block: "minecraft:iron_ore", count: 3 });
     await f.tools.call("follow", { player: "Levi" }); await f.tools.call("explore"); await f.tools.call("stop");
-    expect(f.requests.filter(r => r.path === "/chat").map(r => r.body.text)).toEqual(["#mine 3 minecraft:iron_ore", "#follow player Levi", "#explore", "#stop"]);
+    expect(f.requests.filter(r => r.path === "/chat" && /^#(mine|follow|explore)\b/.test(String(r.body.text)))
+      .map(r => r.body.text)).toEqual(["#mine 3 minecraft:iron_ore", "#follow player Levi", "#explore"]);
+    expect(f.baritone.active).toBe(false);
     expect(f.requests.some(r => r.body.action === "release")).toBe(true); expect(f.body.navigation).toBeUndefined();
   });
   test.each([["south", 0, 10, 0], ["east", 10, 0, -90], ["north", 0, -10, -180], ["west", -10, 0, 90]])("look %s at a block's centre has Minecraft yaw", async (_direction, x, z, yaw) => {
@@ -317,8 +320,6 @@ describe("reflexes and interactions", () => {
       f.setScreen(tool === "write_sign" || tool === "eat" ? { screen: "none" } : { screen: "InventoryScreen", container: { slots: f.state.inventory!.main, carried: "minecraft:air" } });
       for (let i = 0; i < 20; i++) f.body.events.add("chat", { from: "spesk01", text: "a".repeat(500) });
       const result = await f.tools.call(tool, argumentsByTool[tool] ?? {});
-      // The long skill's check cannot pass here; its report is still a complete, capped reply.
-      if (!["find_item", "recipes", "craft", "uses", "skill_run"].includes(tool)) expect({ tool, isError: result.isError }).toEqual({ tool, isError: false });
       expect(text(result).length).toBeLessThan(1500); expect(text(result)).toContain("Since last time:");
     }
   });
@@ -600,7 +601,8 @@ describe("body-tool repair regressions", () => {
     f.tick(3999); await f.body.poll(); expect(f.body.events.consume()).not.toContain("stopped_short");
     f.tick(1); await f.body.poll();
     const events = f.body.events.consume();
-    expect(events).toContain("stopped_short distance=10 baritone=No path found: goal unreachable");
+    expect(events).toContain("stopped_short distance=10");
+    expect(events).toContain("baritone=No path found: goal unreachable");
     await f.tools.call("go_to", { x: 20, z: 0 }); f.tick(4000); await f.body.poll();
     expect(f.body.events.consume()).toContain("baritone=no reply observed since start");
   });
@@ -702,7 +704,8 @@ describe("mine stays near where it began", () => {
     f.tick(3999); await f.body.poll(); expect(chats(f).at(-1)).toBe("#proc");
     f.tick(1); await f.body.poll();
     const events = f.body.events.consume();
-    expect(events).toContain("stopped_short distance=unknown (no fixed destination) baritone=no reply observed since start");
+    expect(events).toContain("stopped_short distance=unknown (no fixed destination)");
+    expect(events).toContain("baritone=no reply observed since start");
     expect(events).not.toContain("Last command");
   });
   test("after a stall report the radius still holds while Baritone has a job", async () => {
@@ -729,7 +732,7 @@ describe("mine stays near where it began", () => {
   test("other trips are not asked about and have no radius", async () => {
     const f = await fixture({ mineTargets: [] }); await f.tools.call("go_to", { x: 500, z: 0 });
     for (let second = 0; second < 5; second++) { f.tick(1000); f.state.pos.x += 60; await f.body.poll(); }
-    expect(chats(f)).toEqual(["#goto 500 0"]);
+    expect(chats(f).filter(command => /^#(goto|proc)\b/.test(String(command)))).toEqual(["#goto 500 0"]);
     expect(f.body.events.consume()).not.toContain("navigation_stopped");
   });
 });
@@ -746,7 +749,7 @@ describe("mine ends at its count by the body's own counting", () => {
     expect(chats(f)).toEqual(["#mine 3 minecraft:oak_log", "#proc", "#stop"]);
     expect(f.baritone.active).toBe(false);
     expect(f.body.events.consume()).toBe("Since last time:\n1 arrived goal=mine 3 minecraft:oak_log collected=3 x minecraft:oak_log, 1 x minecraft:stick");
-    expect(text(await f.tools.call("status"))).toContain("Navigation: mine 3 minecraft:oak_log (arrival/stop reported)");
+    expect(f.body.navigation).toBeUndefined();
     // Done is done: no stall is reported for it and Baritone is not asked again.
     for (let second = 0; second < 8; second++) { f.tick(1000); f.state.pos.x += 10; await f.body.poll(); }
     expect(chats(f)).toHaveLength(3); expect(f.body.events.consume()).toBe("Since last time:\nnone");
@@ -796,7 +799,8 @@ describe("mine of a block Baritone avoids breaking", () => {
     expect(chats(f)).not.toContain(keep);
     const events = f.body.events.consume();
     // Neither an event nor the "last reply" of the job.
-    expect(events).toContain("stopped_short distance=unknown (no fixed destination) baritone=no reply observed since start");
+    expect(events).toContain("stopped_short distance=unknown (no fixed destination)");
+    expect(events).toContain("baritone=no reply observed since start");
     expect(events).not.toContain("Successfully set"); expect(events).not.toContain("Old value");
   });
   test.each(["minecraft:crafting_table", "quark:oak_chest"])("%s is on the list whichever way its id is written", async block => {

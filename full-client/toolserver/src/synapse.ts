@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { readFile } from "node:fs/promises";
+import type { VehicleSnapshot } from "./vehicles.ts";
 
 export interface Position { x: number; y: number; z: number }
 export interface Stack { slot: number; item: string; count: number; equip?: string; edible?: boolean; durability?: number; maxDurability?: number }
@@ -7,6 +8,7 @@ export interface Entity {
   id: number; type: string; name?: string; hostile?: boolean;
   pos: [number, number, number]; distance: number; health?: number; player?: boolean;
   fuse?: boolean;
+  passengers?: number; mountable?: boolean;
 }
 export interface State {
   pos: Position; dimension: string; health: number; food: number;
@@ -18,6 +20,7 @@ export interface State {
   air?: number; maxAir?: number;
   underwater?: boolean; inWater?: boolean; inLava?: boolean; onFire?: boolean;
   onGround?: boolean; fallDistance?: number; velocity?: Position;
+  riding?: boolean; vehicle?: VehicleSnapshot;
 }
 export interface Widget {
   index: number; label: string; button?: boolean; editable?: boolean;
@@ -27,6 +30,7 @@ export interface Screen {
   screen: string; title?: string; widgets?: Widget[];
   container?: { slots: Stack[]; carried: string; carriedStack?: Omit<Stack, "slot"> };
   screenWidth?: number; screenHeight?: number;
+  modAdapter?: { kind: string; sideConfiguration?: boolean; error?: string };
 }
 /** Synapse's answer to `GET /blocks`: the nearest blocks of one kind in the chunks the client has loaded. */
 export interface BlockSearch {

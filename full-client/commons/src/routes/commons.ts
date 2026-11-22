@@ -6,21 +6,26 @@ import { record } from "../json.ts";
 import { caretakerNotes, type CaretakerEntry } from "../notes.ts";
 import { review } from "../reviews.ts";
 import { json, refuse, type Context, type Routes } from "./context.ts";
+import type { ObserverFeed } from "../observer.ts";
 
 export interface CommonsReply {
   now: number; skills: SkillView[]; notes: NoteView[]; pending: number;
   caretaker: { resident: string; entries: CaretakerEntry[] }[];
   community: ReturnType<typeof communityOverview>;
+  observer: { health: ReturnType<ObserverFeed["health"]>; world: ReturnType<ObserverFeed["world"]> };
 }
 
-export function commonsRoutes({ config, db, now }: Context): Routes {
+export function commonsRoutes({ config, db, watcher, now }: Context): Routes {
   return {
     async "GET commons"(): Promise<CommonsReply> {
       const caretaker = await Promise.all(config.residents.map(async resident => ({
         resident: resident.name, entries: await caretakerNotes(join(config.overseerDir, `${resident.name}.md`)),
       })));
       const at = now();
-      return { now: at, ...commonsOverview(db), caretaker, community: communityOverview(db, at) };
+      return {
+        now: at, ...commonsOverview(db), caretaker, community: communityOverview(db, at),
+        observer: { health: watcher.observer.health(), world: watcher.observer.world() },
+      };
     },
     async "POST review"({ body }) {
       let request: unknown;

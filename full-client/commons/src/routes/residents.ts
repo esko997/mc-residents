@@ -7,6 +7,7 @@ import type { Quota, TokenTotals } from "../rollouts.ts";
 import { unitStates } from "../units.ts";
 import type { Sighting } from "../watcher.ts";
 import { refuse, type Context, type Routes } from "./context.ts";
+import type { ObserverHealth, ObservedResident } from "../observer.ts";
 
 interface UnitState { unit: string; state: string }
 interface SessionHealth {
@@ -35,7 +36,8 @@ export interface ResidentsReply {
   quota: Quota | null; sampleSeconds: number; pictureSeconds: number;
   /** Units that belong to no single resident. */
   sharedUnits: UnitState[];
-  residents: (Sighting & { name: string; memoryBytes: number | null; units: UnitState[]; tokens: TokenTotals; pictureAt: number | null; sessionHealth: SessionHealth | null })[];
+  observer: ObserverHealth;
+  residents: (Sighting & { name: string; memoryBytes: number | null; units: UnitState[]; tokens: TokenTotals; pictureAt: number | null; sessionHealth: SessionHealth | null; serverObservation: ObservedResident | null })[];
 }
 
 export function residentRoutes({ config, db, watcher, tail, now, readSessions, resident }: Context): Routes {
@@ -48,11 +50,13 @@ export function residentRoutes({ config, db, watcher, tail, now, readSessions, r
         now: now(), chatUrl: config.chatUrl ?? null, pending: pendingCount(db), quota: tail.quota ?? null,
         sampleSeconds: config.sampleMs / 1000, pictureSeconds: config.pictureMs / 1000,
         sharedUnits: unitsOf(undefined),
+        observer: watcher.observer.health(),
         residents: await Promise.all(config.residents.map(async entry => ({
           name: entry.name, ...watcher.sighting(entry.name),
           memoryBytes: await fileSize(join(entry.dir, "memory.md")),
           sessionHealth: await sessionHealth(join(config.home, "sessions", `${entry.name}-health.json`)),
           units: unitsOf(entry.name), tokens: tail.tokenTotals(entry.name), pictureAt: watcher.pictureAt(entry.name),
+          serverObservation: watcher.observer.resident(entry.name) ?? null,
         }))),
       };
     },

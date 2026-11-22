@@ -216,3 +216,38 @@ CREATE TABLE IF NOT EXISTS knowledge_references (
   published_at INTEGER NOT NULL,
   PRIMARY KEY(gap_id, revision)
 ) WITHOUT ROWID;
+
+-- Body capabilities a guide needs but no resident tool provides: the maintainers' queue,
+-- separate from knowledge research. A blocking report on a gap's current revision stops
+-- research of that revision until maintainers provide the capability or a resident corrects it.
+CREATE TABLE IF NOT EXISTS capability_gaps (
+  id INTEGER PRIMARY KEY,
+  normalized_capability TEXT NOT NULL UNIQUE,
+  capability TEXT NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','provided','declined')),
+  occurrences INTEGER NOT NULL DEFAULT 1,
+  resolution TEXT NOT NULL DEFAULT '',
+  first_at INTEGER NOT NULL,
+  last_at INTEGER NOT NULL,
+  resolved_at INTEGER
+);
+-- gap_id/revision 0: a resident's report not tied to a researched reference.
+CREATE TABLE IF NOT EXISTS capability_reports (
+  capability_id INTEGER NOT NULL REFERENCES capability_gaps(id) ON DELETE CASCADE,
+  gap_id INTEGER NOT NULL,
+  revision INTEGER NOT NULL,
+  reporter TEXT NOT NULL,
+  blocking INTEGER NOT NULL DEFAULT 0 CHECK(blocking IN (0,1)),
+  needed_for TEXT NOT NULL DEFAULT '',
+  at INTEGER NOT NULL,
+  PRIMARY KEY(capability_id, gap_id, revision, reporter)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS capability_reports_gap ON capability_reports(gap_id, revision);
+-- Tool names each resident's tool server actually exposes, so research names only real controls.
+CREATE TABLE IF NOT EXISTS resident_tools (
+  name TEXT NOT NULL,
+  resident TEXT NOT NULL,
+  seen_at INTEGER NOT NULL,
+  PRIMARY KEY(name, resident)
+) WITHOUT ROWID;

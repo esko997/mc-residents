@@ -87,6 +87,21 @@ visits from an allowlisted public documentation site or official repository.
 Unsupported evidence stays unavailable with a reason; it is never promoted
 to a tested skill. No human approval gate is imposed.
 
+Failed research retains bounded, redacted diagnostics in the private
+`~/gary-client/overseer/research-diagnostics/` directory (0700; files 0600;
+newest 40, at most 16 MiB). Preserve this directory during deployments.
+Missing controls enter a separate capability queue; dependent questions are
+parked instead of repeatedly researched. Maintainers resolve a capability with:
+
+```bash
+python3 ~/gary-client/overseer/knowledge-research.py \
+  --resolve-capability 1 --resolution provided --note 'Implemented and verified with a disposable client.'
+```
+
+Use `declined` with an explanation when it will not be supplied. `provided`
+reopens questions whose remaining blocking capabilities are all resolved;
+it is not evidence that every use works.
+
 Shared Knowledge now also displays voluntary agreements, observed facilities,
 knowledge gaps and researched references. `GET commons` includes these under
 `community`. Agreements distinguish acceptance, provider-reported delivery and
@@ -96,6 +111,19 @@ thirty minutes. Counts are dated reports, not live inventory or reservations.
 Both residents receive MCP tools for these records and guide feedback/updates;
 `what_next` and the caretaker see relevant dependencies and shared capabilities.
 These panels are read-only: they do not assign work or forge world evidence.
+
+An optional read-only server observer adds **separate** server-presence and
+facility-stock observations. It never changes a failed client into an online
+client, substitutes server coordinates into client trails, or overwrites resident
+reports. Snapshot time, health and stock provenance remain visible. Unloaded
+facilities and observer outages retain explicitly historical stock, not a
+current or empty inventory. This prototype is opt-in; installing or configuring
+the server mod is a separate operation. See `../../server-observer/README.md`.
+
+Connect through a loopback SSH tunnel or equivalent protected transport.
+Configure both observer environment variables, or neither; keep the bearer
+token in a private file, never in the URL. Management needs the observer's
+`residents`, `facilities` and `status` scopes, not a resident `self` token.
 
 Every address is `http://<machine>:<PORT>/<token>/...`. A wrong or missing token
 gets 404. `/<token>` redirects to `/<token>/`. The token is the only access
@@ -118,6 +146,8 @@ once; later starts print only where the token file is.
 | `CALLS_DIR` | `$GARY_CLIENT_HOME/calls` | Where each resident's tool server logs its body calls, `<Name>.jsonl` (`CALL_LOG` in `run-session.sh`). |
 | `SYNAPSE_TOKEN_FILE` | `~/.synapse/token`, then `<GAME_DIR>/config/synapse/token` | Token sent as `X-Synapse-Token` (the file `synapse.sh` reads). |
 | `GARY_SYNAPSE_URL` | `http://127.0.0.1:25599` | Gary's client. Other residents: `SYNAPSE_URL` in `instances/<Name>.env`. |
+| `COMMONS_OBSERVER_URL` | unset | Optional read-only observer base URL, normally a loopback tunnel. No userinfo, query or fragment. |
+| `COMMONS_OBSERVER_TOKEN_FILE` | unset | Private file containing its bearer token; required together with the URL. |
 | `COMMONS_UNITS` | `<name>-run` per resident, `overseer-run` | Run units to show, space or comma separated. Client units are added by themselves. |
 | `COMMONS_CLIENT_UNIT` | `gary-client@%s` | Client unit name; `%s` is the resident's name. |
 | `COMMONS_SYSTEMCTL` | `systemctl` | Where there is no systemd, every unit reads `unknown`. |

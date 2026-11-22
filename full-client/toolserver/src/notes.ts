@@ -19,6 +19,12 @@ const placeSaveSchema = z.object({
   note: z.string().max(240).optional(),
   x: block.optional(), y: block.optional(), z: block.optional(),
   shared: z.boolean().optional(),
+  /** What the resident reports about a place to shelter in. Nothing here is checked by the body. */
+  refuge: z.object({
+    access: z.string().trim().min(1).max(120).optional(),
+    hazards: z.string().trim().min(1).max(120).optional(),
+    checked: z.boolean().optional(),
+  }).strict().optional(),
 }).strict().refine(args => [args.x, args.y, args.z].every(value => value === undefined) || [args.x, args.y, args.z].every(value => value !== undefined), {
   message: "Give x, y and z together, or omit all three to use the current position.",
 });
@@ -29,11 +35,11 @@ export const notesDefinitions = {
     schema: z.object({ query: z.string().trim().min(1), limit: z.number().int().min(1).max(8).optional() }).strict(),
   },
   place_save: {
-    description: "Save an exact named block position. Places are cheap to keep and easier to reuse than prose coordinates. note: one short sentence on what is there (at most 240 characters). Omit x,y,z to use where you stand; shared:true lets the other residents see it.",
+    description: "Save an exact named block position. Places are cheap to keep and easier to reuse than prose coordinates. note: one short sentence on what is there (at most 240 characters). Omit x,y,z to use where you stand; shared:true lets the other residents see it. refuge (optional), for a place to shelter in: access (how to get in), hazards (what to watch for there), checked:true when you have just looked it over yourself; place_find shows these as your report and how long ago it was checked, never as a promise that it is safe. Saving a place again without checked keeps the last check time.",
     schema: placeSaveSchema,
   },
   place_find: {
-    description: "List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name or note words.",
+    description: "List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name, note or refuge words; refuge lists the places saved with refuge notes.",
     schema: z.object({ query: z.string().trim().min(1).optional(), limit: z.number().int().min(1).max(10).optional() }).strict(),
   },
   place_remove: {
@@ -64,7 +70,10 @@ interface Place {
   z: number;
   dimension: string;
   author: string;
+  refuge?: Refuge;
 }
+/** A refuge as its author reported it; `checkedAt` is when they last said they had looked it over (ms since epoch). */
+interface Refuge { access?: string; hazards?: string; checkedAt?: number }
 interface Death { x: number; y: number; z: number; dimension: string; at: number }
 interface Store { places: Place[]; deaths: Death[] }
 interface LoadedStore { store: Store; notice?: string }
@@ -73,6 +82,7 @@ const storedPlace = z.object({
   name: z.string(), note: z.string().optional(),
   x: z.number().int(), y: z.number().int(), z: z.number().int(),
   dimension: z.string(), author: z.string(),
+  refuge: z.object({ access: z.string().optional(), hazards: z.string().optional(), checkedAt: z.number().finite().optional() }).strict().optional(),
 }).strict();
 const storedDeath = z.object({
   x: z.number().int(), y: z.number().int(), z: z.number().int(),
@@ -234,6 +244,24 @@ function coordinates(entry: { x: number; y: number; z: number }): string {
   return `(${entry.x},${entry.y},${entry.z})`;
 }
 
+/** "12 min ago", "5 h ago", "3 days ago". */
+function ago(ms: number): string {
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 48 ? `${hours} h ago` : `${Math.floor(hours / 24)} days ago`;
+}
+
+/** A refuge as its author reported it, never as a promise: what they said and when they last looked it over. */
+function refugeText(refuge: Refuge, at: number): string {
+  const parts = [
+    ...(refuge.access ? [`access: ${refuge.access}`] : []),
+    ...(refuge.hazards ? [`hazards: ${refuge.hazards}`] : []),
+    refuge.checkedAt === undefined ? "never checked" : `checked ${ago(at - refuge.checkedAt)}`,
+  ];
+  return `; refuge as reported: ${parts.join("; ")}`;
+}
+
 function appendNotices(reply: string, notices: string[]): string {
   return reply + (notices.length ? `\n${notices.join("\n")}` : "");
 }
@@ -272,6 +300,12 @@ export function createNotes(options: NotesOptions): Notes {
       author: options.residentName,
     };
     if (args.note !== undefined) entry.note = args.note;
+    if (args.refuge) {
+      entry.refuge = {};
+      if (args.refuge.access !== undefined) entry.refuge.access = args.refuge.access;
+      if (args.refuge.hazards !== undefined) entry.refuge.hazards = args.refuge.hazards;
+      if (args.refuge.checked) entry.refuge.checkedAt = now();
+    }
     const path = args.shared ? sharedPath : privatePath;
     const label = args.shared ? "shared" : "private";
     return withStoreLock(path, async () => {
@@ -280,10 +314,14 @@ export function createNotes(options: NotesOptions): Notes {
       if (args.shared && existing && existing.author !== options.residentName) {
         return appendNotices(`Shared place "${args.name}" belongs to ${existing.author}; not overwritten.`, loaded.notice ? [loaded.notice] : []);
       }
+      const previous = loaded.store.places.find(place => place.name === args.name && place.author === options.residentName);
+      // A report saved again without a fresh check keeps the time of the last one.
+      if (entry.refuge && entry.refuge.checkedAt === undefined && previous?.refuge?.checkedAt !== undefined) entry.refuge.checkedAt = previous.refuge.checkedAt;
       loaded.store.places = loaded.store.places.filter(place => !(place.name === args.name && place.author === options.residentName));
       loaded.store.places.push(entry);
       await writeStore(path, loaded.store);
-      return appendNotices(`Saved ${args.shared ? "shared " : ""}place "${args.name}" at ${coordinates(entry)} in ${entry.dimension}.`, loaded.notice ? [loaded.notice] : []);
+      const refuge = entry.refuge ? ` with refuge notes (${args.refuge?.checked ? "checked now" : entry.refuge.checkedAt === undefined ? "never checked" : `last checked ${ago(now() - entry.refuge.checkedAt)}`})` : "";
+      return appendNotices(`Saved ${args.shared ? "shared " : ""}place "${args.name}" at ${coordinates(entry)} in ${entry.dimension}${refuge}.`, loaded.notice ? [loaded.notice] : []);
     });
   };
 
@@ -294,19 +332,19 @@ export function createNotes(options: NotesOptions): Notes {
       readStore(sharedPath, "shared"),
     ]);
     const words = args.query?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
-    const matchesQuery = (name: string, note?: string) => words.every(word => `${name} ${note ?? ""}`.toLowerCase().includes(word));
+    const matchesQuery = (text: string) => words.every(word => text.toLowerCase().includes(word));
     const places = [...privateStore.store.places, ...sharedStore.store.places]
-      .filter(place => matchesQuery(place.name, place.note))
+      .filter(place => matchesQuery([place.name, place.note, ...(place.refuge ? ["refuge", place.refuge.access, place.refuge.hazards] : [])].filter(Boolean).join(" ")))
       .map(place => ({ ...place, kind: "place" as const }));
     const deaths = privateStore.store.deaths
-      .filter(death => matchesQuery("death"))
+      .filter(() => matchesQuery("death"))
       .map(death => ({ ...death, name: "death", kind: "death" as const }));
     const current: { distance: number; text: string }[] = [];
     const elsewhere: string[] = [];
     for (const entry of [...places, ...deaths]) {
       const age = entry.kind === "death" ? Math.max(0, Math.floor((now() - entry.at) / 60_000)) : 0;
       const label = entry.kind === "death" ? `death ${age} min ago${age >= 5 ? ", items probably gone" : ""}` : entry.name;
-      const note = entry.kind === "place" && entry.note ? `; ${entry.note}` : "";
+      const note = entry.kind === "place" ? `${entry.note ? `; ${entry.note}` : ""}${entry.refuge ? refugeText(entry.refuge, now()) : ""}` : "";
       const by = entry.kind === "place" && "author" in entry && entry.author !== options.residentName ? `; by ${entry.author}` : "";
       if (entry.dimension === position.dimension) {
         const dx = entry.x - Math.floor(position.x), dy = entry.y - Math.floor(position.y), dz = entry.z - Math.floor(position.z);

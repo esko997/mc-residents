@@ -1,0 +1,23 @@
+{
+  "_comment": "Copy to <server>/config/resident_observer.json. UUIDs, positions and hashes below are placeholders: replace every one. Hashes come from tools/new-consumer-token.sh; never put a token itself here.",
+  "enabled": true,
+  "bind": "127.0.0.1",
+  "port": 25640,
+  "intervalTicks": 20,
+  "tickBudgetMicros": 500,
+  "maxFacilitySlots": 256,
+  "maxItemKinds": 64,
+  "eventCapacity": 256,
+  "failureTripCount": 5,
+  "stallSeconds": 10,
+  "residents": [
+    { "name": "Gary", "uuid": "00000000-0000-0000-0000-000000000001" },
+    { "name": "Margo", "uuid": "00000000-0000-0000-0000-000000000002" }
+  ],
+  "facilities": [
+    { "id": "commons-chest", "label": "Shared chest by the meeting place", "dimension": "minecraft:overworld", "pos": [100, 64, -200], "side": null }
+  ],
+  "consumers": [
+    { "name": "commons", "tokenSha256": "0000000000000000000000000000000000000000000000000000000000000000", "scopes": ["residents", "facilities", "status"] }
+  ]
+}

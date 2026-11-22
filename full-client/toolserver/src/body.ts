@@ -1,7 +1,11 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Events, LogTail, pauseReply, procReply, setReply } from "./events.ts";
 import { angles, hostileEntity, nonempty, playerEntity, type Config, type Entity, type Position, type Stack, type State, Synapse } from "./synapse.ts";
+import {
+  effectiveTripSettings, modeText, sameTripSettings, stopReply, tripSetReply, tripSettingNames, tripSettings,
+  tripSettingsSchema, type TripMode, type TripSettings,
+} from "./navigation.ts";
 
 /** A destination. `y` is present only when the goal names a height, as in `#goto x y z`. */
 export interface Goal { x: number; z: number; y?: number }
@@ -32,6 +36,9 @@ export interface MineLimit {
 }
 export interface Navigation {
   description: string; target?: Goal; follow?: string;
+  /** What the whole trip may do to the world on its way; Baritone's settings hold it until the trip is replaced,
+   * stopped or ended by death or shutdown. See TripMode. */
+  mode: TripMode;
   /** Where he stood when the command was given. */
   start: Position;
   /** `lastMoved` is the last sign of life (a step, a turn of the view, a Baritone reply); `lastStep` the last change of position. */
@@ -41,6 +48,11 @@ export interface Navigation {
   /** A mine job Baritone may still be running, whatever has been reported of it (a stall report does not end
    * it). Dropped when the body stops the job or Baritone says twice that it has none. */
   limit?: MineLimit;
+  /** After an arrival or a stop-short (not a mine job, which has its own asking, nor a followed player, whom
+   * Baritone follows until stopped), the body asks Baritone (`#proc`) at `next` whether it still has the trip;
+   * `pending` while that answer is awaited, asked again 3 s later if none comes. "No process in control" ends the
+   * trip, and with it the trip's settings. */
+  settle?: { next: number; pending?: true };
 }
 /** `pos` is the block he last stood in alive; `at` is the body clock (ms) when the death was seen. */
 export interface Death { pos: Position; dimension: string; at: number }
@@ -75,6 +87,14 @@ interface Rescue {
   swimming?: boolean;
   /** Retreat: body clock when the feet last left the ground, while they are still off it. */
   offGround?: number;
+  /** Retreat: distance from the threat when it began; the most since, counted in half-block gains, and when it last grew. */
+  startSeparation?: number; bestSeparation?: number; gainedAt?: number;
+  /** Retreat: the step last begun, where from and toward what (`heading` in degrees, as atan2 of z and x), and
+   * whether it jumped. The next aim judges it: a step that went nowhere is tried once more with a jump, then
+   * that way counts as blocked. */
+  step?: { from: Position; target: { x: number; z: number }; heading: number; jump: boolean; crumb: boolean };
+  /** Retreat: ways found blocked and where he stood when they were. */
+  blocked?: { heading: number; at: Position }[];
   enemyId?: number; initialAir?: number; initialMaxAir?: number;
   rotation?: State["rotation"]; slot?: number; bucketSlot?: number; placedAt?: number;
   /** The navigation that was running when a surface or lava rescue began. */
@@ -84,6 +104,16 @@ interface Rescue {
   breath?: true;
 }
 const rescuePriority: Record<RescueKind, number> = { retreat: 1, fire: 2, surface: 3, lava: 4 };
+/** Rescues that keep the controls from the resident's own actions: only `stop` takes the body from them. */
+const critical: Partial<Record<RescueKind, true>> = { surface: true, lava: true };
+/** A retreat ends this far from the threat. It runs 5 s, longer only while the gap still grew by half a block in
+ * the last 1.5 s, and never past 8 s. A step that moves him less than `stuck` blocks went nowhere; a way within
+ * `sameWay` degrees of one found blocked less than `near` blocks from here is not tried again. */
+const retreatLimit = { clear: 10, ms: 5000, gainMs: 1500, maxMs: 8000, stuck: 0.3, sameWay: 30, near: 1.5 };
+/** Ways tried when no crumb leads away: straight away from the threat, then turned by these degrees. */
+const retreatTurns = [0, 45, -45, 90, -90];
+/** Smallest difference between two headings in degrees. */
+const turn = (a: number, b: number) => Math.abs(((a - b) % 360 + 540) % 360 - 180);
 const seconds = (ms: number) => `${Math.round(ms / 100) / 10} s`;
 const tenth = (value: number) => Math.round(value * 10) / 10;
 // A retreat is not ended by a hop: knocked back by a hit, a jump or a step down he is airborne for at most 12
@@ -209,9 +239,21 @@ export class Body {
   private kept = "0.01";
   /** Full state reads so far. */
   private fullReads = 0;
+  /** Baritone's trip settings as its settings file last read back (`applied`), what they go back to between trips
+   * (`baseline`), and whether the file recording that baseline exists. Read on first use. */
+  private trip?: { applied: TripSettings; baseline: TripSettings; recorded: boolean };
+  /** Trip settings are changed one call at a time. */
+  private tripChange: Promise<unknown> = Promise.resolve();
+  /** While navigate() switches modes, the mode a poll must not undo before the new trip is assigned. */
+  private switching?: TripMode;
+  /** Trip settings that did not read back as wanted after a poll set them; said once until they do. */
+  private tripUnconfirmed = false;
+  /** `#stop`s the body sent to switch modes whose "ok canceled" has not been read yet. */
+  private ownStops = 0;
   constructor(readonly config: Config, readonly api: Synapse, private now = Date.now) {
     this.tail = new LogTail(config.log, config.name, this.events, reply => {
-      if (setReply.test(reply) || this.readProc(reply)) return true;
+      if (setReply.test(reply) || tripSetReply.test(reply) || this.readProc(reply)) return true;
+      if (this.ownStops > 0 && stopReply.test(reply)) { this.ownStops--; return true; }
       if (this.navigation && !this.navigation.reported) {
         // "Paused" and "Resumed" answer the body's own reflexes; they say nothing about why a trip ended.
         if (!pauseReply.test(reply)) this.navigation.lastReply = reply;
@@ -222,9 +264,11 @@ export class Body {
   }
   async start() {
     // Baritone writes every `#set` to its settings file. A tool server killed in the middle of a mine job that
-    // had the cost lifted left it so; the first poll puts it back.
+    // had the cost lifted left it so; the first poll puts it back. Trip settings the same way, from the file
+    // that recorded their baseline.
     const settings = await this.baritoneSettings();
     if (settings.blocksToAvoidBreaking && Number(settings.avoidBreakingMultiplier) === 1) this.lifted = true;
+    await this.tripState();
     await this.tail.start(); await this.poll();
     this.pollTimer = setInterval(() => { void this.poll(); }, 250);
   }
@@ -236,6 +280,56 @@ export class Body {
       const space = line.indexOf(" ");
       return space < 0 ? [line, ""] : [line.slice(0, space), line.slice(space + 1).trim()];
     }));
+  }
+  /** Where the trip settings' baseline is recorded while a trip has them changed, beside Baritone's own file. */
+  private get baselineFile() { return join(dirname(dirname(this.config.log)), "baritone", "resident-trip-baseline.json"); }
+  /** Reads the trip settings once: what Baritone has, and what they go back to. A baseline file left by a tool
+   * server that stopped in the middle of a trip names the baseline; otherwise it is what Baritone has now. */
+  private async tripState() {
+    if (this.trip) return this.trip;
+    const applied = effectiveTripSettings(await this.baritoneSettings());
+    const recorded = await readFile(this.baselineFile, "utf8").then(text => text, () => undefined);
+    let baseline: TripSettings | undefined;
+    try { if (recorded !== undefined) baseline = tripSettingsSchema.parse(JSON.parse(recorded)); } catch {}
+    // A baseline file that cannot be read as one is still replaced or removed like one.
+    return this.trip ??= { applied, baseline: baseline ?? applied, recorded: recorded !== undefined };
+  }
+  /** Sets the trip settings that differ from `wanted`, one `#set` each, then reads Baritone's settings file back
+   * (Baritone saves it as it applies a `#set`; Synapse answers `/chat` after the client thread ran it). Returns
+   * the settings that did not read back as wanted. The baseline is recorded before the first change from it,
+   * and its record removed once the settings are back at it. */
+  private applyTrip(wanted: TripSettings) {
+    const change = this.tripChange.then(async () => {
+      const trip = await this.tripState();
+      const changes = tripSettingNames.filter(name => trip.applied[name] !== wanted[name]);
+      if (changes.length) {
+        if (!trip.recorded) {
+          await mkdir(dirname(this.baselineFile), { recursive: true });
+          await writeFile(this.baselineFile, `${JSON.stringify(trip.baseline)}\n`, "utf8");
+          trip.recorded = true;
+        }
+        try { for (const name of changes) await this.api.chat(`#set ${name} ${wanted[name]}`); }
+        finally { trip.applied = effectiveTripSettings(await this.baritoneSettings()); }
+      }
+      if (trip.recorded && sameTripSettings(trip.applied, trip.baseline)) { await rm(this.baselineFile, { force: true }); trip.recorded = false; }
+      return tripSettingNames.filter(name => trip.applied[name] !== wanted[name]);
+    });
+    this.tripChange = change.catch(() => {});
+    return change;
+  }
+  /** Puts the trip settings where they belong now (see update()), and says once when they would not read back so. */
+  private async reconcileTrip() {
+    const trip = await this.tripState();
+    const mode = this.switching ?? this.navigation?.mode;
+    const wanted = mode ? tripSettings(mode, trip.baseline) : trip.baseline;
+    if (sameTripSettings(trip.applied, wanted) && !(trip.recorded && sameTripSettings(trip.applied, trip.baseline))) { this.tripUnconfirmed = false; return; }
+    const wrong = await this.applyTrip(wanted);
+    // navigate() may have switched while this waited its turn; only a mismatch with the mode still wanted is news.
+    if (!wrong.length || (this.switching ?? this.navigation?.mode) !== mode) { this.tripUnconfirmed = false; return; }
+    if (!this.tripUnconfirmed) {
+      this.tripUnconfirmed = true;
+      this.events.add("system", { text: `Baritone's settings did not read back as set: ${wrong.map(name => `${name} ${trip.applied[name]}, wanted ${wanted[name]}`).join("; ")}` });
+    }
   }
   async poll() {
     if (this.stopped) return;
@@ -294,10 +388,14 @@ export class Body {
     // stall report alone does not put it back: Baritone is then still at work on the block.
     const relaxed = this.navigation?.limit?.relaxed === true;
     if (this.lifted !== relaxed) await this.api.chat(avoidBreaking(relaxed ? "1" : this.kept)).then(() => { this.lifted = relaxed; }, error => failures.push(error));
+    // Trip settings hold the trip's mode for as long as it is this navigation (arrived and stopped-short trips
+    // included: Baritone may still be at them), and go back to the baseline once there is none: after a stop, a
+    // death, a rescue that abandoned it, a mine job's end or Baritone giving up. Set again if they drifted.
+    await this.reconcileTrip().catch(error => failures.push(error));
     if (failures.length) throw failures[0];
   }
   private rememberGround(state: State) {
-    if (state.health <= 0 || state.onGround !== true || state.inWater !== false || state.inLava !== false || state.onFire !== false) return;
+    if (state.riding || state.health <= 0 || state.onGround !== true || state.inWater !== false || state.inLava !== false || state.onFire !== false) return;
     const last = this.crumbs.at(-1);
     if (!last || distance(last, state.pos) >= 1) {
       this.crumbs.push({ ...state.pos });
@@ -315,6 +413,7 @@ export class Body {
     return state.onGround !== undefined && state.inWater !== undefined && state.inLava !== undefined && state.onFire !== undefined;
   }
   survivalStatus(state: State): string | undefined {
+    if (state.riding) return "On-foot eating, combat and rescue reflexes are suspended while riding; use vehicle controls and land safely before dismounting.";
     const unavailable: string[] = [];
     if (!this.retreatSensors(state)) unavailable.push("safe-ground retreat (legacy flee remains active)");
     if (this.reflexes.surface && (state.underwater === undefined || state.air === undefined || state.maxAir === undefined)) unavailable.push("surface off");
@@ -337,9 +436,13 @@ export class Body {
     if (!line[1]) {
       // Baritone has finished or given up: no job is left to keep near, and none that needs the cost lifted.
       // One such answer is not yet that: read before the job's first tick, it would leave the job without a radius.
-      if (limit?.idle) nav!.limit = undefined;
-      else if (limit) { limit.idle = true; limit.probeAt = Math.min(limit.probeAt, this.now() + probe.first); }
-    } else if (line[1] === "Class") { if (limit) limit.idle = undefined; }
+      if (limit?.idle) {
+        nav!.limit = undefined;
+        // A job already reported is over: Baritone has nothing left of it, and the settings go back.
+        if (nav!.reported) this.navigation = undefined;
+      } else if (limit) { limit.idle = true; limit.probeAt = Math.min(limit.probeAt, this.now() + probe.first); }
+      if (nav?.settle?.pending) this.tripSettled(nav);
+    } else if (line[1] === "Class") { if (limit) limit.idle = undefined; if (nav?.settle) nav.settle.pending = undefined; }
     else if (line[1] === "Display name") this.procMine = limit !== undefined && line[2]!.startsWith("Mine ") && line[2]!.includes(limit.block);
     else if (line[1] === "Last command") {
       if (this.procMine && nav && limit) {
@@ -354,6 +457,30 @@ export class Body {
     }
     return true;
   }
+  /** Baritone answered the body's question after an arrival or a stop-short with no process in control: the trip
+   * is over, and its settings go back to the baseline on the next poll. Only what was not yet said is said: an
+   * arrival reached after a stop-short, or a trip Baritone gave up. */
+  private tripSettled(nav: Navigation) {
+    this.navigation = undefined;
+    if (nav.arrived) return;
+    const state = this.state;
+    const left = state && nav.target && !nav.follow ? remaining(state.pos, nav.target) : undefined;
+    if (left !== undefined && left <= 2) { this.events.add("arrived", { goal: nav.description }); this.stopShorts = undefined; return; }
+    this.events.add("navigation_stopped", {
+      goal: nav.description,
+      reason: nav.mode === "walk"
+        ? "Baritone stopped trying (no process left). On a walk-only trip that means it found no way it could walk from here without breaking or placing blocks: a door, steps, a ladder or a cleared way would give it one, or go_to with mode excavate digs"
+        : `Baritone stopped trying (no process left)${nav.target ? " before you arrived" : ""}`,
+      ...(state ? { you: blockText(blockOf(state.pos)) } : {}),
+      ...(left !== undefined ? { remaining: tenth(left) } : {}),
+    });
+  }
+  /** Asks Baritone whether it still has the trip (see Navigation.settle). */
+  private async askSettled(nav: Navigation) {
+    nav.settle = { next: this.now() + 3000, pending: true };
+    this.probeSent = Date.now();
+    await this.api.chat("#proc");
+  }
   /** The resident acted on a screen through a tool; an idle screen is one without this for 30 s. */
   screenTouched() { this.lastScreenAction = this.now(); }
   /** Watches a mine job and ends it (true) when it has collected its count, or when the body or the nearest
@@ -366,6 +493,8 @@ export class Body {
       if (tally(gained, limit.counted) >= limit.count) {
         await this.api.chat("#stop");
         nav.reported = nav.arrived = true; nav.limit = undefined; this.stopShorts = undefined;
+        // Stopped and done: the trip is over, and its settings go back to the baseline in this poll.
+        if (this.navigation === nav) this.navigation = undefined;
         this.events.add("arrived", { goal: nav.description, collected: gainText(gained, limit.counted) });
         return true;
       }
@@ -405,8 +534,10 @@ export class Body {
     const held = this.combat || this.fleeing || this.rescue?.paused || this.eating?.paused;
     if (nav.reported) {
       // A stall was reported, but Baritone may still be at work (a hard block outlasts the stall clock) and
-      // walk on afterwards: the radius holds until Baritone says it has no job.
+      // walk on afterwards: the radius holds until Baritone says it has no job. Any other reported trip is
+      // asked after until Baritone says it has nothing left of it.
       if (nav.limit && !held) await this.watchMine(nav, nav.limit, state);
+      else if (nav.settle && !held && this.now() >= nav.settle.next) await this.askSettled(nav);
       return;
     }
     // Sampled even while a reflex has the body, so the view it leaves behind is not taken for Baritone's work.
@@ -432,6 +563,8 @@ export class Body {
       nav.reported = true;
       if (!nav.follow) nav.arrived = true;
       this.stopShorts = undefined;
+      // Baritone may still be on the last blocks; it is asked a second from now whether it is done.
+      if (!nav.follow && !nav.limit) nav.settle = { next: now + 1000 };
     } else if (now - nav.lastMoved >= 4000 || now - nav.lastStep >= 30000) {
       // navigate() dropped the count if this is another goal or began far from the last attempt.
       const attempts = (this.stopShorts?.count ?? 0) + 1;
@@ -451,15 +584,29 @@ export class Body {
             ? `same destination has stopped short ${attempts} times from about here`
             : `same command has ended ${attempts} times from about here`,
         } : {}),
+        // A walk-only trip that stops short may be one that needed digging or building.
+        ...(nav.mode === "walk" ? { mode: "walk-only" } : {}),
         baritone: nav.lastReply ?? "no reply observed since start",
       });
       nav.reported = true;
+      // Baritone says nothing when it gives a trip up. Asked at once and every 3 s after, its answer tells a trip
+      // it gave up or finished from one it is still at. A mine job has its own asking; a follow is never done.
+      if (!nav.limit && !nav.follow) await this.askSettled(nav);
     }
   }
-  /** `mine` has the body watch the job: see MineLimit. */
-  async navigate(command: string, target?: Goal, follow?: string, mine?: { block: string; radius: number; count?: number }) {
+  /** Starts a Baritone command as the body's one trip. `mode` holds for the whole trip (see TripMode): when it
+   * differs from what Baritone has, whatever Baritone was doing is cancelled first, because a path it planned
+   * under the old settings is walked (and dug) whatever they say afterwards; then the settings are set and read
+   * back from Baritone's settings file, and the trip starts only if they read back as wanted. `mine` has the
+   * body watch the job: see MineLimit. */
+  async navigate(command: string, trip: { mode: TripMode; target?: Goal; follow?: string; mine?: { block: string; radius: number; count?: number } }): Promise<void> {
+    const { mode, target, follow, mine } = trip;
     const state = await this.api.state(mine !== undefined);
-    const settings: Record<string, string | undefined> = mine ? await this.baritoneSettings() : {};
+    const settings: Record<string, string | undefined> = await this.baritoneSettings();
+    if (mode === "walk" && settings.allowBreakAnyway?.trim()) {
+      throw new Error("Walk-only travel cannot start while Baritone's allowBreakAnyway exceptions are configured. "
+        + "Ask maintainers to clear that list; no trip was started.");
+    }
     const relaxed = mine !== undefined && settings.blocksToAvoidBreaking?.split(",").map(id => id.trim().toLowerCase()).map(id => id.includes(":") ? id : `minecraft:${id}`).includes(mine.block) === true;
     // Baritone accepts a command on the death screen and nothing moves; the body's stall timer then called that a stop.
     if (state.health <= 0) throw new Error("You are dead; no trip can start before you respawn.");
@@ -472,16 +619,27 @@ export class Body {
     while (this.rescueCleanup) await this.rescueCleanup;
     const description = command.slice(1), last = this.stopShorts;
     if (last && (last.description !== description || Math.hypot(state.pos.x - last.start.x, state.pos.z - last.start.z) > 8)) this.stopShorts = undefined;
-    const now = this.now(), previous = this.navigation;
-    this.navigation = {
-      description, target, follow, start: { ...state.pos }, lastPos: { ...state.pos }, lastMoved: now, lastStep: now, lastView: viewOf(state), reported: false,
-      ...(mine ? { limit: {
-        ...mine, counted: [mine.block, ...(vanillaDrops[mine.block] ?? [])], had: carried(state), reads: this.fullReads, probeAt: now + probe.first,
-        ...(relaxed ? { relaxed: true as const } : {}),
-      } } : {}),
-    };
-    let sent = false;
+    const previous = this.navigation, known = await this.tripState(), wanted = tripSettings(mode, known.baseline);
+    let cancelled = false, sent = false;
+    this.switching = mode;
     try {
+      // A finished trip can still be restoring its baseline. Do not launch a
+      // new walk while those queued writes could turn digging back on.
+      await this.tripChange;
+      if (!sameTripSettings(known.applied, wanted)) {
+        this.ownStops++;
+        await this.api.chat("#stop"); cancelled = true;
+        const wrong = await this.applyTrip(wanted);
+        if (wrong.length) throw new Error(`Baritone's settings did not read back as ${modeText(mode)} (${wrong.map(name => `${name} reads ${known.applied[name]}`).join(", ")}); no trip was started${previous ? " and the one before it was stopped" : ""}.`);
+      }
+      const now = this.now();
+      this.navigation = {
+        description, target, follow, mode, start: { ...state.pos }, lastPos: { ...state.pos }, lastMoved: now, lastStep: now, lastView: viewOf(state), reported: false,
+        ...(mine ? { limit: {
+          ...mine, counted: [mine.block, ...(vanillaDrops[mine.block] ?? [])], had: carried(state), reads: this.fullReads, probeAt: now + probe.first,
+          ...(relaxed ? { relaxed: true as const } : {}),
+        } } : {}),
+      };
       // Before the command, so that a trip never starts with the cost lifted, nor a mine of a listed block with it kept.
       if (this.lifted !== relaxed) {
         const written = settings.avoidBreakingMultiplier;
@@ -492,10 +650,11 @@ export class Body {
       if (this.combat || this.fleeing || this.rescue?.paused) await this.api.chat("#pause");
     } catch (error) {
       // A command that was not sent leaves Baritone at what it was doing: a mine job goes on being watched, with
-      // its radius and its cost. One that was sent is under way, and is watched as well.
-      if (!sent) this.navigation = previous?.limit ? previous : undefined;
+      // its radius and its cost, unless the mode switch cancelled it. One that was sent is under way, and is
+      // watched as well. With no trip left, the next poll puts the settings back to the baseline.
+      if (!sent) this.navigation = previous?.limit && !cancelled ? previous : undefined;
       throw error;
-    }
+    } finally { this.switching = undefined; }
   }
   async lookAt(target: Position, state?: State) {
     state ??= await this.api.state();
@@ -624,10 +783,23 @@ export class Body {
     if (state.food <= meal.before) throw new Error(`Eating failed: no food increase observed (${result})`);
     return result;
   }
-  async manualAction<T>(action: () => Promise<T>): Promise<T> {
+  /** Runs one of the resident's own actions, after taking the body from whatever reflex has it. A rescue from
+   * drowning or lava is the exception: it keeps the controls and the action is refused with what it is doing,
+   * unless the action is an `override` (stop), which ends the rescue and says what he is still in. */
+  async manualAction<T>(action: () => Promise<T>, options: { override?: boolean } = {}): Promise<T> {
     this.manual++;
     try {
-      if (this.rescue) await this.finishRescue("interrupted by your action", this.rescue.breath);
+      // A poll under way may be starting a rescue: it is settled first, so the answer below is about the body as it is.
+      await this.polling;
+      const rescue = this.rescue, state = this.state;
+      if (rescue && critical[rescue.kind]) {
+        const air = state?.air !== undefined && state.maxAir !== undefined ? `air ${state.air}/${state.maxAir}` : "air unknown";
+        if (!options.override) {
+          throw new Error(`Not done: your body is ${rescue.kind === "surface" ? `coming up for air (${air})` : "climbing out of lava"} and keeps the controls until it is out (${rescue.kind === "surface" ? "at most 12 s under water, 20 s swimming for the shore" : "at most 10 s"}; ${seconds(this.now() - rescue.started)} so far). Nothing was done. Wait for the reflex event that ends it, then act; stop takes over at once and ends the rescue.`);
+        }
+        const still = rescue.kind === "surface" ? `${state?.underwater === true ? "still under water, " : ""}${air}` : state?.inLava === true ? "still in lava" : "no longer in lava";
+        await this.finishRescue(`ended by your stop; ${still}`, rescue.breath);
+      } else if (rescue) await this.finishRescue("interrupted by your action", rescue.breath);
       await this.finishCombat();
       if (this.fleeing) {
         this.fleeGeneration++; this.fleeing = false;
@@ -640,6 +812,19 @@ export class Body {
       }
       return await action();
     } finally { this.manual--; }
+  }
+  /** The resident's stop: takes the body from every reflex, a drowning or lava rescue included, lets go of every
+   * key, cancels Baritone and puts the trip settings back to the baseline, read back from its settings file. */
+  async stopNavigation(): Promise<string> {
+    return this.manualAction(async () => {
+      await this.api.player({ action: "release" }); await this.api.chat("#stop"); this.navigation = undefined;
+      const trip = await this.tripState();
+      // Baritone is stopped either way; settings that could not be set yet are tried again on every poll.
+      const settings = await this.applyTrip(trip.baseline).then(
+        wrong => wrong.length ? ` Baritone's settings did not read back as they were before the trip: ${wrong.map(name => `${name} reads ${trip.applied[name]}`).join(", ")}.` : "",
+        error => ` Baritone's settings could not be put back yet (${error instanceof Error ? error.message : "settings call failed"}); the body keeps trying.`);
+      return `Stopped navigation and released keys.${settings}`;
+    }, { override: true });
   }
   private async finishCombat(resume = true) {
     const combat = this.combat;
@@ -761,10 +946,19 @@ export class Body {
     if (rescue.kind === "retreat") {
       const enemy = this.entities.find(e => e.id === rescue.enemyId && hostileEntity(e));
       if (!enemy) { await this.finishRescue("threat no longer observed"); return; }
-      const threat = entityPosition(enemy);
-      const separation = distance(state.pos, threat);
-      if (separation >= 10) { await this.finishRescue(`clear of threat at ${Math.round(separation * 10) / 10} blocks`); return; }
-      if (elapsed >= 5000) { await this.finishRescue(`timed out after 5 s, ${Math.round(separation * 10) / 10} blocks from threat`); return; }
+      const threat = entityPosition(enemy), separation = distance(state.pos, threat);
+      rescue.startSeparation ??= separation;
+      if (rescue.bestSeparation === undefined || separation >= rescue.bestSeparation + 0.5) { rescue.bestSeparation = separation; rescue.gainedAt = this.now(); }
+      // Distance is all that is claimed: a mob can follow, and a skeleton shoots from farther than this.
+      const gap = `${tenth(separation)} blocks from ${enemy.type} (${tenth(rescue.startSeparation)} at the start)`;
+      if (separation >= retreatLimit.clear) { await this.finishRescue(`${gap}; it may still follow or shoot`); return; }
+      // Longer than 5 s only while the gap is still growing: more time without progress was no escape (live, a
+      // retreat ended at 5.3 s with a skeleton 2 blocks off, and he died).
+      if (elapsed >= retreatLimit.ms && (this.now() - rescue.gainedAt! >= retreatLimit.gainMs || elapsed >= retreatLimit.maxMs)) {
+        const blocked = rescue.blocked?.length ?? 0;
+        await this.finishRescue(`timed out after ${seconds(elapsed)}, ${gap}${blocked ? `; ${blocked} way${blocked === 1 ? "" : "s"} found blocked` : ""}; it is still near`);
+        return;
+      }
       if (!this.retreatSensors(state)) { await this.finishRescue("survival senses disappeared"); return; }
       // Lava belongs to the lava rescue when that reflex is on; without it the retreat at least walks no further in.
       if (state.inLava === true) { await this.finishRescue("entered lava; movement stopped"); return; }
@@ -786,20 +980,25 @@ export class Body {
         // A step is begun only from the ground, so none carries him further over an edge.
         return;
       }
-      if (rescue.busy) return;
-      if (this.now() - rescue.lastAim >= 500) {
-        // The crumb must lie on his side, away from the threat: one merely
-        // farther from it can be behind it, and live he ran past a lit creeper
-        // toward ground he had walked on the far side.
-        const away = { x: state.pos.x - threat.x, z: state.pos.z - threat.z };
-        const crumb = [...this.crumbs].reverse().find(p =>
-          distance(p, threat) > separation && distance(p, state.pos) > 0.75 &&
-          (p.x - state.pos.x) * away.x + (p.z - state.pos.z) * away.z >= 0);
-        const target = crumb ?? { x: state.pos.x * 2 - threat.x, y: state.eye.y, z: state.pos.z * 2 - threat.z };
-        await this.lookAt({ x: target.x, y: state.eye.y, z: target.z }, state);
-        rescue.lastAim = this.now();
-        this.rescueMove(rescue, rescue.swimming ? { forward: true, jump: true, ticks: 5 } : crumb ? { forward: true, sprint: true, ticks: 5 } : { forward: true, ticks: 4 });
+      if (rescue.busy || this.now() - rescue.lastAim < 500) return;
+      // The step just taken is judged by where it got him. One that went nowhere is tried once more with a jump
+      // (a block's rise, a slab, a fence corner); after that the way counts as blocked from here.
+      const step = rescue.step;
+      let next: Rescue["step"];
+      if (step && Math.hypot(state.pos.x - step.from.x, state.pos.z - step.from.z) < retreatLimit.stuck) {
+        if (!step.jump) next = { ...step, from: { ...state.pos }, jump: true };
+        else (rescue.blocked ??= []).push({ heading: step.heading, at: { ...state.pos } });
       }
+      next ??= this.retreatWay(rescue, state, threat, separation);
+      if (!next) {
+        await this.finishRescue(`every way away was blocked (${rescue.blocked?.length ?? 0} tried from here); movement stopped, ${gap}`);
+        return;
+      }
+      await this.lookAt({ x: next.target.x, y: state.eye.y, z: next.target.z }, state);
+      rescue.lastAim = this.now(); rescue.step = next;
+      this.rescueMove(rescue, rescue.swimming
+        ? { forward: true, jump: true, ticks: 5 }
+        : { forward: true, ...(next.crumb ? { sprint: true } : {}), ...(next.jump ? { jump: true } : {}), ticks: next.crumb ? 5 : 4 });
       return;
     }
     if (rescue.kind === "surface") {
@@ -877,6 +1076,31 @@ export class Body {
     const retrieved = after.hotbar.find(s => s.slot === rescue.bucketSlot)?.item === "minecraft:water_bucket";
     const water = retrieved ? "water placed and retrieved" : "water placed but NOT picked back up; it is still flowing there";
     await this.finishRescue(`${water}; ${state.onFire === false ? "no longer burning" : "still burning"}`);
+  }
+  /** Where a retreat steps next: toward the newest crumb on his side of the threat, else straight away from it,
+   * else turned from that by up to 90 degrees, never a way found blocked near here. Undefined when every one was. */
+  private retreatWay(rescue: Rescue, state: State, threat: Position, separation: number): Rescue["step"] {
+    const here = state.pos;
+    const blocked = (rescue.blocked ?? []).filter(b => Math.hypot(b.at.x - here.x, b.at.z - here.z) < retreatLimit.near);
+    const way = (target: { x: number; z: number }, crumb: boolean) => {
+      const heading = Math.atan2(target.z - here.z, target.x - here.x) * 180 / Math.PI;
+      return blocked.some(b => turn(b.heading, heading) < retreatLimit.sameWay) ? undefined : { from: { ...here }, target, heading, jump: rescue.swimming === true, crumb };
+    };
+    // The crumb must lie on his side, away from the threat: one merely farther from it can be behind it, and
+    // live he ran past a lit creeper toward ground he had walked on the far side.
+    const away = { x: here.x - threat.x, z: here.z - threat.z };
+    for (const p of [...this.crumbs].reverse()) {
+      if (distance(p, threat) <= separation || distance(p, here) <= 0.75 || (p.x - here.x) * away.x + (p.z - here.z) * away.z < 0) continue;
+      const step = way(p, true);
+      if (step) return step;
+    }
+    const straight = Math.atan2(away.z, away.x);
+    for (const degrees of retreatTurns) {
+      const angle = straight + degrees * Math.PI / 180;
+      const step = way({ x: here.x + Math.cos(angle) * 2, z: here.z + Math.sin(angle) * 2 }, false);
+      if (step) return step;
+    }
+    return undefined;
   }
   /** Counts a finished breath for this trip. Returns why the trip should stop,
    * if this is the third in two minutes without coming 8 blocks closer. */
@@ -977,6 +1201,9 @@ export class Body {
   }
   private async react(state: State, hurt: boolean) {
     const dead = state.health <= 0 || state.screen === deathScreen;
+    // A foot rescue cannot steer an aircraft, and release/sneak can cancel flight or eject a rider.
+    // Vehicle tools take over through manualAction before mounting, settling existing foot reflexes first.
+    if (state.riding && !dead) return;
     const needsMeal = this.reflexes.auto_eat && (state.food < this.reflexes.eat_below || (state.health < 14 && state.food < 20));
     const blocked = needsMeal && !dead && state.screen !== "none";
     if (blocked) {
@@ -1023,7 +1250,9 @@ export class Body {
         } else this.nextIdleCheck = this.now() + idleScreen.ms;
       }
     }
-    if (state.screen !== "none" || dead || this.manual || this.stopped) {
+    // A drowning or lava rescue keeps the controls while one of his own actions is being turned away (manualAction).
+    const keepsBody = this.rescue !== undefined && critical[this.rescue.kind] === true && state.screen === "none" && !dead && !this.stopped;
+    if (state.screen !== "none" || dead || (this.manual && !keepsBody) || this.stopped) {
       if (this.rescue) {
         const screen = state.screen !== "none";
         await this.finishRescue(dead ? "death" : screen ? `screen opened: ${state.screen}` : "manual control", !dead && !screen && this.rescue.breath);
@@ -1119,5 +1348,8 @@ export class Body {
       this.api.chat("#stop"),
       ...(this.lifted ? [this.api.chat(avoidBreaking(this.kept))] : []),
     ]);
+    // After the stop, so no trip goes on under settings it was not planned with. A tool server that never read
+    // the trip settings changed none of them.
+    if (this.trip) await this.applyTrip(this.trip.baseline).catch(() => {});
   }
 }

@@ -4,7 +4,7 @@ import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { schemaFile } from "../src/commons.ts";
-import { KnowledgeGaps, KNOWLEDGE_SCOPE } from "../src/knowledge-gaps.ts";
+import { KnowledgeGaps, KNOWLEDGE_SCOPE, NEVER_RETRY, capabilityOverview, knowledgeOverview, registerResidentTools } from "../src/knowledge-gaps.ts";
 import { lookupGuide, lookupGuideResult } from "../src/guides.ts";
 
 const databases: Database[] = [];
@@ -125,4 +125,57 @@ test("new-result cursor does not skip requests when earlier results are consumed
   const next = gaps.updates({ after: 5 });
   expect(next).toContain("ref-6"); expect(next).toContain("ref-8");
   expect(gaps.updates()).toContain("No new");
+});
+
+function park(db: Database, gapId: number, capability: string) {
+  // As knowledge-research.py block() leaves a revision whose researcher reported a missing body capability.
+  db.query("INSERT INTO capability_gaps(normalized_capability,capability,first_at,last_at) VALUES(?,?,1,1)").run(capability, capability);
+  const { id } = db.query<{ id: number }, [string]>("SELECT id FROM capability_gaps WHERE normalized_capability=?").get(capability)!;
+  db.query("INSERT INTO capability_reports(capability_id,gap_id,revision,reporter,blocking,at) SELECT ?,id,revision,'caretaker',1,1 FROM knowledge_gaps WHERE id=?").run(id, gapId);
+  db.query("UPDATE knowledge_gaps SET status='unavailable',reason='Needs body capability: x',next_attempt_at=? WHERE id=?").run(NEVER_RETRY, gapId);
+  return id;
+}
+
+test("missing_control feedback reaches the maintainers' queue without re-researching or revising the reference", () => {
+  const db = database(); const gary = new KnowledgeGaps(db, "Gary"); const margo = new KnowledgeGaps(db, "Margo");
+  const id = gary.recordMiss("Quantum widgets"); publish(db, id);
+  expect(gary.feedback({ target: `ref-${id}`, query: "Quantum widgets", verdict: "missing_control", detail: "Guide says hold the boost key" })).toContain("missing_control give capability");
+  expect(gary.feedback({ target: `ref-${id}`, query: "Quantum widgets", verdict: "missing_control", detail: "Guide says hold the boost key", capability: "Hold a mod keybinding" })).toContain("cap-1");
+  expect(margo.feedback({ target: "aircraft", query: "fly up", verdict: "missing_control", detail: "No key for ascend", capability: "hold a MOD keybinding!" })).toContain("cap-1");
+  expect(db.query("SELECT revision,status,published_revision,next_attempt_at FROM knowledge_gaps WHERE id=?").get(id)).toEqual({ revision: 1, status: "published", published_revision: 1, next_attempt_at: 0 });
+  expect(db.query("SELECT count(*) AS n FROM knowledge_feedback").get()).toEqual({ n: 0 });
+  // A missing control reported outside a ref must not open a research request either.
+  expect(db.query("SELECT count(*) AS n FROM knowledge_gaps").get()).toEqual({ n: 1 });
+  expect(db.query("SELECT occurrences,status FROM capability_gaps").all()).toEqual([{ occurrences: 2, status: "open" }]);
+  expect(db.query("SELECT gap_id,reporter,blocking FROM capability_reports ORDER BY reporter").all()).toEqual([
+    { gap_id: id, reporter: "Gary", blocking: 0 }, { gap_id: 0, reporter: "Margo", blocking: 0 },
+  ]);
+  db.exec("UPDATE capability_gaps SET status='declined',resolution='not planned'");
+  expect(gary.feedback({ target: `ref-${id}`, query: "Quantum widgets", verdict: "missing_control", detail: "Still no key", capability: "hold a mod keybinding" })).toContain("declined cap-1 (not planned)");
+});
+
+test("a revision parked on a missing body capability stays parked on repeat misses and reopens only on an explicit correction", () => {
+  const db = database(); const gaps = new KnowledgeGaps(db, "Gary");
+  const id = gaps.recordMiss("Steer a boat");
+  const cap = park(db, id, "steer a vehicle");
+  let [row] = knowledgeOverview(db);
+  expect(row).toMatchObject({ gap_kind: "capability", parked: 1, blocked_by: `cap-${cap} steer a vehicle [open]` });
+  gaps.recordMiss("steer a BOAT");
+  expect(db.query("SELECT status,next_attempt_at FROM knowledge_gaps").get()).toEqual({ status: "unavailable", next_attempt_at: NEVER_RETRY });
+  expect(capabilityOverview(db)[0]).toMatchObject({ handle: `cap-${cap}`, status: "open", refs: `ref-${id}`, parked_requests: 1 });
+  gaps.feedback({ target: `ref-${id}`, query: "Steer a boat", verdict: "unhelpful", detail: "use while facing the boat mounts it" });
+  [row] = knowledgeOverview(db);
+  expect(row).toMatchObject({ gap_kind: "knowledge", parked: 0, revision: 2, status: "pending", blocked_by: null });
+  expect(capabilityOverview(db)[0]!.parked_requests).toBe(0);
+});
+
+test("registered resident tools replace the previous list and ignore invalid names", () => {
+  const db = database();
+  expect(registerResidentTools(db, "Gary", ["go_to", "use", "use", "Bad-Name", "x".repeat(60)], 5)).toBe(2);
+  expect(registerResidentTools(db, "Gary", ["go_to", "mount"], 6)).toBe(2);
+  registerResidentTools(db, "Margo", ["use"], 7);
+  expect(db.query("SELECT name,resident,seen_at FROM resident_tools ORDER BY resident,name").all()).toEqual([
+    { name: "go_to", resident: "Gary", seen_at: 6 }, { name: "mount", resident: "Gary", seen_at: 6 }, { name: "use", resident: "Margo", seen_at: 7 },
+  ]);
+  expect(registerResidentTools(undefined, "Gary", ["use"])).toBe(0);
 });

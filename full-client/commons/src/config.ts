@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { observerSourceFromEnv, type ObserverSource } from "./observer.ts";
 
 export interface ResidentConfig {
   name: string;
@@ -30,6 +31,8 @@ export interface Config {
    * The server console is read from it and commands are sent through it. Unset: neither is possible.
    */
   consoleUrl?: string;
+  /** Optional read-only server observations, independent of each client's controls. */
+  observer?: ObserverSource;
   /** Make every proposed shared note visible to residents at once; review comes afterwards. */
   autoAccept: boolean;
   /** In-game names of the people who own and play on the server; the console keeps mod lines that mention them. */
@@ -115,6 +118,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const consoleUrl = env.CONSOLE_URL || env.CHAT_URL || undefined;
   return {
     consoleUrl: consoleUrl && `${consoleUrl.replace(/\/+$/, "")}/`,
+    observer: observerSourceFromEnv(env),
     autoAccept: !/^(0|off|false|no)$/i.test(env.COMMONS_AUTO_ACCEPT ?? ""),
     owners: (env.COMMONS_OWNER ?? "spesk01").split(/[\s,]+/).filter(Boolean),
     home, port, hostname: env.COMMONS_BIND ?? "0.0.0.0", dbPath,

@@ -7,6 +7,7 @@ import { recordPosition } from "./db.ts";
 import { record } from "./json.ts";
 import { autoAccept } from "./reviews.ts";
 import { normalizeState, synapseGet, type ResidentState } from "./synapse.ts";
+import { ObserverFeed } from "./observer.ts";
 
 export interface Sighting {
   status: "online" | "offline" | "unauthorized" | "error" | "unchecked";
@@ -24,8 +25,11 @@ export class Watcher {
   private fetching = new Map<string, Promise<Picture | null>>();
   private timer?: Timer;
   private sampling?: Promise<void>;
+  readonly observer: ObserverFeed;
 
-  constructor(private config: Config, private db: Database, private now: () => number = Date.now) {}
+  constructor(private config: Config, private db: Database, private now: () => number = Date.now) {
+    this.observer = new ObserverFeed(config.observer, { now });
+  }
 
   start() {
     void this.sample();
@@ -38,7 +42,10 @@ export class Watcher {
    * A tick still running when the next is due is not doubled.
    */
   sample(): Promise<void> {
-    this.sampling ??= Promise.all(this.config.residents.map(resident => this.look(resident)))
+    this.sampling ??= Promise.all([
+      this.observer.poll(),
+      ...this.config.residents.map(resident => this.look(resident)),
+    ])
       .then(() => this.accept()).finally(() => { this.sampling = undefined; });
     return this.sampling;
   }

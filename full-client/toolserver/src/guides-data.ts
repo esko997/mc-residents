@@ -1,3 +1,6 @@
+import { machineGuideSections } from "./machine-guides.ts";
+import { vehicleGuides } from "./vehicle-guides.ts";
+
 export interface GuideSection {
   id: string;
   title: string;
@@ -28,6 +31,7 @@ const timers = "After breeding, adults have a 5-minute cooldown; babies take abo
 const feeding = "Body: status gives nearby animal positions. Move within reach, select_hotbar with the food, look toward the animal's current coordinates, then use once on each adult. Coordinate look aims at a block centre, not an entity lock: picture/yaw/pitch may be needed for small or moving animals. Never attack to feed. Confirm food consumption and a baby, not just 'Used'.";
 
 export const referenceGuides: readonly ReferenceGuide[] = [
+  ...vehicleGuides,
   {
     id: "mining", title: "Safe underground mining and ore supply",
     aliases: ["mining", "ore", "ores", "ore mining", "mining for ore", "mine ore", "underground", "staircase", "dig down", "branch mining", "strip mining", "digging", "mine ores", "mine iron", "mine copper", "mine coal", "mine diamonds", "mine redstone", "iron ore", "copper ore", "diamond ore", "osmium ore", "mine osmium"],
@@ -175,6 +179,7 @@ export const referenceGuides: readonly ReferenceGuide[] = [
         "Oxygen processing branch: Electrolytic Separator supplies oxygen to a Purification Chamber, then Crusher -> Enrichment Chamber -> smelting for supported inputs. More advanced processing adds chemical supply chains; choose it only when throughput/resources justify them.",
         "Utility branch: better tools, a Digital Miner or power storage may help more than another ore tier. Advanced fission/polonium gear, QIO, fusion and antimatter are separate large projects, not prerequisites for a useful workshop. Fission introduces radiation and meltdown risk: this starter guide is not reactor safety instructions."
       ] },
+      ...machineGuideSections.mekanism,
     ],
   },
   {
@@ -202,6 +207,7 @@ export const referenceGuides: readonly ReferenceGuide[] = [
         "2. Machine work uses a PROCESSING pattern: list the real input and expected output quantities from installed recipes. Face the Crafter into a valid machine input. Keep the machine powered/fuelled. Return products through an Importer or Interface; without their return, RS cannot know the job completed.",
         "3. Verify one full job and net output before scaling or chaining jobs. Filters/side rules and fluid/gas supplies need explicit design. A Crafting Grid is convenient manual crafting, not automatic production by itself. Keep complex or dangerous machine workflows manual until proven."
       ] },
+      ...machineGuideSections["refined-storage"],
     ],
   },
   {
@@ -231,19 +237,48 @@ export const referenceGuides: readonly ReferenceGuide[] = [
     ],
   },
   {
-    id: "settlement", title: "Shared production that compounds", aliases: ["settlement", "civilization", "civilisation", "shared production", "planning", "collaboration", "community", "production", "shared essentials"],
-    scope: "Resident planning practice, 2026-11-21; not a Minecraft mechanic",
+    id: "settlement", title: "Shared production and places neighbours can use", aliases: ["settlement", "civilization", "civilisation", "shared production", "planning", "collaboration", "community", "production", "shared essentials", "village", "town", "city", "layout", "lay out", "building layout", "where to build", "terrace", "terraces", "path", "paths", "road", "roads", "sign", "signs", "signpost", "signposts", "naming", "place names", "visit", "visits", "visitor", "visitors", "tour", "demonstration", "demonstrate", "renovate", "renovation", "rebuild", "rebuilding"],
+    scope: "Resident planning practice, 2026-11-21/22; not a Minecraft mechanic; optional, no style or beauty standard",
     source: "owner-approved resident aims + local body tool contracts",
     sections: [
       { id: "overview", title: "Build reliable access together", paragraphs: [
         "Start with reliable access to meals, a bed/shelter, tools and safe routes. Shared supplies count when you can actually reach/use them and somebody replenishes them; duplicate ownership is not the goal. Inspect existing production before building another copy.",
         "Choose one durable improvement and its visible acceptance: e.g. a replanted field plus food reserve, or a powered network with a tested deposit/retrieval. Break it into a small project, current milestone and immediate steps. Record the dependency blocking progress, not a long speculative to-do list.",
-        "Gary's settlement and Margo's technology can reinforce each other: food/materials support experiments; proven tools and automation make reliable supplies cheaper. Choose the next bottleneck by evidence and useful demand."
+        "Gary's settlement and Margo's technology can reinforce each other: food/materials support experiments; proven tools and automation make reliable supplies cheaper. Choose the next bottleneck by evidence and useful demand.",
+        "A settlement is also a place people find their way around. Sections layout, routes, names, visits and renovation are optional practice for shared places that a neighbour or human visitor can find, reach and use without your coordinates or a digging pathfinder. Style, size and decoration are yours; nothing here is a beauty score, a house template or a required tour."
       ] },
       { id: "production", title: "Inputs, output, access and maintenance", aliases: ["supply", "supply chain", "production", "maintenance", "access"], paragraphs: [
         "For each shared service name: input supply, producer, output location, reserve floor, replenishment responsibility and intended users. Include power/fuel and byproducts for machines. Label storage and save places/routes so another resident can use it without you.",
         "Prove the loop: harvest/replant/harvest, breed/grow/preserve breeders, or insert/process/retrieve. Check that output exceeds upkeep and that the intended user can reach it. A stocked chest from one donation is useful but not renewable production.",
         "Share results in Shared Knowledge with source, location, exact observed result and limitations. Distinguish an external reference from a personally tested body procedure. Improve a reusable skill only after actual success; record failures so neighbours do not repeat them."
+      ] },
+      { id: "layout", title: "Site, approach and room to work", aliases: ["layout", "lay out", "building layout", "where to build", "site", "approach", "terrace", "terraces", "slope", "hillside", "working space", "maintenance room", "machine access", "workshop layout"], source: "owner-approved settlement direction, research/2026-11-22-settlement-next-steps.md", paragraphs: [
+        "A useful order for a shared building: choose the site; reserve its approach and working space; establish a floor or terrace and services (light, storage, power, water); install equipment; then enclose and decorate if you want to. Reserving the approach first is cheaper than tunnelling to a doorway later.",
+        "Site: unclaimed ground, not over or against a neighbour's build, reachable on foot from the homes and stores it serves. Look from where a visitor will arrive (stand there, picture) before committing: a coordinate summary does not show a cramped or hidden entrance.",
+        "Working space: leave a walkable gap beside every machine face you may need to reach later (inputs, outputs, cables, side configuration) and room to stand while a screen is open. A machine packed into solid rock works until it needs maintenance. Keep a pen's gate and a field's edge reachable without breaking anything.",
+        "Slopes: a terrace or a few level platforms joined by steps usually keeps more of the land than flattening a hill, and is easier to walk. Keep views, trees and water where they do not get in the way; clearing everything is not required."
+      ] },
+      { id: "routes", title: "Routes a person can walk", aliases: ["route", "routes", "path", "paths", "road", "roads", "bridge", "walkable", "stairs", "walking"], source: "owner-approved settlement direction + full-client/tools/baritone-settings.ts + https://minecraft.wiki/w/Light", paragraphs: [
+        "Connect places people use often (homes, pantry, workshop, meeting place) with a lit, solid route. Two blocks wide lets two people pass; one extra block of headroom avoids head bumps. Climb with stairs or slabs, which can be walked up without jumping, or one-block steps; long ladders and parkour gaps are hard for visitors. Bridge water you expect people to cross often.",
+        "Light the route so no dark patches remain; most hostile mobs spawn only in complete darkness from blocks. Keep fields, pens and machinery beside the route, not in it, so nobody tramples crops or opens a gate by accident.",
+        "Your pathfinder (go_to, follow, mine) may dig through or place blocks on its way, so arriving does not prove a person can walk the route, and it can damage gates, stairs and supports. If your travel tools offer a mode that forbids breaking and placing, prefer it inside built areas; a stop in that mode reports a real obstruction. Otherwise walk it in short hops, watch what changed, and repair holes or stray blocks it left.",
+        "Evidence that a route works: someone reached the place on foot without digging, scaffolding or being told a hidden trick. Save the ends and junctions with place_save, shared:true when others should find them."
+      ] },
+      { id: "names", title: "Names and signs", aliases: ["name", "names", "naming", "place names", "sign", "signs", "signpost", "signposts", "label", "labels", "rename"], source: "src/notes.ts place_save/place_remove + write_sign tool contract", paragraphs: [
+        "Naming is optional and can come late; an unnamed place is fine. A name people agree on in chat is easier to use than coordinates. Save it as a shared place with the same name so neighbours' place_find shows it. Your own shared place can be re-saved or removed; a neighbour's cannot, so suggest a rename to its author rather than saving a competing name.",
+        "write_sign places the selected sign on the block you look at, up to four short lines. Useful spots: a junction (destination and direction), a door (what is inside and who may use it), a chest or machine (contents, inputs, who replenishes it). Read what is already there first; do not cover or replace a neighbour's sign.",
+        "Update or remove a sign when the thing it describes moves or stops working: a stale sign misleads every visitor. A facility's access terms belong in facility_register/facility_update, not only on a sign."
+      ] },
+      { id: "visits", title: "Visits and demonstrations", aliases: ["visit", "visits", "visitor", "visitors", "visiting", "tour", "guest", "guests", "demonstration", "demonstrate", "walk", "walkthrough", "invite", "invitation"], source: "owner-approved settlement direction, research/2026-11-22-settlement-next-steps.md", paragraphs: [
+        "When something you made is ready for others, an invitation to come and use it is a natural chance to find out whether it works for someone who did not build it: whether they find it from its name or sign, reach it on foot, and can use it without your help. Hosting a walk or showing a working machine is one way; letting a neighbour try it alone and tell you what happened is another.",
+        "Invite in chat with what, where and roughly when. A neighbour may say no or come later; carry on with nearby work rather than waiting idle. Use collaborate only when the visit involves a promise (a delivery, a lesson in exchange for materials).",
+        "Treat a visitor's trouble as information about the place, not a failure of either of you: a hidden entrance, a missing step, an unlabelled chest, a machine whose output they could not find. Fix what matters to people who will actually use it. A demonstration shows an input turning into an output, not only that the machine is placed.",
+        "Visits are not a routine, a report or a grade. One visit after a real change is enough; nobody owes a tour, and private experiments need none."
+      ] },
+      { id: "renovation", title: "Improving what is already built", aliases: ["renovate", "renovation", "rebuild", "rebuilding", "improve", "move", "relocate", "expand", "cramped", "demolish"], source: "owner-approved settlement direction, research/2026-11-22-settlement-next-steps.md", paragraphs: [
+        "Earlier improvised builds are the settlement's history and still do their jobs; improve them where use shows a problem (a cramped corridor, an unreachable machine face, a gate the pathfinder keeps breaking) rather than demolishing wholesale.",
+        "Change one piece at a time and keep the service working: move stock to a labelled chest first, keep a temporary way in, and tell the people who use it before closing it. Renovate your own builds, or shared ones with their stewards' agreement; never take down or alter a neighbour's work on your own judgement.",
+        "After a move or rebuild, update what points at it: shared places, signs and facility_update entries. A new facility next to an old one that still works is a duplicate; ask whether to retire, extend or keep both."
       ] },
     ],
   },
