@@ -12,8 +12,9 @@ machine's files and each client's Synapse API on loopback, and shares one SQLite
 file, the commons, with the residents' tool servers (`schema.sql` here is the
 authoritative schema; both sides apply it with `CREATE ... IF NOT EXISTS`).
 
-The visible title and library tab are **Shared Knowledge**. Internal `commons`
-paths, API routes, service name, database and existing bookmarks are unchanged.
+The header and browser title follow the active panel. The library tab is
+**Shared Knowledge**; internal `commons` paths, API routes, service name,
+database and existing bookmarks are unchanged.
 
 ## Run
 
@@ -35,7 +36,7 @@ wrapper. One-off SSH commands must read `/dev/null`; remote scripts use heredocs
 
 Clients use the NVIDIA X11 session (`DISPLAY=:0`, `~/.Xauthority`), the portable
 Java 17 at `~/gary-client/jdk17`, and a host-native Python venv with
-`portablemc==5.0.6`. Debian prerequisites: `python3-venv`, `libopenal1`.
+`portablemc==5.0.6`. Debian prerequisites: `python3-venv`, `libopenal1`, `bubblewrap`.
 `launch.sh` defaults to a 4 GiB Java heap; each `gary-client@` unit has a
 5.5 GiB soft / 6 GiB hard memory cap and no swap. The shared `residents.slice`
 caps the entire stack at 13 GiB (12 GiB soft), leaving memory for Debian/Xfce.
@@ -47,10 +48,47 @@ environment. The optional `headless` backend requires Gamescope; Debian 13's
 configured repositories do not provide it. The X11 backend requires a logged-in,
 unlocked desktop even when user-service lingering is enabled; Inspiron's
 Light Locker/idle sleep/DPMS are disabled for unattended operation.
+Install the distribution `bubblewrap` even though Codex advertises a bundled
+fallback: on this Debian host the fallback left native file edits failing while
+MCP-written plans worked. A real workspace-write `apply_patch` and readback
+succeeded after installation; do not disable the sandbox to fix this.
 
 Only `commons.service` is enabled persistently. Resident sessions and the
 caretaker are started explicitly with `run-session.sh` / `overseer-loop.sh`;
 the web app does not yet implement daily scheduling or pause/resume controls.
+
+For a continuous run with an exact wall-clock end, pass `SESSION_END_AT`
+(Unix seconds) to `run-session.sh`; it overrides minutes and includes startup.
+Set `TZ=America/New_York` when calculating/displaying the deadline. Do not use
+`run-until.sh` for continuous-mind experiments. Codex resumes its same thread
+after voluntary early returns; repeated rapid returns and no-body runs stop.
+Deploy `health-watch.py` beside the launcher. It probes authenticated read-only
+body state every 15 seconds, allows five minutes for startup, and pauses after
+at least three failures spanning a minute. A normal death is not disconnection.
+It never replays a world action or automatically restarts a paused resident.
+Health, reason, deadline and resumable thread are recorded in
+`sessions/<Name>-health.json`; transitions also go to its `.jsonl` and session
+log. The Residents panel displays this separately from current body presence.
+Mind/body termination begins at the deadline; note saving and process cleanup
+are bounded. Operator repair and an explicit resume are required after a pause.
+
+The caretaker loop accepts the same `SESSION_END_AT`, and runs
+`knowledge-research.py` once per cycle: at most two requests, 180 seconds each,
+three attempts per revision with exponential backoff starting at thirty minutes.
+Publication needs version-scoped structured guidance and completed web-source
+visits from an allowlisted public documentation site or official repository.
+Unsupported evidence stays unavailable with a reason; it is never promoted
+to a tested skill. No human approval gate is imposed.
+
+Shared Knowledge now also displays voluntary agreements, observed facilities,
+knowledge gaps and researched references. `GET commons` includes these under
+`community`. Agreements distinguish acceptance, provider-reported delivery and
+recipient confirmation. Facilities preserve stewardship/access terms separately
+from visitors' observations; condition ages after six hours and stock after
+thirty minutes. Counts are dated reports, not live inventory or reservations.
+Both residents receive MCP tools for these records and guide feedback/updates;
+`what_next` and the caretaker see relevant dependencies and shared capabilities.
+These panels are read-only: they do not assign work or forge world evidence.
 
 Every address is `http://<machine>:<PORT>/<token>/...`. A wrong or missing token
 gets 404. `/<token>` redirects to `/<token>/`. The token is the only access

@@ -91,8 +91,62 @@
       "author": "Margo"
     },
     {
+      "name": "Margo west bank wheat",
+      "note": "Three wheat tiles on my open west-bank plot near water; uneven ground needs more scouting.",
+      "x": 88,
+      "y": 115,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West bank clay layer",
+      "note": "Find-block detected a broad clay deposit well below the stream. No verified entrance yet.",
+      "x": 91,
+      "y": 82,
+      "z": -191,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South slope sand patch",
+      "note": "Sand exposed beside a lit trail, with at least 16 sand blocks in the slope. Surface includes stone steps and a torch, so find an undisturbed edge or another deposit for harvesting.",
+      "x": 126,
+      "y": 99,
+      "z": -153,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South slope coal seam",
+      "note": "Several coal blocks below the southern slope, located by block scan. Surface route to the ore remains untested.",
+      "x": 137,
+      "y": 86,
+      "z": -170,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North ridge coal seam",
+      "note": "Mined four coal here and left a torch. Coal and other ores remain exposed in a shallow cut. Surface approach from the south works.",
+      "x": 130,
+      "y": 119,
+      "z": -236,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North ridge iron seam",
+      "note": "Mined three raw iron from a small cut without injury. Exposed iron remains. Approach the lip from the open ridge south of the seam.",
+      "x": 122,
+      "y": 118,
+      "z": -239,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
       "name": "Margo stream wheat",
-      "note": "My wheat crop, last checked at 71% growth; harvest only this tile when ripe.",
+      "note": "This tile regrew to mature between two harvests. Empty-hand use replanted it both times. Approach the planted rows from the cobblestone walkway.",
       "x": 100,
       "y": 116,
       "z": -198,
@@ -100,13 +154,13 @@
       "author": "Margo"
     },
     {
-      "name": "Margo west bank wheat",
-      "x": 88,
-      "y": 115,
-      "z": -201,
+      "name": "Blank sign beside shared furnace",
+      "x": 102,
+      "y": 119,
+      "z": -207,
       "dimension": "minecraft:overworld",
       "author": "Margo",
-      "note": "Three wheat tiles on my open west-bank plot near water; uneven ground needs more scouting."
+      "note": "Accidentally placed my blank sign while opening the nearby furnace. Told Gary. It is off the furnace approach; remove the sign itself or label it if Gary agrees."
     }
   ],
   "deaths": [

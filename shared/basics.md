@@ -71,6 +71,24 @@ shared farm or home counts; coordinate rather than duplicating every facility.
 - Cook on a campfire (three sticks, three logs, one coal or charcoal) or in a
   furnace, and keep spare food in a chest at home.
 
+## Mining below the surface
+
+- Ore is not limited to exposed hillsides. A lit, returnable mine can supply
+  iron and the redstone/other materials needed for machinery. Choose a resource
+  and a modest haul for a project, rather than wandering until something appears.
+- Start with an accessible cave or a descending staircase on unclaimed ground.
+  Never dig the block directly beneath your feet or straight overhead. Inspect
+  each new opening for drops, gravel, water, lava and mobs before stepping in.
+- Bring food, torches, spare pickaxes, building blocks and protection; keep a
+  tool/food reserve at home. Mark the entrance and junctions, and test the way
+  back. Return before supplies or durability become critical.
+- `guide {query:"mining"}` covers preparation, staircases, branch mining, ore
+  depths and the actual body controls. Depth matters: one layer is not best for
+  every ore, and modded generation may differ from vanilla.
+- `mine` gathers a named block locally; it does not promise a safe staircase or
+  tunnel shape. Do not use a distant deep `go_to` as a substitute for making and
+  checking an entrance. Preserve other people's builds, farms and foundations.
+
 ## Danger
 
 - Health comes back on its own only while you are well fed.
@@ -151,6 +169,10 @@ the slots. Slot numbers in the common screens:
   says when that happens.
 - `recipes` gives any item's pattern as rows of letters; `find_item` turns a
   name into an id. Machines from mods have their own slots: read `screen`.
+  Empty slots are listed too, but empty does not mean any item is accepted.
+  A modded machine is working only when it actually processes an input into
+  the expected output. Check its guide, power, inputs and output; placement
+  alone is not proof, and repeatedly clicking an uncertain slot is not a fix.
 - To give someone an item, stand a block or two from them, `look` at them,
   open your inventory and `click_slot` the stack with mode `THROW` (button 1
   throws all of it, button 0 one item). A thrown item can be picked up by
@@ -193,10 +215,10 @@ the interruption, then resume or deliberately revise the project.
   details. Update the next actions without losing the larger goal. A blocked
   dependency is a reason to ask a neighbour or work on another useful project,
   not to repeat the same failed action or pretend the blocker is resolved.
-- `what_next` shows concrete missing or unused means with its evidence.
-  It knows shared facilities only from saved-place names and notes; use
-  `place_save` with shared visibility for agreed public farms, stores and paths.
-  "No known furnace" is not proof none exists. Ask or look before duplicating.
+- `what_next` considers your focused project, shared facilities and voluntary
+  agreements. `facility_show` finds capabilities and access terms; recent
+  condition/stock entries are still someone's dated report, not guaranteed
+  supplies. Ask or inspect before duplicating a facility or relying on stock.
 - Success should leave useful capabilities: facilities, resources, knowledge
   or tested skills. Before solving a repeated problem, check `skill_find` and
   `notes_shared`. Save a routine when a real recurring task warrants it, not
@@ -212,6 +234,27 @@ Example: Gary's vision of abundance → renewable wool project → fenced breedi
 flock and sheared wool demonstrated → build pen, lead two adults in, breed,
 obtain shears, harvest and store wool. Margo can use the wool for her bed and
 work on a useful powered workshop rather than build a duplicate flock.
+
+## Collaboration, facilities and missing knowledge
+
+- `collaborate` records your request or offer, optionally linked to a project.
+  A named neighbour or a volunteer may accept, decline or counter it.
+  Use `collaboration_update` with the latest revision from `collaboration_show`;
+  changed terms need renewed acceptance. Say what, where and what counts as done.
+  The provider reports delivery with evidence; the recipient separately confirms
+  what they received. Neither statement is an automatic world check.
+- `facility_register` is for something you steward, with location, capabilities
+  and access terms. Others may use `facility_observe` to report a dated condition
+  and optional stock counts, but cannot change your permissions. Omitted stock
+  leaves the last count unchanged; an empty stock list reports no stock observed.
+  Conditions age after six hours, stock after thirty minutes. Refresh when you
+  happen to use a facility, not on a mandatory inspection schedule.
+- `guide` queues genuinely unanswered questions automatically. `guide_feedback`
+  reports a misleading or unhelpful answer with the original question and what
+  went wrong. The caretaker researches bounded batches without a human approval
+  gate. `guide_updates` shows your results or why research remains unavailable;
+  `guide` can open its stable `ref-N` handle. Sources and version limits are
+  included. References are not proven skills; report contradictory observations.
 
 ## Skills and shared notes
 

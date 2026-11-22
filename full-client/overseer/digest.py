@@ -205,6 +205,14 @@ def main():
         except Exception as error:  # the client may be down between sessions
             print(f"\n## Right now\n(state unavailable: the client is not running or did not answer; {error.__class__.__name__})")
 
+    health_file = Path(args.base) / "sessions" / f"{args.name}-health.json"
+    try:
+        health = json.loads(health_file.read_text())
+        fields = {key: health.get(key) for key in ("status", "reason", "updated_at", "end_at", "last_healthy_at", "consecutive_failures", "client_stopped")}
+        print("\n## Session health (supervisor observations, timestamps in Unix seconds)")
+        print(json.dumps(fields))
+    except (OSError, ValueError, TypeError):
+        pass
     print("\n## Its projects (resident reports, not automatic world verification)")
     print(project_summary(os.path.join(resident_dir, "plan.json")))
     for other in sorted(glob.glob(os.path.join(os.path.dirname(resident_dir), "*", "plan.json"))):
@@ -220,6 +228,32 @@ def main():
         try:
             with sqlite3.connect(Path(library).as_uri() + "?mode=ro", uri=True, timeout=1) as db:
                 skills = db.execute("SELECT name, author, description, status FROM skills WHERE status IN ('verified', 'curated') ORDER BY updated_at DESC LIMIT 8").fetchall()
+                tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if "collaborations" in tables:
+                    print("\n## Voluntary agreements (reported results and confirmations are not machine verification)")
+                    rows = db.execute("""SELECT id,kind,sender,recipient,project,terms,status,evidence,confirmation
+                        FROM collaborations WHERE sender=? COLLATE NOCASE OR recipient=? COLLATE NOCASE OR recipient IS NULL
+                        ORDER BY updated_at DESC LIMIT 8""", (args.name, args.name)).fetchall()
+                    for row in rows:
+                        print(json.dumps(row, ensure_ascii=False))
+                    print("\n## Shared facilities (claims with access terms; dated observations, not live counts)")
+                    rows = db.execute("""SELECT f.id,f.name,f.purpose,f.x,f.y,f.z,f.dimension,f.steward,f.access_terms,
+                        o.condition,o.certainty,o.observer,o.observed_at,o.source,o.stock_json,
+                        CASE WHEN o.facility_revision=f.revision THEN 'matching metadata' ELSE 'metadata changed: uncertain' END
+                        FROM facilities f LEFT JOIN facility_observations o ON o.id=(SELECT id FROM facility_observations
+                        WHERE facility_id=f.id ORDER BY observed_at DESC,id DESC LIMIT 1)
+                        ORDER BY f.updated_at DESC LIMIT 8""").fetchall()
+                    for row in rows:
+                        print(json.dumps(row, ensure_ascii=False))
+                if "knowledge_gaps" in tables:
+                    print("\n## This resident's knowledge requests (ref-N is a guide handle; references remain untested)")
+                    rows = db.execute("""SELECT g.id,g.question,q.project,g.status,g.occurrences,g.reason,
+                        g.revision,g.published_revision,r.title
+                        FROM knowledge_gaps g JOIN knowledge_requests q ON q.gap_id=g.id
+                        LEFT JOIN knowledge_references r ON r.gap_id=g.id AND r.revision=g.published_revision
+                        WHERE q.resident=? COLLATE NOCASE ORDER BY g.updated_at DESC LIMIT 8""", (args.name,)).fetchall()
+                    for row in rows:
+                        print(json.dumps(row, ensure_ascii=False))
             print("\n## Available reusable skills (passed declared checks or curated; not universal guarantees)")
             for name, author, description, status in skills:
                 print(f"{name} by {author} [{status}]: {description[:200]}")

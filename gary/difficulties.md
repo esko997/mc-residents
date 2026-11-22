@@ -106,3 +106,18 @@ Last tool error: note: String must contain at most 120 character(s). place_save:
 Asking go_to for a wheat drop floating at the stream bank without specifying Y dug through the riverbed. The escape path then cut a trench through three crops. A non-digging approach for nearby item drops or water would help.
 Position: 104.7, 116, -197.25 (minecraft:overworld)
 Last tool error: text: Required. note_difficulty: Tell body maintainers what is hard; append dated position and last error to difficulties.md.
+
+## 2026-11-22T00:32:16.755Z
+Most live client actions time out on the Minecraft main thread, including chat, looking and opening my door. Read-only resident plans work. Margo's chat and player proximity have come through intermittently.
+Position: unavailable
+Last tool error: Synapse: Main-thread task did not complete within 5000 ms. The game may be paused, loading, or hung.
+
+## 2026-11-22T00:46:43.822Z
+The resident shell fails before running date or reading notes because bubblewrap is unavailable. An authorized apply_patch to journal.md also reports it cannot write. I can still recover prior context via recall and retain world state via plans and place markers.
+Position: 110.26, 116, -200.5 (minecraft:overworld)
+Last tool error: Not enough ingredients for 1 x recipe minecraft:shears: you need 1 more #forge:ingots/iron (it takes 2). Nothing was moved. Closed your inventory again.
+
+## 2026-11-22T01:27:14.266Z
+The sun appeared to stay in the east across repeated checks over much of the session. Margo and I both set respawn on the shared bed, but repeat use never let me sleep.
+Position: 110.5, 120, -207.4 (minecraft:overworld)
+Last tool error: minecraft:stone_sword needs a 3x3 grid: close your inventory, look at a crafting table and use it, then craft again.

@@ -12,6 +12,9 @@
 # prompt: one-off news, such as a change to the body. RESUME_THREAD, when set
 # to a Codex thread id, continues that mind instead of starting a new one: for
 # putting a resident back after its body was updated in the middle of a run.
+# SESSION_END_AT is an absolute Unix-seconds deadline, overriding minutes and
+# including client startup. health-watch.py enforces it independently of the
+# mind and pauses on sustained body loss; only an operator may resume a pause.
 #
 # Start it as a transient user unit so it outlives the SSH session:
 #   systemd-run --user --unit=gary-session ~/gary-client/run-session.sh Gary gary 60
@@ -21,6 +24,11 @@ name=${1:?usage: run-session.sh <username> <persona> <minutes> [model]}
 persona=${2:?usage: run-session.sh <username> <persona> <minutes> [model]}
 minutes=${3:?usage: run-session.sh <username> <persona> <minutes> [model]}
 model=${4:-gpt-6.2-sol}
+if [[ ! "$minutes" =~ ^[0-9]+$ ]] || [[ -n "${SESSION_END_AT:-}" && ! "$SESSION_END_AT" =~ ^[0-9]+$ ]]; then
+  echo "minutes and SESSION_END_AT must be nonnegative integers" >&2
+  exit 2
+fi
+export SESSION_END_AT=${SESSION_END_AT:-$(( $(date +%s) + 10#$minutes * 60 ))}
 
 base=${GARY_CLIENT_HOME:-$HOME/gary-client}
 GAME_DIR=$base/game
@@ -41,16 +49,25 @@ log=$GAME_DIR/logs/latest.log
 mkdir -p "$base/sessions" "$base/calls"
 # Every body call, one JSON line each, for the caretaker (src/calllog.ts).
 call_log=$base/calls/$name.jsonl
-session_log=$base/sessions/$(date +%Y%m%d-%H%M)-$name.log
+session_log=${SESSION_LOG:-$base/sessions/$(date +%Y%m%d-%H%M%S)-$name-$$.log}
+if [ "${SESSION_HEALTH_CHILD:-}" != 1 ]; then
+  export SESSION_LOG=$session_log SESSION_CLIENT_UNIT=$unit SESSION_RESIDENT=$name
+  export SESSION_HEALTH_FILE="$base/sessions/$name-health.json"
+  export SESSION_HEALTH_LOG="$base/sessions/$name-health.jsonl"
+  export SYNAPSE_URL SYNAPSE_TOKEN_FILE=${SYNAPSE_TOKEN_FILE:-$HOME/.synapse/token}
+  exec python3 "$(dirname "$0")/health-watch.py" /bin/bash "$0" "$@"
+fi
 
 finish() {
-  systemctl --user stop "$unit"
+  trap '' TERM INT HUP
+  # The supervisor stops the body and bounds this entire cleanup to eight
+  # seconds. Notes stay on disk if the lock/commit cannot finish in that window.
   # Both residents share this repo and may finish together. Serialize staging
   # and committing; the mind's sandbox cannot write .git itself.
   (
-    flock -w 30 9 || { echo "could not lock resident notes; files remain on disk" >&2; exit 1; }
-    git -C "$base/resident" add -A &&
-      git -C "$base/resident" commit -q -m "journal($persona): session $(date '+%F %H:%M')" || true
+    flock -w 2 9 || { echo "could not lock resident notes; files remain on disk" >&2; exit 1; }
+    timeout --kill-after=1 2 git -C "$base/resident" add -A &&
+      timeout --kill-after=1 3 git -C "$base/resident" commit -q -m "journal($persona): session $(date '+%F %H:%M')" || true
   ) 9>>"$base/resident/.git/session-notes.lock"
 }
 trap finish EXIT
@@ -65,20 +82,17 @@ body_calls() { grep -caE '^mcp: body/|"name":"mcp__body__' "$session_log" 2>/dev
 systemctl --user stop "$unit" 2>/dev/null
 systemctl --user reset-failed "$unit" 2>/dev/null
 rm -f "$log"
-systemctl --user start "$unit"
-# Cold mod/shader loading on the laptop can exceed the old three-minute guard.
-for _ in $(seq 1 100); do
-  grep -qa "Time from main menu to in-game" "$log" 2>/dev/null && break
-  if [ "$(systemctl --user is-active "$unit")" != active ]; then
-    echo "the client stopped before joining the server" | tee -a "$session_log"
-    exit 1
-  fi
-  sleep 3
-done
-grep -qa "Time from main menu to in-game" "$log" || { echo "the client did not reach the world in time" | tee -a "$session_log"; exit 1; }
+if ! systemctl --user start "$unit"; then
+  echo "the client could not start" >> "$session_log"
+  exit 10
+fi
+# Read-only state, not a stale join log, establishes that the body is usable.
+# The supervisor owns the five-minute startup grace and the absolute deadline.
+: > "$SESSION_BODY_STARTED_FILE"
+while [ ! -e "$SESSION_READY_FILE" ]; do sleep 1; done
 
-end_at=$(( $(date +%s) + minutes * 60 ))
-end=$(date -d "@$end_at" +%H:%M)
+end_at=$SESSION_END_AT
+end=$(date -d "@$end_at" '+%F %H:%M %Z')
 cd "$home" || exit 1
 
 body_env() {
@@ -86,7 +100,7 @@ body_env() {
     "$log" "$SYNAPSE_URL" "$name" "$home" "$base/knowledge.sqlite" "$call_log"
 }
 
-run_mind() { # <seconds> <prompt> [Codex thread to resume]
+run_mind() { # <prompt> [Codex thread to resume]
   case $model in
     claude:*)
       local mcp; mcp=$(mktemp)
@@ -100,7 +114,7 @@ run_mind() { # <seconds> <prompt> [Codex thread to resume]
       # 41 calls loading them and guessed arguments ("Invalid input").
       CLAUDE_CONFIG_DIR=$base/claude-home DISABLE_AUTOUPDATER=1 ENABLE_TOOL_SEARCH=false \
       CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=30 MCP_TOOL_TIMEOUT=180000 \
-        timeout "$1" "$base/bin/claude" -p "$2" --model "${model#claude:}" \
+        "$base/bin/claude" -p "$1" --model "${model#claude:}" \
         --mcp-config "$mcp" --strict-mcp-config --permission-mode dontAsk \
         --tools "Read,Edit,Write,Bash" \
         --allowedTools "mcp__body" "Read(./**)" "Edit(./**)" "Write(./**)" "Bash(date)" "Bash(date:*)" \
@@ -114,14 +128,14 @@ run_mind() { # <seconds> <prompt> [Codex thread to resume]
         -c "mcp_servers.body.env.SYNAPSE_URL=\"$SYNAPSE_URL\""
         -c "mcp_servers.body.env.CALL_LOG=\"$call_log\""
       )
-      if [ -n "${3:-}" ]; then
-        CODEX_HOME=$base/codex-home timeout "$1" "$base/bin/codex" exec resume \
+      if [ -n "${2:-}" ]; then
+        CODEX_HOME=$base/codex-home "$base/bin/codex" exec resume \
           --skip-git-repo-check -m "$model" -c 'sandbox_mode="workspace-write"' "${body[@]}" \
-          "$3" "$2" < /dev/null >> "$session_log" 2>&1
+          "$2" "$1" < /dev/null >> "$session_log" 2>&1
       else
-        CODEX_HOME=$base/codex-home timeout "$1" "$base/bin/codex" exec \
+        CODEX_HOME=$base/codex-home "$base/bin/codex" exec \
           --skip-git-repo-check -s workspace-write -m "$model" "${body[@]}" \
-          "$2" < /dev/null >> "$session_log" 2>&1
+          "$1" < /dev/null >> "$session_log" 2>&1
       fi ;;
   esac
 }
@@ -144,20 +158,44 @@ opening="It is $(date +%H:%M). Play until $end.${SESSION_NOTE:+ $SESSION_NOTE}$(
 # two minutes.
 min_left=180
 thread=${RESUME_THREAD:-}
+rapid_returns=0
 while :; do
   left=$(( end_at - $(date +%s) ))
-  [ "$left" -lt "$min_left" ] && break
+  if [ "$left" -lt "$min_left" ]; then
+    # Do not start a fresh invocation for the last few minutes. The supervisor
+    # still watches health and takes the body offline at the same deadline.
+    while [ "$(date +%s)" -lt "$end_at" ]; do sleep 1; done
+    break
+  fi
   min_left=420
   calls_before=$(body_calls)
-  # The hard limit is a backstop: the mind is asked to stop itself at the end time.
-  run_mind "$((left + 300))" "$opening" "$thread"
+  run_started=$(date +%s)
+  # The independent supervisor enforces end_at even during startup or a
+  # blocked harness. There is no extra five-minute play allowance.
+  run_mind "$opening" "$thread" &
+  mind_pid=$!
+  wait "$mind_pid"
   status=$?
   # Codex prints the thread id at the top of every run.
-  case $model in claude:*) ;; *) thread=$(grep -a '^session id: ' "$session_log" | tail -n 1 | awk '{print $3}') ;; esac
+  case $model in
+    claude:*) ;;
+    *) found_thread=$(grep -a '^session id: ' "$session_log" | tail -n 1 | awk '{print $3}')
+       thread=${found_thread:-$thread} ;;
+  esac
   echo "run ended with status $status at $(date +%H:%M)${thread:+ (thread $thread)}" >> "$session_log"
-  [ "$status" -ne 0 ] && break
+  if [ "$status" -ne 0 ]; then status=11; break; fi
   # A run that never touched the body would otherwise restart in a tight loop.
-  [ "$(body_calls)" -eq "${calls_before:-0}" ] && break
+  if [ "$(body_calls)" -eq "${calls_before:-0}" ]; then status=3; break; fi
+  case $model in claude:*) ;; *) [ -n "$thread" ] || { status=4; break; } ;; esac
+  # A few calls followed by immediate returns must not burn an overnight run
+  # in a resume loop. This never creates a new Codex thread.
+  if [ "$(( $(date +%s) - run_started ))" -lt 60 ]; then
+    rapid_returns=$((rapid_returns + 1))
+    [ "$rapid_returns" -lt 3 ] || { status=5; break; }
+    sleep 15
+  else
+    rapid_returns=0
+  fi
   if [ -n "$thread" ]; then
     opening="It is $(date +%H:%M) and the session runs until $end. You stopped early; carry on from where you were. If you already said goodbye in chat, no need to say it again.$(memory_note)"
   else

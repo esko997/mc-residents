@@ -8,15 +8,23 @@ until_clock=${1:?usage: overseer-loop.sh <HH:MM> <interval-minutes> <Name:person
 interval=${2:?usage: overseer-loop.sh <HH:MM> <interval-minutes> <Name:persona>...}
 shift 2
 here=$(cd "$(dirname "$0")" && pwd)
-end_at=$(date -d "$until_clock" +%s) || exit 2
-[ "$end_at" -le "$(date +%s)" ] && end_at=$((end_at + 86400))
+end_at=${SESSION_END_AT:-$(date -d "$until_clock" +%s)} || exit 2
+[[ $end_at =~ ^[0-9]+$ && $interval =~ ^[1-9][0-9]*$ ]] || exit 2
+if [ -z "${SESSION_END_AT:-}" ] && [ "$end_at" -le "$(date +%s)" ]; then
+  end_at=$(date -d "tomorrow $until_clock" +%s) || exit 2
+fi
 
 while :; do
   left=$(( end_at - $(date +%s) ))
   [ "$left" -le 0 ] && break
   sleep $(( left < interval * 60 ? left : interval * 60 ))
   for resident in "$@"; do
-    "$here/overseer.sh" "${resident%%:*}" "${resident##*:}" "$interval"
+    left=$(( end_at - $(date +%s) ))
+    [ "$left" -le 0 ] && break
+    timeout --kill-after=5 "$left" "$here/overseer.sh" "${resident%%:*}" "${resident##*:}" "$interval"
     echo "$(date '+%F %H:%M') caretaker for ${resident%%:*} ended with status $?"
   done
+  left=$(( end_at - $(date +%s) ))
+  [ "$left" -le 0 ] && break
+  timeout --kill-after=5 "$left" python3 "$here/knowledge-research.py" >> "$here/last-knowledge-research.log" 2>&1
 done

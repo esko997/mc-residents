@@ -29,7 +29,7 @@ export INSPIRON_NOTE
 INSPIRON_NOTE=$(mktemp)
 export INSPIRON=swatson@192.168.1.69
 export INSPIRON_SSH="ssh -o BatchMode=yes -o ConnectTimeout=10 $INSPIRON"
-status=aborted-before-any-device-access
+status=interrupted-before-exit-status
 release() {
   note=$(tr '\n' ' ' < "$INSPIRON_NOTE" | cut -c1-600)
   rm -f "$INSPIRON_NOTE"

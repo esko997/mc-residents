@@ -89,3 +89,130 @@ CREATE TABLE IF NOT EXISTS positions (
   health REAL, food INTEGER,
   PRIMARY KEY (resident, at)
 ) WITHOUT ROWID;
+
+-- Voluntary agreements. revision covers every transition; accepted_revision is
+-- cleared whenever terms change. Completion and confirmation are human reports.
+CREATE TABLE IF NOT EXISTS collaborations (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('request', 'offer')),
+  sender TEXT NOT NULL COLLATE NOCASE,
+  recipient TEXT COLLATE NOCASE,              -- NULL is public, until someone volunteers
+  project TEXT,
+  terms TEXT NOT NULL,
+  proposer TEXT NOT NULL COLLATE NOCASE,
+  revision INTEGER NOT NULL DEFAULT 1,
+  accepted_revision INTEGER,
+  status TEXT NOT NULL DEFAULT 'proposed'
+    CHECK (status IN ('proposed', 'accepted', 'reported', 'confirmed', 'declined', 'withdrawn')),
+  evidence TEXT,
+  evidence_source TEXT,
+  confirmation TEXT,
+  confirmation_source TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS collaborations_pending ON collaborations(status, updated_at);
+CREATE TABLE IF NOT EXISTS collaboration_history (
+  id INTEGER PRIMARY KEY,
+  collaboration_id INTEGER NOT NULL REFERENCES collaborations(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS collaboration_history_target ON collaboration_history(collaboration_id, id);
+
+-- These are reported facilities, not machine-verified world prerequisites.
+-- Observers cannot change the steward's access terms by reporting new stock.
+CREATE TABLE IF NOT EXISTS facilities (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  purpose TEXT NOT NULL,
+  capabilities_json TEXT NOT NULL,
+  x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
+  dimension TEXT NOT NULL,
+  steward TEXT NOT NULL COLLATE NOCASE,
+  access_terms TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS facility_observations (
+  id INTEGER PRIMARY KEY,
+  facility_id INTEGER NOT NULL REFERENCES facilities(id) ON DELETE CASCADE,
+  facility_revision INTEGER NOT NULL,
+  observer TEXT NOT NULL,
+  condition TEXT NOT NULL,
+  certainty TEXT NOT NULL CHECK (certainty IN ('observed', 'uncertain')),
+  source TEXT NOT NULL,
+  stock_json TEXT,
+  observed_at INTEGER NOT NULL,
+  recorded_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS facility_observations_latest ON facility_observations(facility_id, observed_at DESC, id DESC);
+
+-- Refusing a public invitation is personal: it must not close it for everyone.
+CREATE TABLE IF NOT EXISTS collaboration_declines (
+  collaboration_id INTEGER NOT NULL REFERENCES collaborations(id) ON DELETE CASCADE,
+  resident TEXT NOT NULL COLLATE NOCASE,
+  revision INTEGER NOT NULL,
+  PRIMARY KEY (collaboration_id, resident)
+) WITHOUT ROWID;
+
+-- Guide misses and corrections; caretaker references are never tested skills.
+CREATE TABLE IF NOT EXISTS knowledge_gaps (
+  id INTEGER PRIMARY KEY,
+  normalized_question TEXT NOT NULL,
+  question TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  target TEXT,
+  revision INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','researching','published','unavailable')),
+  occurrences INTEGER NOT NULL DEFAULT 1,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at INTEGER NOT NULL DEFAULT 0,
+  lease_token TEXT,
+  lease_until INTEGER,
+  reason TEXT NOT NULL DEFAULT '',
+  published_revision INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(normalized_question, scope)
+);
+CREATE INDEX IF NOT EXISTS knowledge_gaps_due ON knowledge_gaps(status, next_attempt_at, lease_until);
+CREATE TABLE IF NOT EXISTS knowledge_requests (
+  gap_id INTEGER NOT NULL REFERENCES knowledge_gaps(id) ON DELETE CASCADE,
+  resident TEXT NOT NULL,
+  project TEXT NOT NULL DEFAULT '',
+  occurrences INTEGER NOT NULL DEFAULT 1,
+  seen_revision INTEGER NOT NULL DEFAULT 0,
+  first_at INTEGER NOT NULL,
+  last_at INTEGER NOT NULL,
+  PRIMARY KEY(gap_id, resident, project)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS knowledge_feedback (
+  id INTEGER PRIMARY KEY,
+  gap_id INTEGER NOT NULL REFERENCES knowledge_gaps(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  resident TEXT NOT NULL,
+  target TEXT NOT NULL,
+  verdict TEXT NOT NULL CHECK(verdict IN ('unhelpful','inaccurate')),
+  detail TEXT NOT NULL,
+  at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS knowledge_references (
+  gap_id INTEGER NOT NULL REFERENCES knowledge_gaps(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  prerequisites_json TEXT NOT NULL,
+  controls_json TEXT NOT NULL,
+  sources_json TEXT NOT NULL,
+  caveats TEXT NOT NULL,
+  evidence_json TEXT NOT NULL,
+  model TEXT NOT NULL,
+  published_at INTEGER NOT NULL,
+  PRIMARY KEY(gap_id, revision)
+) WITHOUT ROWID;

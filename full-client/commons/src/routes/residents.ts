@@ -1,4 +1,5 @@
 // Residents panel: who is online, their vitals, units, tokens, and what they see.
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pendingCount } from "../db.ts";
 import { fileSize } from "../notes.ts";
@@ -8,6 +9,21 @@ import type { Sighting } from "../watcher.ts";
 import { refuse, type Context, type Routes } from "./context.ts";
 
 interface UnitState { unit: string; state: string }
+interface SessionHealth {
+  status: string; reason: string; updated_at: number; end_at: number; thread_id: string | null;
+}
+async function sessionHealth(path: string): Promise<SessionHealth | null> {
+  try {
+    const value = JSON.parse(await readFile(path, "utf8"));
+    if (!value || !["starting", "healthy", "degraded", "paused", "stopped", "failed"].includes(value.status)
+      || !Number.isFinite(value.updated_at) || !Number.isFinite(value.end_at)) return null;
+    return {
+      status: value.status, reason: typeof value.reason === "string" ? value.reason.slice(0, 600) : "",
+      updated_at: value.updated_at, end_at: value.end_at,
+      thread_id: typeof value.thread_id === "string" ? value.thread_id : null,
+    };
+  } catch { return null; }
+}
 export interface ResidentsReply {
   now: number; chatUrl: string | null;
   /** Skills and notes waiting for a reviewer. */
@@ -15,7 +31,7 @@ export interface ResidentsReply {
   quota: Quota | null; sampleSeconds: number; pictureSeconds: number;
   /** Units that belong to no single resident. */
   sharedUnits: UnitState[];
-  residents: (Sighting & { name: string; memoryBytes: number | null; units: UnitState[]; tokens: TokenTotals; pictureAt: number | null })[];
+  residents: (Sighting & { name: string; memoryBytes: number | null; units: UnitState[]; tokens: TokenTotals; pictureAt: number | null; sessionHealth: SessionHealth | null })[];
 }
 
 export function residentRoutes({ config, db, watcher, tail, now, readSessions, resident }: Context): Routes {
@@ -31,6 +47,7 @@ export function residentRoutes({ config, db, watcher, tail, now, readSessions, r
         residents: await Promise.all(config.residents.map(async entry => ({
           name: entry.name, ...watcher.sighting(entry.name),
           memoryBytes: await fileSize(join(entry.dir, "memory.md")),
+          sessionHealth: await sessionHealth(join(config.home, "sessions", `${entry.name}-health.json`)),
           units: unitsOf(entry.name), tokens: tail.tokenTotals(entry.name), pictureAt: watcher.pictureAt(entry.name),
         }))),
       };

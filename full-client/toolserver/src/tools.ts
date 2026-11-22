@@ -1,3 +1,5 @@
+import type { Database } from "bun:sqlite";
+import { readFileSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
@@ -11,6 +13,9 @@ import { Skills, skillDefinitions, type SkillRun, type ToolReply } from "./skill
 import { createPlans, planDefinitions, type Plans } from "./plan.ts";
 import { readPlaces, snapshotOf, whatNext } from "./ideas.ts";
 import { guideDefinition, lookupGuide } from "./guides.ts";
+import { openCommons } from "./commons.ts";
+import { createSociety, societyDefinitions, type Society } from "./society.ts";
+import { KnowledgeGaps, guideFeedbackDefinition, guideUpdatesDefinition } from "./knowledge-gaps.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -36,7 +41,7 @@ export const definitions = {
   select_hotbar: { description: "Select hotbar slot 0..8.", schema: z.object({ slot: z.number().int().min(0).max(8) }) },
   eat: { description: "Eat inventory food, moving it to the hotbar if needed; refuses open screens and reports observed food change.", schema: z.object({ item: itemId.optional() }) },
   open_inventory: { description: "Open your own inventory to inspect or move stacks; refuses to replace another screen.", schema: z.object({}) },
-  screen: { description: "Read screen title, non-empty indexed slots, buttons and text boxes.", schema: z.object({}) },
+  screen: { description: "Read screen title, indexed stacks, empty slot indexes, buttons and text boxes. Slot indexes belong to this menu, not your inventory. For modded machines consult guide or picture for slot roles; empty does not mean it accepts every item.", schema: z.object({}) },
   click_slot: { description: "Click a container menu slot; indexes come from screen, not inventory. Mode THROW throws the stack (button 1) or one item (button 0) the way you face; after two seconds anyone can pick it up, you included, so throw toward the receiver and step back.", schema: z.object({ slot: z.number().int().min(-999), button: z.number().int().min(0).max(8).optional(), mode: z.enum(["PICKUP", "QUICK_MOVE", "SWAP", "CLONE", "THROW", "QUICK_CRAFT", "PICKUP_ALL"]).optional() }) },
   click_button: { description: "Press a screen button by label or widget index.", schema: z.union([z.object({ label: z.string().min(1) }).strict(), z.object({ index: z.number().int().nonnegative() }).strict()]) },
   type_text: { description: "Type characters into the open screen (including sign/book editors).", schema: z.object({ text: z.string().max(8192) }) },
@@ -49,6 +54,9 @@ export const definitions = {
   craft: { description: "Craft an item in one call: looks up the recipe, lays it out in the grid and takes the result into your inventory; prefer it to click_slot. Works at an open crafting table (3x3); recipes that fit 2x2 also work with no screen open, because it opens your own inventory itself. count is the number of crafting operations, not items (one craft of sticks gives 4); default 1. The screen stays open afterwards.", schema: z.object({ item: itemId, count: z.number().int().min(1).max(16).optional() }).strict() },
   uses: { description: "Recipes consuming an item id (including matching tags).", schema: z.object({ item: itemId }) },
   guide: guideDefinition,
+  guide_feedback: guideFeedbackDefinition,
+  guide_updates: guideUpdatesDefinition,
+  ...societyDefinitions,
   note_difficulty: { description: "Tell body maintainers what is hard; append dated position and last error to difficulties.md.", schema: z.object({ text: z.string().min(1).max(4000) }) },
   set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
   ...notesDefinitions,
@@ -101,6 +109,10 @@ export class Tools {
   readonly skills: Skills;
   /** His jobs of several steps, written down so the current step survives a summarised context and a restart. */
   readonly plans: Plans;
+  private sharedDb?: Database;
+  private society?: Society;
+  private sharedError = "Shared Knowledge is not configured.";
+  readonly gaps: KnowledgeGaps;
   constructor(readonly body: Body, readonly knowledge?: Knowledge, private knowledgeError = "KNOWLEDGE_DB is not configured.") {
     const { residentDir, name } = body.config;
     this.notes = createNotes({
@@ -110,8 +122,26 @@ export class Tools {
     body.onDeath = death => this.notes.recordDeath(death.pos, death.dimension);
     this.skills = new Skills(body, body.config.commonsDb, (tool, args, signal, run) => this.run(tool, args, signal, run));
     this.plans = createPlans({ residentDir, now: () => this.now() });
+    if (body.config.commonsDb) {
+      try {
+        this.sharedDb = openCommons(body.config.commonsDb);
+        this.society = createSociety({ db: this.sharedDb, resident: name, now: () => this.now() });
+      } catch (error) {
+        this.sharedError = `Shared Knowledge unavailable: ${error instanceof Error ? error.message : "database could not open"}`;
+      }
+    }
+    this.gaps = new KnowledgeGaps(this.sharedDb, name, () => {
+      try {
+        const focus = JSON.parse(readFileSync(join(residentDir, "plan.json"), "utf8")).focus;
+        return typeof focus === "string" ? focus : "";
+      } catch { return ""; }
+    });
   }
-  close() { this.skills.close(); }
+  close() { this.skills.close(); this.society?.close(); this.sharedDb?.close(); }
+  private social(): Society {
+    if (!this.society) throw new Error(this.sharedError);
+    return this.society;
+  }
   get registeredNames(): ToolName[] {
     return (Object.keys(definitions) as ToolName[]).filter(n => this.knowledge || !knowledgeNames.includes(n));
   }
@@ -312,6 +342,8 @@ export class Tools {
         const screen = await api.gui();
         const lines = [`${screen.screen}${screen.title ? `: ${screen.title}` : ""}`];
         if (screen.screenWidth) lines.push(`Size ${screen.screenWidth} x ${screen.screenHeight}`);
+        const empty = screen.container?.slots.filter(slot => !nonempty(slot)).map(slot => slot.slot);
+        if (empty?.length) lines.push(`Empty slots: ${empty.join(", ")}`);
         for (const slot of screen.container?.slots.filter(nonempty) ?? []) lines.push(stackText(slot));
         if (screen.container && screen.container.carried !== "minecraft:air") lines.push(`Cursor: ${screen.container.carried}`);
         for (const widget of screen.widgets ?? []) {
@@ -369,7 +401,9 @@ export class Tools {
         if (/sign/i.test(after.screen)) throw new Error("Text entered, but sign editor is still open; inspect screen before continuing.");
         return `Entered ${args.lines.length} sign lines; editor closed (${done ? "Done" : "ESCAPE"}). Text persistence is server-controlled.`;
       }
-      case "guide": return lookupGuide(args, this.knowledge);
+      case "guide": return lookupGuide(args, this.knowledge, this.gaps);
+      case "guide_feedback": return this.gaps.feedback(args);
+      case "guide_updates": return this.gaps.updates(args);
       case "find_item": case "recipes": case "uses": {
         if (!this.knowledge) throw new Error(`Knowledge unavailable: ${this.knowledgeError}`);
         if (tool === "find_item") return this.knowledge.findItems(args.query, 12).map(i => `${i.id}${i.name ? ` — ${i.name}` : ""}`).join("\n") || "No matching items.";
@@ -408,6 +442,13 @@ export class Tools {
       case "note_share": return this.skills.noteShare(args);
       case "notes_shared": return this.skills.notesShared(args);
       case "feedback": return this.skills.feedback(args);
+      case "collaborate": return this.social().collaborate(args);
+      case "collaboration_update": return this.social().update(args);
+      case "collaboration_show": return this.social().show(args);
+      case "facility_register": return this.social().register(args);
+      case "facility_update": return this.social().updateFacility(args);
+      case "facility_observe": return this.social().observe(args);
+      case "facility_show": return this.social().showFacility(args);
       case "plan_set": return this.plans.set(args);
       case "plan_step": return this.plans.step(args);
       case "plan_show": return this.plans.show(args);
@@ -415,7 +456,9 @@ export class Tools {
       case "plan_finish": return this.plans.finish(args);
       case "what_next": {
         const [state, saved, plan] = await Promise.all([api.state(true), readPlaces(body.config.residentDir), this.plans.focused().catch(() => undefined)]);
-        return whatNext(snapshotOf(state, { now: this.now(), ...saved, plan, knowledge: this.knowledge }));
+        const society = this.society?.snapshot({ project: plan?.name, needs: [plan?.goal, plan?.needs].filter(Boolean).join(" "), dimension: state.dimension });
+        const reply = whatNext(snapshotOf(state, { now: this.now(), ...saved, plan, knowledge: this.knowledge, society }));
+        return !this.society && body.config.commonsDb ? `${reply}\n${this.sharedError}; shared facilities and agreements could not be checked.` : reply;
       }
       case "set_reflexes":
         Object.assign(body.reflexes, args);

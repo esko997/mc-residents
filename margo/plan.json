@@ -3,34 +3,140 @@
   "plans": [
     {
       "name": "Settle by the stream",
-      "goal": "Build a reliable home base with renewable food, a bed, and a small lit house.",
-      "why": "I need a safe place and food before deeper machine work.",
+      "goal": "Establish dependable food and a safe home base, including shared facilities",
+      "why": "A secure base supports the settlement and leaves time for engineering",
+      "done_when": "I have harvested and replanted renewable food or confirmed dependable shared access, slept in an available bed, and checked an enclosed lit shelter with accessible storage.",
+      "needs": "Renewable crop or poultry access, an available bed, a lit shelter with storage, and agreement for shared facilities.",
+      "with": [
+        "Gary"
+      ],
       "steps": [
         {
-          "text": "Harvest my ripe wheat and replant; expand my stream-side field toward 20 crops.",
-          "state": "doing",
-          "note": "My saved crop now looks mature; harvest only my tile and replant it."
+          "text": "Check starter animals and agree on any shared essentials with Gary.",
+          "state": "done",
+          "note": "Checked starter area and ridges with no sightings; Gary explicitly opened his stream field and lit cabin and offered to seek wool and feed."
         },
         {
-          "text": "Find a renewable food source I can use without disturbing Gary's garden.",
-          "state": "todo"
+          "text": "Harvest and replant available food and establish a renewable supply.",
+          "state": "done",
+          "note": "Harvested mature wheat with empty hand and collected wheat. Verified the replanted stream tile back at 0%. Gary confirmed continuing access to his wheat rows."
         },
         {
-          "text": "Gather wool and planks, craft a bed, and save its place.",
-          "state": "todo"
+          "text": "Secure access to a bed and sleep in it.",
+          "state": "blocked",
+          "note": "Bed set my respawn on first use. On the final check the game explicitly said sleep is only possible at night or during thunderstorms. Sky stayed clear and bright."
         },
         {
-          "text": "Build a small lit house with a door and chest on open land.",
-          "state": "todo"
+          "text": "Verify enclosed lit shelter and accessible storage.",
+          "state": "done",
+          "note": "Entered Gary's cabin with permission; verified roof and interior lighting and opened the birch chest normally."
         },
         {
-          "text": "Check that food, bed, and house are all established; update my notes.",
-          "state": "todo"
+          "text": "Check continued food and shelter access in the world.",
+          "state": "done",
+          "note": "Verified the same stream tile matured after the early harvest, harvested and replanted it a second time, and made more bread. Cabin chest opened again and held shared supplies."
         }
       ],
       "created": 1795289285276,
-      "moved": 1795291307069
+      "moved": 1795310347076
+    },
+    {
+      "name": "Breed pigs at the west bank",
+      "goal": "Start a shared breeding herd by the stream",
+      "why": "A fenced breeding pair gives the settlement renewable food once the herd grows",
+      "done_when": "Two live adult pigs are together behind the closed gate, breeding consumes feed and yields a visible piglet, and a planted root crop is available for later feed.",
+      "needs": "A carrot, potato, or beetroot and two adult pigs within luring distance.",
+      "with": [
+        "Gary"
+      ],
+      "steps": [
+        {
+          "text": "Scout two pigs and finish a lit pen with a working gate.",
+          "state": "done",
+          "note": "Saw two distinct pigs. Verified 13 connected birch fences, a torch, and a north gate I opened, walked through, and closed."
+        },
+        {
+          "text": "Plant a root crop and reserve two feed items after replanting.",
+          "state": "todo"
+        },
+        {
+          "text": "Lure two adults into the pen and close the gate.",
+          "state": "todo"
+        },
+        {
+          "text": "Feed both adults and verify a piglet.",
+          "state": "todo"
+        }
+      ],
+      "created": 1795308216193,
+      "moved": 1795308216201
+    },
+    {
+      "name": "Build a shared Coke Oven",
+      "goal": "Make and operate an Immersive Engineering Coke Oven for coal coke and creosote.",
+      "why": "Coal coke opens the steel path and creosote makes treated wood for useful workshop infrastructure.",
+      "done_when": "A formed Coke Oven processes coal and I collect its coal coke and draw creosote with the proper container.",
+      "needs": "Engineer’s hammer, 27 Coke Bricks, coal, a container for creosote, and a clear workshop site. Nine brick crafts need 72 clay balls total and 9 sandstone; Gary found clay and a sand bank.",
+      "with": [
+        "Gary"
+      ],
+      "steps": [
+        {
+          "text": "Smelt north ridge iron and craft the engineer’s hammer.",
+          "state": "done",
+          "note": "Mined three raw iron and four coal on the north ridge. Smelted all three iron in the shared furnace and crafted the engineer’s hammer with two ingots, flax string, and two sticks."
+        },
+        {
+          "text": "Harvest sand and clay, then make 27 Coke Bricks.",
+          "state": "doing",
+          "note": "Verified hammer, 2 coal and Gary’s 24 clay balls in cabin chest. His dry south ravine tunnel and west ridge sand bank are marked. Need 48 more clay balls and enough sand for 9 sandstone."
+        },
+        {
+          "text": "Agree on a clear workshop site and form the oven.",
+          "state": "todo"
+        },
+        {
+          "text": "Process coal and verify the coke and creosote outputs.",
+          "state": "todo"
+        }
+      ],
+      "created": 1795310585673,
+      "moved": 1795310811700
     }
   ],
-  "history": []
+  "history": [
+    {
+      "name": "Start a shared chicken flock",
+      "goal": "Establish a breeding flock in the shared west-bank pen.",
+      "why": "A renewable supply of eggs and chickens feeds the settlement and keeps the wild stock alive.",
+      "done_when": "Two adults and a chick remain in the closed pen after both players leave the enclosure and put away their seeds, with at least one egg produced inside.",
+      "needs": "Two adult chickens, wheat seeds, the enclosed pen with a middle divider and room to lure birds beyond the entrances.",
+      "with": [
+        "Gary"
+      ],
+      "evidence": "After feeding a seed to each adult, a breeding advancement fired and a chick appeared. I saw an egg on the pen floor. Gary and I exited. With an empty hand I saw both adults and the chick behind the closed south gate and divider. Gary confirmed the outer north gate closed.",
+      "unlocks": "Shared egg collection and a breeding flock. Keep two adults and close the divider between the flock and any exterior gate in use.",
+      "steps": [
+        {
+          "text": "Build and test a pen with a separate exit compartment.",
+          "state": "done",
+          "note": "After a chicken followed me out, I closed the middle gate before opening the opposite exterior gate and verified it stayed inside."
+        },
+        {
+          "text": "Bring one adult from each side of the valley and feed both seeds.",
+          "state": "done",
+          "note": "I led the north ridge adult and Gary led the east clearing adult. We fed one seed each and watched a chick appear."
+        },
+        {
+          "text": "Check both adults, the chick, and an egg with the players outside and the gates shut.",
+          "state": "done",
+          "note": "Observed an egg on the enclosed grass. After Gary exited north I saw two adults and a chick on the south grass with all gates shut and my hand empty."
+        }
+      ],
+      "created": 1795310183749,
+      "moved": 1795310202229,
+      "ended": 1795310209808,
+      "outcome": "done"
+    }
+  ]
 }

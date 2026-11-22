@@ -4,6 +4,12 @@
     {
       "name": "Stream homestead",
       "goal": "Make the stream homestead a dependable place to eat, sleep and store supplies.",
+      "why": "A working home and renewable food give me a base for sharing crops and helping build the settlement.",
+      "done_when": "A wheat harvest has been replanted, at least twenty watered crop tiles are established, and I have slept in a bed in the lit cabin with a working door and storage. The field and stair approach are marked.",
+      "needs": "Use the shared white bed at night. Gary and Margo both set their respawn here. The sun stayed in the east during repeated checks, and the bed did not allow sleep.",
+      "with": [
+        "Margo"
+      ],
       "steps": [
         {
           "text": "Harvest and replant ripe stream wheat to grow the seed supply.",
@@ -13,12 +19,12 @@
         {
           "text": "Plant at least twenty crops by water.",
           "state": "done",
-          "note": "Seventeen new wheat plus four original tiles verified, all within four blocks of stream water."
+          "note": "Verified at least 21 watered crop tiles. Added a waterlogged birch slab to the east strip and saw the previously pale soil beside it turn dark."
         },
         {
           "text": "Make and place a bed in the cabin, then sleep in it.",
           "state": "blocked",
-          "note": "Need three wool. Hemp and flax are planted for string. No sheep seen on scouts."
+          "note": "White bed placed. Gary and Margo set their respawn here. Repeated daylight checks never allowed actual sleep. Try the bed after dusk."
         },
         {
           "text": "Check the cabin shell and door, light the interior, and add a chest.",
@@ -32,7 +38,7 @@
         }
       ],
       "created": 1795289274891,
-      "moved": 1795292471334
+      "moved": 1795310830959
     }
   ],
   "history": [

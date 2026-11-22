@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { nonempty, type Position, type Stack, type State } from "./synapse.ts";
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 import { span, type PlanFocus } from "./plan.ts";
+import { beneficiaryOf, performerOf, type SocietySnapshot } from "./society.ts";
 import { z } from "zod";
 
 /**
@@ -30,6 +31,8 @@ export interface Snapshot {
   plan?: PlanFocus;
   /** Recipes of this modpack; without it the rules use the vanilla recipes written beside them. */
   knowledge?: Pick<Knowledge, "recipesFor" | "itemsInTag">;
+  /** Bounded resident reports, never machine-verified prerequisites. */
+  society?: SocietySnapshot;
 }
 export interface Rule {
   id: string;
@@ -231,6 +234,46 @@ export const rules: Rule[] = [
     },
   },
   {
+    id: "collaboration", priority: 80,
+    suggest(view) {
+      const { society, plan } = view.snapshot;
+      if (!society) return undefined;
+      const me = society.resident.toLowerCase();
+      const relevant = society.collaborations.filter(c => ["proposed", "accepted", "reported"].includes(c.status));
+      const c = relevant.find(c => c.project?.toLowerCase() === plan?.name.toLowerCase()) ?? relevant[0];
+      if (!c) return undefined;
+      const beneficiary = beneficiaryOf(c)?.toLowerCase() === me, performer = performerOf(c)?.toLowerCase() === me;
+      const lead = `Collaboration #${c.id} r${c.revision}${c.project ? ` for "${c.project}"` : ""}`;
+      if (c.status === "reported") return beneficiary
+        ? `${lead}: completion reported, not verified. Inspect the result before confirming with your own evidence/source. ${c.evidence?.slice(0, 100) ?? ""}`
+        : `${lead}: your completion report awaits recipient confirmation; no need to idle. Continue another useful action.`;
+      if (c.status === "accepted") return performer
+        ? `${lead}: agreed dependency/help, not completed. ${c.terms.slice(0, 110)} Report observed evidence only after doing it.`
+        : `${lead}: help agreed, not completed or a verified prerequisite. Check progress with your neighbour; continue independent work.`;
+      return c.proposer.toLowerCase() === me
+        ? `${lead}: your terms await agreement, not an assignment. Continue independent work while your neighbour chooses.`
+        : `${lead}: voluntary ${c.kind}; accept, decline or counter only for yourself. ${c.terms.slice(0, 125)}`;
+    },
+  },
+  {
+    id: "facility", priority: 74,
+    suggest(view) {
+      const { society, plan, dimension, food } = view.snapshot;
+      if (!society) return undefined;
+      const words = (plan ? `${plan.needs ?? ""} ${plan.goal} ${plan.current?.text ?? ""}` : "").toLowerCase().match(/[a-z0-9_]{3,}/g) ?? [];
+      const relevant = words.filter(w => !["the", "and", "for", "with", "from", "need", "have", "own"].includes(w));
+      if (food < 12 || !view.edible().total) relevant.push("food", "bread", "farm");
+      if (view.carried(id => /^raw_/.test(pathOf(id)) || id.endsWith("_ore")).total) relevant.push("smelt", "furnace");
+      if (view.snapshot.carried.filter(nonempty).length >= inventorySlots - 3) relevant.push("storage", "chest");
+      const facilities = society.facilities.filter(f => f.dimension === dimension);
+      const f = facilities.find(f => relevant.some(word => `${f.name} ${f.purpose} ${f.capabilities.join(" ")}`.toLowerCase().includes(word)));
+      if (!f) return undefined;
+      const condition = f.observation?.freshness ?? "unobserved";
+      // Safety/access caveats precede optional detail, so bounded replies cannot hide them.
+      return `Reported facility #${f.id} "${f.name}" (${condition}, not verified). Inspect first; counts are not live. Read facility_show for full access terms. Steward ${f.steward}; ${f.capabilities.join(", ").slice(0, 50)} at ${amount(f.x)},${amount(f.y)},${amount(f.z)}.`;
+    },
+  },
+  {
     id: "smelt_ore", priority: 70,
     suggest(view) {
       const edible = new Set(view.edible().kinds.map(([id]) => id));
@@ -354,7 +397,7 @@ export function whatNext(snapshot: Snapshot, table: Rule[] = rules, limit = 1300
 }
 
 /** A snapshot of the body as Synapse reports it; the caller adds what the stores know. */
-export function snapshotOf(state: State, rest: Pick<Snapshot, "now" | "places" | "deaths" | "plan" | "knowledge">): Snapshot {
+export function snapshotOf(state: State, rest: Pick<Snapshot, "now" | "places" | "deaths" | "plan" | "knowledge" | "society">): Snapshot {
   if (!state.inventory) throw new Error("Synapse did not provide inventory.");
   return {
     ...rest, health: state.health, food: state.food, pos: state.pos, dimension: state.dimension,

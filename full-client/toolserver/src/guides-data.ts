@@ -22,10 +22,50 @@ const breeding = "https://minecraft.wiki/w/Breeding";
 const mekanism = "https://wiki.aidancbrady.com/wiki/Tutorials/Getting_Started";
 const refined = "https://refinedmods.com/refined-storage/v1.13.0-beta.4/";
 const engineering = "installed immersiveengineering:manual (10.2.0-183)";
+const mining = "https://minecraft.wiki/w/Tutorial:Mining";
+const oreDistribution = "https://www.minecraft.net/en-us/article/caves---cliffs--part-ii-out-today-java";
 const timers = "After breeding, adults have a 5-minute cooldown; babies take about 20 minutes to grow while ticking. Babies cannot breed. Feeding babies speeds growth, not breeding. Preserve at least two adults of each species; harvest only surplus adults after replacements grow.";
 const feeding = "Body: status gives nearby animal positions. Move within reach, select_hotbar with the food, look toward the animal's current coordinates, then use once on each adult. Coordinate look aims at a block centre, not an entity lock: picture/yaw/pitch may be needed for small or moving animals. Never attack to feed. Confirm food consumption and a baby, not just 'Used'.";
 
 export const referenceGuides: readonly ReferenceGuide[] = [
+  {
+    id: "mining", title: "Safe underground mining and ore supply",
+    aliases: ["mining", "ore", "ores", "ore mining", "mining for ore", "mine ore", "underground", "staircase", "dig down", "branch mining", "strip mining", "digging", "mine ores", "mine iron", "mine copper", "mine coal", "mine diamonds", "mine redstone", "iron ore", "copper ore", "diamond ore", "osmium ore", "mine osmium"],
+    scope: "Java 1.20.1 baseline; pack/worldgen overrides possible; reference, not a tested excavation skill",
+    source: mining,
+    sections: [
+      { id: "overview", title: "Make a returnable mine, not an aimless search", paragraphs: [
+        "Surface ore is useful, but a deliberately developed mine can supply iron, redstone and other machine inputs. Choose a resource and a small haul tied to a project; prepare, establish a lit route down, gather, and bring it home. An accessible cave is one option; a staircase you excavate is another. Neither requires jumping into a ravine.",
+        "Use preparation before leaving; staircase for a controlled descent; branches for a horizontal mine; depths for choosing a layer; controls for body-tool limitations. Do not dig directly beneath your feet or straight overhead. Preserve unclaimed-ground boundaries and other people's foundations, fields and infrastructure."
+      ] },
+      { id: "preparation", title: "Supplies and a route home", aliases: ["prepare", "supplies", "equipment", "safety", "safe"], paragraphs: [
+        "Bring a suitable pickaxe plus a spare, food sufficient for the return, torches, wood, solid building blocks and protection. Keep replacement tools/food at home instead of carrying every valuable possession. A water bucket is useful in the Overworld but is not automatic fall/lava protection; the bucket rescue is off by default.",
+        "Stone-or-better mines vanilla iron/copper; iron-or-better is needed for gold, diamond and redstone; diamond-or-better for obsidian. Check modded tool requirements rather than guessing from colour. Low durability, insufficient food/light, a full inventory or a dangerous opening are reasons to return or change route, not press deeper.",
+        "Save the entrance and important junctions with place_save. Use consistent torch-side markers plus signs/arrows; torch placement is a convention, not a navigational sensor. Light new passages, block off unsafe branches, and actually walk the return route before declaring it usable."
+      ] },
+      { id: "staircase", title: "Descend with a walkable way back", aliases: ["stairs", "staircase", "descend", "dig down"], paragraphs: [
+        "On unclaimed ground, work from a stable landing. Excavate ahead and one level lower to form steps; leave solid support under the next step and enough headroom to walk and jump back up. Work beside the blocks being broken, never standing on the block you are removing. Never open an overhead gravel/sand column while directly beneath it.",
+        "After each short section, inspect the new floor, ceiling and side openings. Stop before entering a drop, lava/water flow, dark cavern or mob group. Light the route and make intermediate landings; check that you can climb back. A staircase may need to bend or stop rather than continue through a hazard or someone's build.",
+        "Body controls cannot promise a staircase shape. See controls for careful manual excavation. If aiming, movement or breaking cannot reliably preserve a safe step, use an accessible cave or report the missing control with note_difficulty rather than blindly sending go_to far underground."
+      ] },
+      { id: "branches", title: "A horizontal mine that can be reused", aliases: ["branch", "branch mining", "strip", "strip mining", "tunnel"], paragraphs: [
+        "At a chosen depth, make a lit main corridor with a solid floor and at least two blocks of headroom. Cut short side branches with a few solid blocks between them; a large cleared room is not necessary just to expose ore. Keep exits identifiable and inspect each opening before advancing.",
+        "Follow a discovered vein from safe footing without removing your support or standing below a falling ceiling. Stop before a cave, fluid or hostile area and assess it separately. Bank the haul, replenish supplies, and mark useful levels/branches so the next trip starts from established access.",
+        "A shared mine is infrastructure: record its entrance, destination levels, route condition, hazards and access terms with facility_register/facility_observe when useful. An old report is not proof it remains safe. There is no duty to excavate endlessly or harvest every resource."
+      ] },
+      { id: "depths", title: "Choose a level for the resource", aliases: ["depth", "depths", "level", "levels", "height", "ore distribution"], source: oreDistribution, paragraphs: [
+        "Vanilla post-1.18 guidance applicable to 1.20.1: underground iron is concentrated around Y=16; high mountains are another iron source. Copper is concentrated around Y=48 and is plentiful in dripstone caves. Coal is a higher-elevation resource, not something to rely on finding in deep deepslate. These are distributions, not guaranteed deposits.",
+        "Diamond and redstone become more common deep below zero. Very low branches around Y=-58/-59 are a later, equipped option, not a first-day requirement: deepslate is slower to mine, lava and bedrock complicate access, and an exposed ore does not make the path safe. Do not use the old pre-1.18 'Y=11 for everything' advice.",
+        "This modded server can override generation. Mekanism 10.4.16.80's installed ore placement data uses configurable heights, so do not invent an osmium/tin best level from generic current wiki advice. Record actual finds, use find_item for exact block IDs, and request a version/pack-specific guide when needed. Stone and deepslate ore variants have different block IDs; raw iron is an item, not the block to search for."
+      ] },
+      { id: "controls", title: "Survey, excavate, observe", aliases: ["body", "controls", "mine", "find block"], paragraphs: [
+        "status reports your current Y. find_block {block:'minecraft:iron_ore',radius:32} searches nearby loaded terrain without moving; query deepslate_iron_ore separately where appropriate. It can find buried blocks, not just exposed faces. It does not force-load distant chunks, prove a safe route, or establish that an unsearched area has no ore.",
+        "mine {block:'minecraft:iron_ore',count:8,radius:16} is an example of bounded gathering near your starting position, not a staircase builder. It can dig an undesired route and count item gains rather than exactly eight broken blocks. Watch status/inventory and stop if the route becomes unsafe. For unknown modded drops, the requested count may not stop it; inspect inventory and stop yourself.",
+        "For a precise passage: stop navigation, select a suitable pickaxe, look at the intended reachable block, check what is actually in your sights, then use a bounded attack hold and inspect the result. A held attack can continue onto blocks behind the first; do not assume one hold removes exactly one block. Use picture/status and short go_to steps only after the new floor and headroom are known traversable.",
+        "A guessed deep go_to may excavate an uncontrolled route; a huge mine radius is not an expedition plan. Automatic rescues do not guarantee survival. Save a reusable mining skill only after its body sequence and a return trip succeed, with explicit limits and observed results."
+      ] },
+    ],
+  },
   {
     id: "husbandry", title: "Breeding and renewable animal products",
     aliases: ["animals", "animal farming", "breeding", "breed", "husbandry", "livestock", "cow", "cows", "cattle", "sheep", "wool", "pig", "pigs", "chicken", "chickens"],
@@ -110,8 +150,15 @@ export const referenceGuides: readonly ReferenceGuide[] = [
     source: mekanism,
     sections: [
       { id: "overview", title: "A working first infuser", paragraphs: [
-        "Start with iron, redstone, osmium and a furnace. Look up recipes {item:'mekanism:metallurgic_infuser'} and recipes {item:'mekanismgenerators:heat_generator'}. Generators is installed here. Craft both, place the generator beside the infuser's energy-input side, fuel it and verify the infuser gains energy; this bootstraps before steel cables.",
-        "The infuser unlocks steel, alloys and circuits. First demonstrate one output before building more machines. Read components for steel/alloys, power for connections, and branches for goal-driven expansion; these are options, not a universal linear tech tree."
+        "Start with iron, redstone, osmium and furnaces. Look up recipes {item:'mekanism:metallurgic_infuser'} and recipes {item:'mekanismgenerators:heat_generator'}. Generators is installed here. The Heat Generator's FRONT/output face must touch the infuser; merely placing them beside one another can leave it unpowered. This bootstraps before steel cables.",
+        "The infuser unlocks steel, alloys and circuits. First demonstrate one output before building more machines. Read first-output for a locally verified body sequence, components for steel/alloys, power for diagnosis, and branches for goal-driven expansion; these are options, not a universal linear tech tree."
+      ] },
+      { id: "first-output", title: "Verified bootstrap: one infused alloy", aliases: ["first output", "first alloy", "bootstrap", "machine workflow"], paragraphs: [
+        "Local pack test, 2026-11-21: resident controls crafted, placed and fuelled a Heat Generator beside a Metallurgic Infuser, inserted redstone and iron, and retrieved one mekanism:alloy_infused. This verifies this small workflow, not every machine or a reusable automated skill.",
+        "Prepare a safe flat work area and a crafting table. The tested recipes used three furnaces (24 cobblestone), 7 iron ingots, 2 copper ingots, 2 osmium ingots, 2 redstone and 2 planks for the machines; reserve another iron ingot and redstone for processing, plus coal fuel. A table itself costs another 4 planks. Inspect installed recipes before spending materials.",
+        "Choose adjacent cells G for the generator and I for the infuser. Place G FIRST while standing on the I side and looking back toward G; its front faces you. Then step aside and place I against that front. Example: with I east of G, place G while looking west. Our first attempt with the generator facing away stored energy but supplied none to the infuser. Correct orientation worked without a cable or changed side settings.",
+        "Use look/use to open the generator, then screen. QUICK_MOVE the coal stack from the PLAYER portion of this current menu; check that it entered the machine. close_screen, open the infuser, and QUICK_MOVE redstone and the spare iron from its player slots. Redstone may vanish into the infusion buffer immediately; that is not a missing item. Never reuse slot indexes from another menu.",
+        "Inspect screen/picture until the output contains mekanism:alloy_infused. QUICK_MOVE that observed output slot, close_screen, then inventory must show the alloy. If nothing processes, inspect power/front orientation, infusion type, input and output space instead of adding more materials blindly. Save a skill or register a working facility only after the output check. A Heat Generator is a small starter, not guaranteed power for a whole workshop."
       ] },
       { id: "components", title: "Steel, alloy and circuit dependencies", aliases: ["steel", "alloy", "alloys", "circuit", "circuits", "infuser"], paragraphs: [
         "1. Infuser needs energy, a primary item and the correct infusion material. Coal/charcoal supplies carbon. Infuse iron into mekanism:enriched_iron, infuse that again with carbon into mekanism:dust_steel, then smelt the dust. recipes on each output gives quantities/type, not a crafting-table recipe.",

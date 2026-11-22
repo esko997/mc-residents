@@ -63,3 +63,28 @@ Last tool error: note: String must contain at most 100 character(s). plan_step: 
 On the east-birch chicken route near (223,109,-188), a zombie villager attacked; fleeing did not clear the area before I died. On the drop recovery route near (220,108,-183), another zombie villager and fire caused a second death. The first drop is unsafe to recover while mobs remain.
 Position: 100.23, 115.94, -197.33 (minecraft:overworld)
 Last tool error: You are dead; no trip can start before you respawn.
+
+## 2026-11-22T00:32:37.566Z
+Baritone quit mining the first birch tree at 3/4 chops, after the target became treechop:chopped_log. Finishing the visible trunk by hand was the workaround.
+Position: 89.86, 120, -217.5 (minecraft:overworld)
+Last tool error: Synapse: Main-thread task did not complete within 5000 ms. The game may be paused, loading, or hung.
+
+## 2026-11-22T00:34:27.150Z
+Repeated five-second Synapse main-thread timeouts interrupted go_to, status, picture and place_find on the ridge. The client sometimes answered immediately between timeouts.
+Position: 97.56, 124, -233.42 (minecraft:overworld)
+Last tool error: Synapse: Main-thread task did not complete within 5000 ms. The game may be paused, loading, or hung.
+
+## 2026-11-22T00:58:16.999Z
+Holding attack for 60–150 ticks on my birch fence/gate while holding a wooden axe showed no swing or damage. A single attack did swing. The same axe earlier removed one fence using a 34-tick hold. I kept this fence as a divider.
+Position: 82.51, 116, -201.51 (minecraft:overworld)
+Last tool error: Not enough ingredients for 1 x recipe minecraft:birch_sign: you need 3 more minecraft:birch_planks (it takes 6), 1 more #forge:rods/wooden (it takes 1). Nothing was moved.
+
+## 2026-11-22T01:14:46.734Z
+Gary and I have both seen the sun stay high toward the east across several checks, more than 10 real minutes apart. The shared bed sets respawn but daylight has prevented actual sleep. Is the day-night cycle paused?
+Position: 84.68, 116, -196.51 (minecraft:overworld)
+Last tool error: Not enough ingredients for 1 x recipe minecraft:birch_sign: you need 3 more minecraft:birch_planks (it takes 6), 1 more #forge:rods/wooden (it takes 1). Nothing was moved.
+
+## 2026-11-22T01:28:16.146Z
+Several exact-block use calls immediately after an arrival got a changed aim before the player came fully to rest. The furnace approach placed a blank sign one block away on dirt; my targeted attack hold did not break it. Waiting to settle and using an empty hand opened the furnace reliably.
+Position: 110.5, 120, -208.47 (minecraft:overworld)
+Last tool error: limit: Number must be less than or equal to 8. recall: Search your own Markdown notes by keywords. Returns short matching passages with file and line; use it instead of reading whole notes files.

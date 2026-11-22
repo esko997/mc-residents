@@ -90,6 +90,16 @@ test("the same routing holds over a real socket", async () => {
   } finally { await server.stop(true); }
 });
 
+test("resident pause/deadline state comes from launcher sessions, not Codex transcripts", async () => {
+  const health = { status: "paused", reason: "Body unreachable for 60 seconds", updated_at: clock / 1000, end_at: clock / 1000 + 3600, thread_id: "resume-this-thread" };
+  home.put("sessions/Gary-health.json", JSON.stringify(health));
+  home.put("codex-home/sessions/Gary-health.json", JSON.stringify({ ...health, status: "healthy" }));
+  start();
+  expect((await api("residents")).residents[0].sessionHealth).toEqual(health);
+  home.put("sessions/Gary-health.json", "{partial");
+  expect((await api("residents")).residents[0].sessionHealth).toBeNull();
+});
+
 test("a resident whose client is down is shown offline, and every panel still answers", async () => {
   addMargo();
   home.put("resident/gary/memory.md", fixture("memory.md"));

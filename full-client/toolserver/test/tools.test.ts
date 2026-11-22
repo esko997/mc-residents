@@ -280,6 +280,7 @@ describe("reflexes and interactions", () => {
     const flax = Array.from({ length: 20 }, (_, i): [number, number, number] => [-40 - i, 44, -40 - i]);
     const f = await fixture({ commonsDb: join(commonsDir, "commons.sqlite"), blocks: { "supplementaries:wild_flax": flax } }); f.state.inventory!.main = Array.from({ length: 36 }, (_, slot) => ({ slot, count: 64, item: `mekanism:very_long_modded_material_stack_${slot}` }));
     await writeFile(join(f.dir, "memory.md"), Array.from({ length: 60 }, (_, i) => `- bread note ${i} ${"n".repeat(200)}`).join("\n"));
+    const facility = { name: "n".repeat(60), purpose: "p".repeat(160), capabilities: Array.from({ length: 8 }, (_, i) => `${i}${"c".repeat(47)}`), x: 100, y: 64, z: -200, dimension: "minecraft:overworld", access_terms: "a".repeat(200) };
     const argumentsByTool: Record<string, unknown> = {
       wait: { seconds: 1 }, go_to: { x: 10, z: 10 }, mine: { block: "minecraft:stone" }, find_block: { block: "supplementaries:wild_flax", radius: 96, limit: 16 },
       follow: { player: "Levi" }, say: { text: "hello" }, look: { yaw: 0, pitch: 0 },
@@ -288,6 +289,13 @@ describe("reflexes and interactions", () => {
       type_text: { text: "hello" }, press_key: { key: "ENTER" }, write_sign: { lines: ["hello"] },
       find_item: { query: "bread" }, recipes: { item: "minecraft:bread" }, uses: { item: "minecraft:bread" },
       guide: { query: "bread" }, craft: { item: "minecraft:bread" }, note_difficulty: { text: "test" },
+      guide_feedback: { target: "survival", query: "q".repeat(200), verdict: "unhelpful", detail: "d".repeat(600) },
+      guide_updates: {},
+      collaborate: { kind: "offer", recipient: "Margo", project: "p".repeat(40), terms: "t".repeat(400) },
+      collaboration_update: { id: 1, revision: 1, action: "withdraw" }, collaboration_show: { id: 1 },
+      facility_register: facility, facility_update: { id: 1, revision: 1, ...facility },
+      facility_observe: { id: 1, condition: "c".repeat(240), certainty: "observed", source: "s".repeat(200), stock: Array.from({ length: 12 }, (_, i) => ({ item: `${i}${"i".repeat(79)}`.slice(0, 80), count: 1_000_000 })) },
+      facility_show: { id: 1 },
       recall: { query: "bread", limit: 8 }, place_save: { name: "home", note: "n".repeat(120) }, place_find: {},
       place_remove: { name: "home" },
       // Saved first, so the tools after it have a long skill, a long log and a long note to show.
@@ -310,7 +318,7 @@ describe("reflexes and interactions", () => {
       for (let i = 0; i < 20; i++) f.body.events.add("chat", { from: "spesk01", text: "a".repeat(500) });
       const result = await f.tools.call(tool, argumentsByTool[tool] ?? {});
       // The long skill's check cannot pass here; its report is still a complete, capped reply.
-      if (!["find_item", "recipes", "craft", "uses", "skill_run"].includes(tool)) expect(result.isError).toBe(false);
+      if (!["find_item", "recipes", "craft", "uses", "skill_run"].includes(tool)) expect({ tool, isError: result.isError }).toEqual({ tool, isError: false });
       expect(text(result).length).toBeLessThan(1500); expect(text(result)).toContain("Since last time:");
     }
   });
@@ -1005,4 +1013,21 @@ describe("meals and idle screens", () => {
     f.tick(30000); await f.body.poll();
     expect(reflexLines(f.body.events.consume()).at(-1)).toBe("closed FurnaceScreen (no action for 30 s) to eat; Meal not started: minecraft:oak_trapdoor is directly overhead and the meal would use it instead. Nothing was used. Auto-eat retries in 10 s.");
   });
+});
+
+test("screen exposes empty machine inputs beside occupied menu slots", async () => {
+  const f = await fixture();
+  f.setScreen({
+    screen: "GuiMetallurgicInfuser", title: "Metallurgic Infuser",
+    container: { carried: "minecraft:air", slots: [
+      { slot: 0, item: "minecraft:air", count: 0 },
+      { slot: 1, item: "minecraft:redstone", count: 4 },
+      { slot: 2, item: "minecraft:air", count: 0 },
+      { slot: 4, item: "minecraft:iron_ingot", count: 3 },
+    ] },
+  });
+  const reply = text(await f.tools.call("screen"));
+  expect(reply).toContain("Empty slots: 0, 2");
+  expect(reply).toContain("redstone");
+  expect(reply).toContain("iron_ingot");
 });

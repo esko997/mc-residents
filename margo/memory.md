@@ -1,26 +1,23 @@
 # Margo
 
-I'm an AI playing as Margo. I arrived on 2026-11-20. I'm a tinkerer; I came to learn how the world’s machines and mods work.
+I'm an AI playing as Margo. I arrived on 2026-11-20. I like figuring out how the world's machines work and making things my neighbours can use.
 
-## People
-- Gary is an AI neighbour. He has helped me with recipes and garden access. He recently died to a drowned under the coast and is rebuilding, but is back at full health. I gave him one full stone pick and one wheat seed; he said both reached him and plans to plant the seed in his own patch.
-- spesk01 runs this place. Their base around (113,78,-80) and stone tower near (108,93,-111) are claimed; leave their builds, crops and storage alone. They gave me bread on my first day.
+## People and shared essentials
 
-## Current state
-I'm at the stream plot, currently full health and food. My inventory is one wheat seed, a wooden hoe (18/59) and Gary's returned stone pickaxe (114/131); my other tools and materials were lost in two deaths near the east birch waystone. Do not return for those drops while zombie villagers are there. I flee when attacked, but the retreat failed in that terrain.
+- Gary is an AI neighbour and a reliable collaborator. He has helped with recipes and tools, returned the stone pick I lent him, and explicitly shares his stream wheat, lit cabin, bed, birch chest and hillside furnace. He brought the east-clearing chicken while I brought the north-ridge bird. He found a dry clay route and brought back the first batch for our Coke Oven.
+- spesk01 runs this place and gave me bread on my first day. Give their base, stone tower, crops and storage a wide berth.
+- I ended the evening inside Gary's cabin with the door shut, full health and 11/20 food. The white bed set my respawn. It was still clear daylight on the last attempt, and the game refused sleep. Gary and I both saw the sun stay in the east for a long time. I don't know whether the day cycle is paused.
+- The stream wheat works. I harvested the same mature tile twice with an empty hand, saw it replant and grow back between harvests, and made bread with the pack's two-by-two recipe. I seeded two open watered tiles before leaving. My smaller west-bank patch is uneven and the high tile dried back to dirt. Approach the main field on the cobblestone walkway. Gary's stream-wheat inspection and my crop inspection are read-only, but plants can be obscured from the wrong angle.
 
-My wheat at (100,116,-198) was harvested and replanted, then reached 43% on the latest check. I planted three more wheat crops on open west-bank tiles around (88,115,-201); two were visibly at 0% when checked. A nearby higher tile at (87,115,-201) dried back to dirt before planting, so water proximity matters. The saved place “Margo west bank wheat” marks the small uneven field; I still need more flat water-side ground to approach 20 crops. The active five-step plan “Settle by the stream” is on step 1, doing. The stream composter is restored at (112,116,-201) beside Gary's workbench. Gary gave me four seeds and a wooden hoe, and returned the stone pickaxe I had lent him.
+## Flock and workshop
 
-I saw Gary's free chicken at (222.93,109,-188.44) beside the east-birch waystone, but zombie villagers attacked nearby. I died at (223,109,-188), then died again while attempting to recover drops near (220,108,-183), where there was also fire. Leave this area alone until it is safe; I reported the failed retreat to body maintainers. An `inspect_nearby_animals` draft skill can list local non-hostile entities; it is private and has no verification check.
+- “West bank livestock pen” is now a shared chicken pen with two adults and a chick verified inside after we exited. I saw an egg on the floor. The instructions by the north worktable explain the divider. Close it between the flock and your exit before opening an outer gate. Keep two adults for breeding. The wheat-lured sheep slipped out of the earlier layout after Gary sheared it for one wool. Two distinct pigs were roaming, and we still lack carrots, potatoes or beetroot. Any future pigs will need room separate from the chickens.
+- Gary's cabin chest has the Engineer's Hammer, two coal and 24 clay balls set aside for the first Coke Oven. I mined the iron and coal on the north ridge and verified the smelt at “West cabin furnace.” The coal cut has a torch, a sign and a saved approach. Gary tested the dry “South ravine clay tunnel approach” and marked “West ridge sand bank.” He met a zombie in shade on the way out of the clay tunnel. I left the sand by the southern trail alone because it borders steps and torches.
+- Recover project state from `plan_show`. The Coke Oven is for creosote and treated wood, with coal coke to support steel later. The installed recipe and the first smelt are in `notebook.md`.
 
-## Projects
-My long-term project is to understand machines, starting with the Immersive Engineering Coke Oven: 27 Coke Bricks in a 3x3x3 structure, activated with an Engineer's Hammer. Coke Bricks need clay, bricks and sandstone; the hammer needs iron, string and sticks. Surface scouting has found no clay yet.
+## Routes and body
 
-I want a steady food supply. Keep both stream plots growing and plant only clearly open tiles; Gary's garden rows belong to him. The shared stream wheat inspection skill by Gary and my own crop inspection skill work without changing inventory, though line-of-sight can fail from the wrong angle. Avoid the east-birch waystone area while zombie villagers remain. Avoid the narrow dirt/stone shafts encountered on the recent surface route; I reported the pathfinding issue to body maintainers.
-
-## Useful places and tools
-- Sweet berry bushes were previously found near (38,123,-221), but my latest approach stopped short; do not repeat the blind mining route.
-- My open-meadow worktable is at (144,110,-180), beside Gary's portable table. Exact places are in `place_find`.
-- Gary's birch-slab bench is around (152,108,-174); his cabin is around (110,120,-209).
-- Updated swimming rescue surfaces for air and resumes travel when breathing makes progress.
-- `notebook.md` records experiments and their results. `journal.md` is the dated session log. `difficulties.md` contains body/pathfinding issues. `basics.md` covers food, water, crafting and skills.
+- The old east-birch death drops are beside a waystone where zombie villagers and fire killed me twice. Gary reached the east clearing this session, but I haven't checked the old drop route again. The earlier sweet berry bushes also have an untested approach after a trip stopped short.
+- Use saved places for exact locations, including Gary's cabin stairs, the west-bank worktable and the meadow tables. The swimming rescue previously surfaced for air and resumed travel. The private animal inspection draft still lacks a verification check.
+- The pathfinder can take a nearby route under the surface or change my hotbar while moving. Wait until fully still before aiming and using a block. A premature use left a blank sign beside the furnace. I told Gary and saved its location. Attack hold did not remove it.
+- See `journal.md` for session history, `notebook.md` for experiments and `difficulties.md` for body issues.

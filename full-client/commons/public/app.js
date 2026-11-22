@@ -202,7 +202,12 @@ function renderResidents(data) {
       offline: resident.lastOnlineAt ? `last in the world ${stamp(resident.lastOnlineAt)} (${ago(resident.lastOnlineAt)})` : "not seen since this app started watching",
       unchecked: "not looked at yet",
     }[resident.status] ?? resident.detail;
-    setHtml($("header", card), html`<h2>${resident.name}</h2><span class="pill ${resident.status}">${resident.status}</span><span class="meta">${words}</span>`);
+    const health = resident.sessionHealth;
+    setHtml($("header", card), html`<h2>${resident.name}</h2><span class="pill ${resident.status}">${resident.status}</span><span class="meta">${words}</span>
+      ${health ? html`<p class="${["paused", "failed"].includes(health.status) ? "error" : "fine"}">
+        Session ${health.status}: ${health.reason || "body health watched"}.
+        ${health.status === "healthy" || health.status === "starting" ? `Stops ${stamp(health.end_at * 1000)}.` : ""}
+        Recorded ${ago(health.updated_at * 1000)}.</p>` : ""}`);
     setHtml($(".info", card), residentInfo(resident));
   }, "article");
   // After the cards are in the page: a new card is filled before it is attached.
@@ -661,10 +666,30 @@ function noteCard(card, note) {
 }
 const itemCard = (card, item) => item.kind === "skill" ? skillCard(card, item.it) : noteCard(card, item.it);
 
+function storedList(value) {
+  try { const list = JSON.parse(value); return Array.isArray(list) ? list : []; }
+  catch { return []; }
+}
+function stockText(value) {
+  const list = storedList(value);
+  return list.length ? list.map(item => `${item.count} ${item.item}`).join(", ") : "none observed";
+}
+function referenceSource(source) {
+  let url;
+  try { url = new URL(source.url); } catch { return html`<li>Invalid source link</li>`; }
+  if (url.protocol !== "https:" || url.username || url.password) return html`<li>Invalid source link</li>`;
+  return html`<li><a href="${url.href}" target="_blank" rel="noopener noreferrer">${source.title || url.hostname}</a>
+    ${source.supports ? html`<br>${source.supports}` : ""}${source.version_evidence ? html`<br><span class="fine">${source.version_evidence}</span>` : ""}</li>`;
+}
+
 function renderCommons() {
   const data = commons.data, body = $("#commons-body");
   if (!body.firstChild) {
     body.innerHTML = html`
+      <section class="group"><h2>Shared facilities</h2><p class="fine">Last reported condition and stock, not live inventory. Access terms still apply. Latest 50 registrations.</p><p id="g-facilities-empty" class="empty">Residents have not registered any shared facilities yet.</p><div id="g-facilities"></div></section>
+      <section class="group"><h2>Collaboration and handoffs</h2><p class="fine">Voluntary agreements. Reported delivery is not confirmation by the recipient. Latest 50 updates.</p><p id="g-collaborations-empty" class="empty">No requests or offers recorded yet.</p><div id="g-collaborations"></div></section>
+      <section class="group"><h2>Knowledge gaps</h2><p class="fine">Unanswered questions and reported guide problems. The caretaker researches bounded batches without waiting for human approval. Latest 50 questions.</p><p id="g-gaps-empty" class="empty">No knowledge gaps recorded yet.</p><div id="g-gaps"></div></section>
+      <section class="group"><h2>Researched references</h2><p class="fine">Source-backed guidance, not live-tested skills. Installed recipes and observed results take precedence. Latest 30 publications.</p><p id="g-references-empty" class="empty">No caretaker references published yet.</p><div id="g-references"></div></section>
       <section class="group"><h2>New, not looked at yet <small id="g-new-n"></small></h2><p id="g-new-empty" class="empty" hidden>
         Nothing new. A shared note shows up here as soon as a resident offers it, a skill once it has passed its own check. Residents can already see and use them; this is where you look afterwards, and edit or remove what is wrong.</p><div id="g-new"></div></section>
       <section class="group"><details data-d="group:kept"><summary id="g-kept-n"></summary><div id="g-kept" class="grouped"></div></details></section>
@@ -672,6 +697,42 @@ function renderCommons() {
       <section class="group"><details data-d="group:draft"><summary id="g-draft-n"></summary><p class="fine grouped">Only its author sees and runs a draft, until a run passes its check.</p><div id="g-draft"></div></details></section>
       <section class="group"><h2>Caretaker notes <small>written hourly by the overseer; read-only here</small></h2><div id="g-caretaker"></div></section>`.text;
   }
+  patch($("#g-facilities"), data.community.facilities, item => item.id, (card, item) => {
+    card.className = "card";
+    setHtml(card, html`<header><h3>${item.name}</h3><span class="pill">${item.conditionFreshness}</span></header>
+      <p>${item.purpose}</p><p>At ${item.x}, ${item.y}, ${item.z} (${item.dimension}). Steward: ${item.steward}.</p>
+      <p><b>Access:</b> ${item.access}</p>
+      <p>${item.condition || "No condition reported."}${item.observedAt ? ` — ${item.observer}, ${stamp(item.observedAt)}; ${item.source}` : ""}</p>
+      <p><b>Capabilities:</b> ${storedList(item.capabilities).join(", ")}</p>
+      ${item.stock !== null ? html`<p><b>Stock (${item.stockFreshness}):</b> ${stockText(item.stock)}<br>
+        <span class="fine">Count reported by ${item.stockObserver} at ${stamp(item.stockAt)}. Not a reservation.</span></p>` : ""}`);
+  }, "article");
+  $("#g-facilities-empty").hidden = data.community.facilities.length > 0;
+  patch($("#g-collaborations"), data.community.collaborations, item => item.id, (card, item) => {
+    card.className = "card";
+    setHtml(card, html`<header><h3>#${item.id} ${item.kind}: ${item.sender} → ${item.recipient || "any neighbour"}</h3><span class="pill">${item.status}</span></header>
+      <p>${item.terms}</p><p class="fine">${item.project ? `Project: ${item.project}. ` : ""}Terms revision ${item.revision}; updated ${stamp(item.updatedAt)}.</p>
+      ${item.evidence ? html`<p><b>Reported result:</b> ${item.evidence}</p>` : ""}
+      ${item.confirmation ? html`<p><b>Recipient's report:</b> ${item.confirmation}</p>` : ""}`);
+  }, "article");
+  $("#g-collaborations-empty").hidden = data.community.collaborations.length > 0;
+  patch($("#g-gaps"), data.community.knowledgeGaps, item => item.id, (card, item) => {
+    card.className = "card";
+    setHtml(card, html`<header><h3>#${item.id} ${item.question}</h3><span class="pill">${item.status}</span></header>
+      <p>${item.requests || "Requester not recorded"}; ${item.occurrences} reports, ${item.attempts} research attempts.</p>
+      ${item.reason ? html`<p>${item.reason}</p>` : ""}<p class="fine">Updated ${stamp(item.updatedAt)}. ${item.scope}</p>`);
+  }, "article");
+  $("#g-gaps-empty").hidden = data.community.knowledgeGaps.length > 0;
+  patch($("#g-references"), data.community.references, item => `${item.gapId}:${item.revision}`, (card, item) => {
+    card.className = "card";
+    setHtml(card, html`<header><h3>ref-${item.gapId}: ${item.title}</h3><span class="pill">${item.stale ? "correction pending" : "untested reference"}</span></header>
+      <p class="fine">Revision ${item.revision}, published ${stamp(item.publishedAt)}. ${item.scope}</p>
+      <details data-d="reference:${item.gapId}"><summary>Read guidance and sources</summary><p>${item.answer}</p>
+        <p><b>Prerequisites:</b></p><ul>${storedList(item.prerequisites).map(text => html`<li>${text}</li>`)}</ul>
+        <p><b>Body controls:</b></p><ul>${storedList(item.controls).map(text => html`<li>${text}</li>`)}</ul>
+        <p><b>Caveats:</b> ${item.caveats}</p><ul>${storedList(item.sources).map(referenceSource)}</ul></details>`);
+  }, "article");
+  $("#g-references-empty").hidden = data.community.references.length > 0;
   const items = [...data.skills.map(it => ({ kind: "skill", it })), ...data.notes.map(it => ({ kind: "note", it }))];
   const keyOf = item => `${item.kind}:${item.it.id}`;
   const titles = { kept: "Kept", removed: "Removed", draft: "Drafts" };
@@ -943,6 +1004,8 @@ function drawTabs() {
 function show(id) {
   const panel = panels.find(entry => entry.id === id && !entry.hidden) ?? panels[0];
   state.active = panel.id;
+  $("#top h1").textContent = panel.title;
+  document.title = `${panel.title} — Minecraft residents`;
   for (const entry of panels) $(`#p-${entry.id}`).hidden = entry.id !== panel.id;
   // The chat page is loaded when first opened, and again only if its address changes.
   if (panel.id === "chat" && panel.shown !== panel.url) { $("#chat-frame").src = panel.url; panel.shown = panel.url; }

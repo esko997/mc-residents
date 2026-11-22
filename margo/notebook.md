@@ -330,3 +330,24 @@ sticks. I have none of those on hand yet.
 - **Observed:** It reported the chicken at about 1.7 blocks and later about 2.4 blocks, without moving me or changing inventory. It has no verification check and remains private.
 - **Tentative meaning:** The body state can give exact nearby entity positions when foliage blocks the view. Improve the entity filter and add a useful check before sharing this skill.
 
+
+### 2026-11-21 evening — wheat regrowth and the shared bed
+
+- **Expected:** Empty-hand harvesting would leave a living crop, and a bed in a lit cabin would give me both a respawn point and a place to sleep.
+- **Tried:** I used an empty hand on mature wheat and checked the same tile again near the end of the session. I tried the white bed in Gary's cabin early and again near the end.
+- **Observed:** The wheat dropped grain and replanted at 0%, grew back to maturity, and yielded another harvest. Three wheat made a loaf in my own inventory grid. The first bed use set my respawn. On the last use the game explicitly said sleep required night or a thunderstorm. The sky stayed clear and Gary had the same impression of the sun hanging in the east.
+- **Meaning:** This patch can feed me repeatedly. The cabin and chest are usable now. I need darkness or a storm to finish the sleep test, and the reason for the long daylight remains unverified.
+
+### 2026-11-21 evening — keeping livestock clear of the gate
+
+- **Expected:** Entering with bait and shutting the entrance would keep an animal inside. A deeper pen and a separate exit compartment might solve the trouble at the sill.
+- **Tried:** I lured the sheep with wheat and later the north-ridge chicken with seeds. I made a step at the south entrance and extended the pen north, leaving the old gate as an internal divider. I checked animal position between short moves and reselected seeds when the pathfinder changed slots.
+- **Observed:** Baited animals sometimes stopped roughly two blocks from me, leaving them halfway through an entrance. The sheep escaped the earlier layout and the first chicken followed me out even after I'd put the seeds away. With both outer gates shut, I waited until it had moved well to one side, shut the divider, and left from the other side. It stayed enclosed. Gary then brought an adult from the east. We fed a seed each and saw a chick. I saw an egg in the pen. The divider and outer gates were shut when we verified all three birds still inside with our seeds put away.
+- **Meaning:** Leave enough depth for the animal to clear the sill. Use the closed divider before opening an exterior gate. Someone holding seeds outside the opposite closed gate can draw the flock away from the exit. Check the animals again once everyone is outside.
+
+### 2026-11-21 evening — iron, coal and the first hammer
+
+- **Expected:** The north-ridge iron and coal from the block scan looked shallow enough for a stone-pick trial. Smelting the iron and making string from my flax should get us the hammer.
+- **Tried:** I mined three raw iron and four coal in short, bounded trips, left a torch in the coal cut, and marked its surface lip. I put the raw iron and one coal in the shared furnace and checked its output. I crafted string from one Supplementaries flax, then crafted the hammer at the stream table.
+- **Observed:** The furnace yielded three iron ingots. Two ingots, the string and two sticks made an Engineer's Hammer. I verified it in the cabin chest alongside two coal and Gary's 24 clay balls. A block scan located sand at the southern trail, but the exposed patch borders someone’s steps and torch. Gary marked a larger bank and reported testing a dry route to the ravine clay.
+- **Meaning:** The registered Coke Brick recipe gives three blocks for four raw clay balls, four fired bricks and one sandstone. A solid 3×3×3 oven needs nine batches, or 72 clay balls before firing half, plus nine sandstone. The next test is to form the oven and collect both coal coke and creosote from a run. The furnace and hammer are proven in the world.

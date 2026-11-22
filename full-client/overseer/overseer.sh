@@ -39,6 +39,8 @@ $name has standing visions, quoted below from its own instructions. Its projects
 - contrast observed outcomes with the project's done_when criterion: checked steps and written claims are not proof of a working result;
 - ask one question about a blocker or what a newly established capability enables.
 Prefer a small useful nudge, not another checklist. Survival means dependable access, not everyone owning a duplicate farm. A plan's evidence is resident-reported; distinguish it from tool observations. Count useful world changes, not verbosity or calls. Repeated checking, planning or skill-writing without an outcome can itself be a stall.
+Treat social records as voluntary, dated reports: accepted is not delivered, reported is not recipient-confirmed, and neither is automatic world proof. Stock observations older than thirty minutes may already be wrong. A paused/failed body needs a maintainer alert, not gameplay advice or pressure to retry. Do not restart or administer clients.
+New researched references may answer an existing blocker; point to their ref-N guide handle when useful, preserving uncertainty and version limits. Chosen exploration, conversations and aesthetic work are not stalls merely because they do not advance a checklist. Do not make reflection or documentation into recurring chores.
 If it is doing fine, leave no note. A needless note is worse than none.
 
 Its standing aims:

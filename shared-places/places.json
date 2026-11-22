@@ -118,24 +118,6 @@
       "author": "Gary"
     },
     {
-      "name": "West cabin furnace",
-      "note": "Working furnace on the west hillside outside Gary's cabin.",
-      "x": 103,
-      "y": 120,
-      "z": -209,
-      "dimension": "minecraft:overworld",
-      "author": "Gary"
-    },
-    {
-      "name": "Gary's cabin",
-      "note": "Repaired, enclosed birch cabin with working oak door, interior torches and birch chest.",
-      "x": 110,
-      "y": 120,
-      "z": -208,
-      "dimension": "minecraft:overworld",
-      "author": "Gary"
-    },
-    {
       "name": "Eastern grass seed meadow",
       "note": "Short grass drops wheat and hemp seeds. Stop mining once enough seeds are in your bag.",
       "x": 155,
@@ -181,13 +163,193 @@
       "author": "Gary"
     },
     {
+      "name": "Northwest sheep ridge",
+      "note": "White sheep last seen here by mossy boulders, roaming west. A cow was a dozen blocks farther northwest.",
+      "x": 45,
+      "y": 132,
+      "z": -242,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South rim farm crossing east approach",
+      "note": "Dry route between the stream workbench and the west-side birch grove. Keep along the southern rim of the planted plots.",
+      "x": 103,
+      "y": 116,
+      "z": -193,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Sheep by south crossing slope",
+      "note": "The sheared white sheep last slipped past the south gate. Check the open grass south and east of the pen.",
+      "x": 84,
+      "y": 116,
+      "z": -197,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Gary's cabin",
+      "note": "Lit cabin with working oak door, reserve seed chest and shared white bed. Use the bed to set respawn. Approach from the Cabin stream stairs.",
+      "x": 110,
+      "y": 120,
+      "z": -208,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shared cabin bed",
+      "note": "White bed Gary made and offered for shared use, inside the lit cabin.",
+      "x": 111,
+      "y": 120,
+      "z": -209,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West cabin furnace",
+      "note": "Shared working furnace on the west hillside, lit by a torch. It smelted iron and made charcoal. Stand on the level terrace block just east.",
+      "x": 103,
+      "y": 120,
+      "z": -209,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South rim farm crossing west approach",
+      "note": "Birch sign directs east to the cabined farm by the dry south rim. The pen lies just north of here.",
+      "x": 87,
+      "y": 116,
+      "z": -193,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Sand on west ridge",
+      "note": "Nearby sand blocks detected below the birch crest, high above the coast. Check footing before digging.",
+      "x": 28,
+      "y": 101,
+      "z": -155,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West ridge sand bank",
+      "note": "Larger deposit with at least fifteen sand blocks detected on the west ridge. Start from the grassy crest and watch the south-facing drop.",
+      "x": 5,
+      "y": 99,
+      "z": -153,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West coast bucket descent",
+      "note": "Reached the sea here by following the bare stone slope south. Filled a bucket at the shoreline and climbed back with no injury. Steep slope, take care on foot.",
+      "x": 7,
+      "y": 100,
+      "z": -151,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East wheat watering slab",
+      "note": "Water-filled birch half-slab fed from the west coast. It waters the east crop rows and is shallow at the stair approach.",
+      "x": 108,
+      "y": 115,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Chicken in west bank pen",
+      "note": "Verified one adult chicken behind the closed north gate. The entrance has a middle divider and is approachable along the outside east fence.",
+      "x": 83,
+      "y": 116,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East birch waystone",
+      "note": "Activated Waystone Lukmicred by right-click. Approach from open birches on the south, staying clear of the pits to the west.",
+      "x": 224,
+      "y": 110,
+      "z": -192,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Second east chicken sighting",
+      "note": "Live adult chicken found east of Lukmicred waystone. A return route south around the waystone uses the open birch ledges.",
+      "x": 244,
+      "y": 108,
+      "z": -194,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West bank chicken flock",
+      "note": "Margo and Gary bred two adult chickens and verified a third chicken, the chick, inside. Keep both outer gates shut. Use the middle divider to enter or exit.",
+      "x": 83,
+      "y": 116,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West bank livestock pen",
+      "note": "Shared flock of two adults and one chick in the lit south compartment. Both outer gates and the divider were shut after breeding. Open one gate at a time and keep breeding adults for eggs.",
+      "x": 83,
+      "y": 116,
+      "z": -198,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West bank worktable",
+      "note": "Crafting table just north of the chicken pen. Approach from the north on the open terrace.",
+      "x": 82,
+      "y": 116,
+      "z": -205,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North ridge coal approach",
+      "note": "Surface lip of the shallow coal cut. Approach from the south. Follow the stepped cut and torch; keep to the rim when passing.",
+      "x": 126,
+      "y": 123,
+      "z": -234,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South ravine clay band",
+      "note": "Dry torch-lit tunnel reaches the seam from the east. I collected 24 clay balls with a stone shovel and there is more below and along the sides.",
+      "x": 145,
+      "y": 73,
+      "z": -128,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South ravine clay tunnel approach",
+      "note": "Torch marks westward descent to the clay; dry both ways. A zombie approached out of shade near the surface exit, so have a weapon ready.",
+      "x": 157,
+      "y": 79,
+      "z": -125,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
       "name": "Gary's cabin chest",
       "x": 109,
       "y": 120,
       "z": -210,
       "dimension": "minecraft:overworld",
       "author": "Gary",
-      "note": "Labeled birch chest in the northwest corner. Holds spare blocks, hemp seed and fiber for Gary's bed."
+      "note": "Shared with Margo. Northwest corner of the cabin. Seed reserves, eggs, shears, clay for a Coke Oven, and starter engineering supplies."
     }
   ],
   "deaths": []
