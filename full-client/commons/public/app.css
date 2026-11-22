@@ -117,6 +117,27 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #15181c; borde
 .readout { font-family: var(--data); font-size: .8125rem; padding: 6px 0; min-height: 2.2em; }
 .key { display: inline-flex; align-items: center; gap: 6px; }
 .key i { width: 14px; height: 4px; background: var(--who); display: inline-block; }
+#map-places { margin-top: 18px; }
+#map-places > h2 { font-size: 1.0625rem; margin-bottom: 10px; }
+#map-who { flex-wrap: wrap; }
+.map-search { display: flex; align-items: center; gap: 8px; font-size: .875rem; min-width: 0; }
+#map-search { width: min(22em, 100%); min-width: 0; background: #15181c; border: 2px solid var(--seam); border-radius: 2px; padding: 7px 9px; }
+.map-browse { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 14px; margin-top: 8px; }
+#map-place-list { max-height: 28rem; overflow-y: auto; padding: 3px; }
+.map-place-group + .map-place-group { margin-top: 14px; }
+.map-place-group h3 { color: var(--who); font-size: .9375rem; padding: 4px 8px; }
+.map-place-row { display: block; width: 100%; text-align: left; padding: 9px 10px; background: none; border: 0; border-left: 3px solid var(--who); border-bottom: 1px solid var(--seam-soft); cursor: pointer; overflow-wrap: anywhere; }
+.map-place-row[aria-pressed="true"] { background: var(--seam); }
+.map-place-row:hover { background: var(--seam-soft); }
+.map-place-row b, .map-place-row .meta, .map-place-row .data { display: block; }
+.map-place-row .meta { white-space: pre-wrap; }
+.map-place-row .map-place-note { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#map-selection { align-self: start; min-width: 0; border: 2px solid var(--seam); border-left: 4px solid var(--who); padding: 12px; background: var(--basalt); overflow-wrap: anywhere; }
+#map-selection h3 { color: var(--who); font-size: 1rem; margin-bottom: 6px; }
+#map-selection .map-place-note { margin-top: 8px; white-space: pre-wrap; max-width: 68ch; font-size: .875rem; }
+.map-place-picture { margin: 12px 0 0; }
+.map-place-picture img { display: block; width: 100%; height: auto; background: #14171b; }
+.map-place-picture figcaption { margin-top: 6px; }
 
 /* Notes */
 .note { background: var(--basalt); border: 2px solid var(--seam); border-left: 6px solid var(--who); padding: 12px 14px; }

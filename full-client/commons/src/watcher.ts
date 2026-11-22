@@ -1,6 +1,6 @@
 // Looks at every resident's client on a timer: keeps the latest state for the
 // page, writes each online resident's position into the commons (map trails),
-// and fetches pictures of what a resident sees, but only when the page asks.
+// and captures nearby newly saved places; live pictures are fetched on demand.
 import type { Database } from "bun:sqlite";
 import type { Config, ResidentConfig } from "./config.ts";
 import { recordPosition } from "./db.ts";
@@ -8,6 +8,7 @@ import { record } from "./json.ts";
 import { autoAccept } from "./reviews.ts";
 import { normalizeState, synapseGet, type ResidentState } from "./synapse.ts";
 import { ObserverFeed } from "./observer.ts";
+import { PlacePictures } from "./place-pictures.ts";
 
 export interface Sighting {
   status: "online" | "offline" | "unauthorized" | "error" | "unchecked";
@@ -25,10 +26,13 @@ export class Watcher {
   private fetching = new Map<string, Promise<Picture | null>>();
   private timer?: Timer;
   private sampling?: Promise<void>;
+  private capturingPlaces?: Promise<void>;
   readonly observer: ObserverFeed;
+  readonly placePictures: PlacePictures;
 
   constructor(private config: Config, private db: Database, private now: () => number = Date.now) {
     this.observer = new ObserverFeed(config.observer, { now });
+    this.placePictures = new PlacePictures(config, now);
   }
 
   start() {
@@ -42,6 +46,8 @@ export class Watcher {
    * A tick still running when the next is due is not doubled.
    */
   sample(): Promise<void> {
+    this.capturingPlaces ??= this.placePictures.sample()
+      .catch(() => {}).finally(() => { this.capturingPlaces = undefined; });
     this.sampling ??= Promise.all([
       this.observer.poll(),
       ...this.config.residents.map(resident => this.look(resident)),

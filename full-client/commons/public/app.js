@@ -1,4 +1,5 @@
 "use strict";
+import { mergeMapTrail } from "./map-trails.js";
 // The Shared Knowledge page. No framework and no build step: each panel fetches JSON from
 // api/<route> (relative, so the token in the address carries over) and patches
 // only the parts of the page whose content changed, so nothing flickers and
@@ -338,11 +339,82 @@ async function loadActivity() {
 }
 
 // ---------- Map ----------
-const map = { hours: 6, data: null, cx: 0, cz: 0, scale: 2, fitted: false, pointers: new Map(), moved: 0, features: [], canvas: $("#map") };
+const map = { hours: 6, data: null, cx: 0, cz: 0, scale: 2, fitted: false, pointers: new Map(), moved: 0,
+  features: [], trails: [], places: [], visiblePlaces: [], selected: null, who: "All", search: "", failedPicture: null, canvas: $("#map") };
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const canvasColour = name => css(name === "shared" ? "--shared" : `--c${Math.max(0, state.names.indexOf(name)) % 4}`);
 const toScreen = (x, z) => [(x - map.cx) * map.scale + map.canvas.clientWidth / 2, (z - map.cz) * map.scale + map.canvas.clientHeight / 2];
 const toWorld = (sx, sy) => [(sx - map.canvas.clientWidth / 2) / map.scale + map.cx, (sy - map.canvas.clientHeight / 2) / map.scale + map.cz];
+const placeKey = place => JSON.stringify([place.owner, place.dimension, place.name]);
+const placeOwner = place => place.owner === "shared" ? `Shared${place.author ? ` · saved by ${place.author}` : ""}` : `${place.owner}'s place`;
+const placeCoordinates = place => `x ${place.x}, y ${place.y}, z ${place.z}`;
+
+function renderMapSelection() {
+  const panel = $("#map-selection"), place = map.places.find(place => place.key === map.selected);
+  panel.style.setProperty("--who", place ? colour(place.owner) : "var(--lichen)");
+  if (!place) {
+    setHtml(panel, html`<p class="fine">${map.selected ? "This saved place is no longer available." : "Select a dot or a place in the list to centre it on the map and read its note."}</p>`);
+    return;
+  }
+  const picture = place.picture;
+  setHtml(panel, html`<h3>${place.name}</h3><p class="data">${placeCoordinates(place)}</p>
+    <p class="meta">${placeOwner(place)}</p>
+    ${map.visiblePlaces.some(item => item.key === place.key) ? "" : html`<p class="fine">This selection is hidden by the saved-place filter.</p>`}
+    ${place.note ? html`<p class="map-place-note">${place.note}</p>` : ""}
+    ${picture && picture.id !== map.failedPicture ? html`<figure class="map-place-picture">
+      <img src="api/map-picture?id=${encodeURIComponent(picture.id)}" alt="${picture.resident}'s view near ${place.name} shortly after save" loading="lazy">
+      <figcaption class="fine">${picture.resident}'s view near this place shortly after save (${stamp(picture.at)}).
+        Not necessarily looking at the landmark or the exact historical save frame.</figcaption></figure>` : html`<p class="fine">No saved picture available.</p>`}`);
+  const image = $("img", panel);
+  if (image) image.onerror = () => {
+    // Expired or missing captures are normal, not a dashboard failure.
+    if (map.selected !== place.key) return;
+    map.failedPicture = picture.id; renderMapSelection();
+  };
+}
+
+function renderMapPlaces() {
+  const owners = [...new Set([...(map.data?.residents ?? []).map(resident => resident.name), ...map.places.map(place => place.owner)])]
+    .filter(owner => owner !== "shared");
+  segmented($("#map-who"), [{ value: "All", label: "All" },
+    ...owners.map(owner => ({ value: owner, label: owner, who: owner })), { value: "shared", label: "Shared", who: "shared" }],
+  map.who, value => { map.who = value; renderMapPlaces(); drawMap(); });
+  const query = map.search.trim().toLocaleLowerCase();
+  map.visiblePlaces = map.places.filter(place => (map.who === "All" || map.who === place.owner) && (!query || place.search.includes(query)));
+  $("#map-place-count").textContent = map.visiblePlaces.length
+    ? `${map.visiblePlaces.length} of ${map.places.length} saved places`
+    : map.places.length ? "No saved places match. Change the owner filter or search." : "No saved places in the overworld yet.";
+  const grouped = new Map();
+  for (const place of map.visiblePlaces) {
+    if (!grouped.has(place.owner)) grouped.set(place.owner, []);
+    grouped.get(place.owner).push(place);
+  }
+  patch($("#map-place-list"), [...grouped], group => group[0], (section, [owner, places]) => {
+    section.className = "map-place-group";
+    section.style.setProperty("--who", colour(owner));
+    if (section.__new) { setHtml(section, html`<h3></h3><div role="group"></div>`); section.__new = false; }
+    $("h3", section).textContent = `${owner === "shared" ? "Shared" : owner} (${places.length})`;
+    const rows = $("div", section);
+    rows.setAttribute("aria-label", owner === "shared" ? "Shared places" : `${owner}'s places`);
+    patch(rows, places, place => place.key, (button, place) => {
+      button.type = "button"; button.className = "map-place-row";
+      button.dataset.place = place.key;
+      button.setAttribute("aria-pressed", String(place.key === map.selected));
+      setHtml(button, html`<b>${place.name}</b><span class="data">${placeCoordinates(place)}</span>
+        ${place.author ? html`<span class="meta">Saved by ${place.author}</span>` : ""}
+        ${place.note ? html`<span class="meta map-place-note">${place.note}</span>` : ""}`);
+    }, "button");
+  }, "section");
+  renderMapSelection();
+}
+
+function selectMapPlace(key) {
+  const place = map.places.find(place => place.key === key);
+  if (!place) return;
+  map.selected = key; map.cx = place.x; map.cz = place.z; map.fitted = true;
+  renderMapPlaces(); drawMap();
+  $("#map-readout").textContent = `${place.name}: ${placeCoordinates(place)}`;
+}
 
 function fitMap() {
   const points = [];
@@ -406,26 +478,28 @@ function drawMap() {
     ctx.lineWidth = 3; ctx.strokeStyle = "#14171b"; ctx.strokeText(text, sx + 9, sy);
     ctx.fillStyle = colourValue; ctx.fillText(text, sx + 9, sy);
   };
-  for (const resident of map.data?.residents ?? []) {
-    const tint = canvasColour(resident.name);
-    ctx.strokeStyle = tint; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.globalAlpha = .85;
-    ctx.beginPath();
-    let previous;
-    for (const point of resident.trail) {
-      const [sx, sy] = toScreen(point[1], point[2]);
-      // A jump no walk explains (death and respawn, a portal, a teleport) is a gap, not a line across the map.
-      const jump = previous && Math.hypot(point[1] - previous[1], point[2] - previous[2]);
-      if (!previous || (jump > 64 && jump / Math.max(1, (point[0] - previous[0]) / 1000) > 12)) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
-      previous = point;
+  for (const resident of map.trails) {
+    ctx.strokeStyle = canvasColour(resident.name); ctx.lineCap = "round"; ctx.globalAlpha = .75;
+    for (const edge of resident.edges) {
+      const [x1, y1] = toScreen(edge.x1, edge.z1), [x2, y2] = toScreen(edge.x2, edge.z2);
+      if (Math.max(x1, x2) < -5 || Math.min(x1, x2) > width + 5 || Math.max(y1, y2) < -5 || Math.min(y1, y2) > height + 5) continue;
+      ctx.lineWidth = edge.width; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     }
-    ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 1;
   }
-  for (const place of map.data?.places ?? []) {
+  ctx.lineCap = "butt";
+  for (const place of map.visiblePlaces) {
     const [sx, sy] = toScreen(place.x, place.z), tint = canvasColour(place.owner);
-    ctx.beginPath(); ctx.moveTo(sx, sy - 6); ctx.lineTo(sx + 6, sy); ctx.lineTo(sx, sy + 6); ctx.lineTo(sx - 6, sy); ctx.closePath();
-    ctx.fillStyle = "#14171b"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = tint; ctx.stroke();
-    if (map.scale >= 0.5) label(place.name, sx, sy, ink);
-    map.features.push({ sx, sy, text: `${place.name} (${place.owner === "shared" ? `shared${place.author ? ` by ${place.author}` : ""}` : `${place.owner}'s place`}, y ${place.y})${place.note ? `: ${place.note}` : ""}` });
+    if (sx < -12 || sx > width + 12 || sy < -12 || sy > height + 12) continue;
+    ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+    ctx.fillStyle = tint; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = "#14171b"; ctx.stroke();
+    map.features.push({ sx, sy, key: place.key, text: `${place.name} (${placeOwner(place)}, ${placeCoordinates(place)})${place.note ? `: ${place.note}` : ""}` });
+  }
+  const selected = map.visiblePlaces.find(place => place.key === map.selected);
+  if (selected) {
+    const [sx, sy] = toScreen(selected.x, selected.z);
+    ctx.beginPath(); ctx.arc(sx, sy, 10, 0, Math.PI * 2);
+    ctx.lineWidth = 2; ctx.strokeStyle = ink; ctx.stroke();
   }
   for (const death of map.data?.deaths ?? []) {
     const [sx, sy] = toScreen(death.x, death.z);
@@ -460,17 +534,22 @@ function readout(sx, sy) {
 function renderMap() {
   const data = map.data;
   segmented($("#map-hours"), data.choices.map(hours => ({ value: String(hours), label: hours < 24 ? `${hours} h` : `${hours / 24} d` })), String(map.hours), value => {
-    map.hours = Number(value); map.fitted = false; panels.find(panel => panel.id === "map").at = 0; tick();
+    map.hours = Number(value); panels.find(panel => panel.id === "map").at = 0; tick();
   });
   setHtml($("#map-legend"), html`${data.residents.map(resident => html`<span class="key" style="--who:${colour(resident.name)}"><i></i>${resident.name}:
     ${resident.position ? `at ${Math.round(resident.position.x)}, ${Math.round(resident.position.z)}` : resident.online ? `in ${resident.dimension}, not on this map` : "offline"},
     ${plural(resident.trail.length, "trail point")}</span>`)}
-    <span>◆ saved place (pale: shared)</span><span class="bad">✕ death</span>`);
+    <span>● saved place (pale: shared)</span><span class="bad">✕ death</span>`);
+  renderMapPlaces();
   if (!map.fitted && map.canvas.clientWidth) { fitMap(); map.fitted = true; }
   drawMap();
 }
 async function loadMap() {
   map.data = await get(`api/map?hours=${map.hours}`);
+  map.trails = map.data.residents.map(resident => ({ name: resident.name, edges: mergeMapTrail(resident.trail) }));
+  map.places = map.data.places.map(place => ({ ...place, key: placeKey(place),
+    search: `${place.name} ${place.owner} ${place.author ?? ""} ${place.note ?? ""} ${placeCoordinates(place)} ${place.x}, ${place.y}, ${place.z}`.toLocaleLowerCase() }))
+    .sort((a, b) => a.owner.localeCompare(b.owner) || a.name.localeCompare(b.name));
   renderMap();
 }
 {
@@ -499,7 +578,16 @@ async function loadMap() {
   const release = event => {
     const point = map.pointers.get(event.pointerId);
     map.pointers.delete(event.pointerId);
-    if (point && map.moved < 6) readout(point[0], point[1]);
+    if (point && map.moved < 6 && event.type === "pointerup") {
+      readout(point[0], point[1]);
+      let nearest, best = 18;
+      for (const feature of map.features) {
+        if (!feature.key) continue;
+        const distance = Math.hypot(feature.sx - point[0], feature.sy - point[1]);
+        if (distance < best) { best = distance; nearest = feature; }
+      }
+      if (nearest) selectMapPlace(nearest.key);
+    }
   };
   canvas.addEventListener("pointerup", release);
   canvas.addEventListener("pointercancel", release);
@@ -508,6 +596,13 @@ async function loadMap() {
   $("#map-in").onclick = () => centre(1.6);
   $("#map-out").onclick = () => centre(1 / 1.6);
   $("#map-fit").onclick = () => { fitMap(); drawMap(); };
+  $("#map-search").addEventListener("input", event => {
+    map.search = event.target.value; renderMapPlaces(); drawMap();
+  });
+  $("#map-place-list").onclick = event => {
+    const key = event.target.closest("button[data-place]")?.dataset.place;
+    if (key) selectMapPlace(key);
+  };
   new ResizeObserver(() => { if (map.data && !map.fitted && canvas.clientWidth) { fitMap(); map.fitted = true; } drawMap(); }).observe(canvas);
 }
 

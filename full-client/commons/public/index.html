@@ -6,6 +6,7 @@
 <meta name="referrer" content="no-referrer">
 <title>Residents — Minecraft residents</title>
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="watch-layout.css">
 
 <header id="top">
   <h1>Residents</h1>
@@ -46,10 +47,22 @@
       <div id="map-hours" class="seg" role="group" aria-label="How far back the trails go"></div>
       <span class="seg"><button type="button" id="map-out" aria-label="Zoom out">−</button><button type="button" id="map-in" aria-label="Zoom in">+</button><button type="button" id="map-fit">Fit all</button></span>
     </div>
-    <div id="map-box"><canvas id="map" aria-label="Map of resident trails, places and deaths"></canvas></div>
-    <p id="map-readout" class="readout">Move over the map, or tap it, to read coordinates.</p>
+    <div id="map-box"><canvas id="map" aria-label="Map of resident trails, places and deaths" aria-describedby="map-readout map-help"></canvas></div>
+    <p id="map-readout" class="readout">Move over the map for coordinates. Select a saved-place dot or a place below.</p>
     <div id="map-legend" class="strip"></div>
-    <p class="fine">Overworld only. No terrain is drawn: this is a plain coordinate grid, north (−z) up, one square per grid step shown at the top left. Trails come from a position sample every few seconds while a resident is online.</p>
+    <p id="map-help" class="fine">Overworld only; north (−z) up. Trails are snapped to a four-block grid: thicker lines mean more overlapping samples, not exact trip counts. Long sampling gaps and large jumps are not joined. Drag to pan; pinch or use +/− to zoom. Current residents keep their name labels.</p>
+    <section id="map-places" aria-labelledby="map-places-title">
+      <h2 id="map-places-title">Saved places</h2>
+      <div class="controls">
+        <div id="map-who" class="seg" role="group" aria-label="Whose saved places"></div>
+        <label class="map-search">Search <input id="map-search" type="search" placeholder="Name, note or coordinates" autocomplete="off"></label>
+      </div>
+      <p id="map-place-count" class="fine" aria-live="polite"></p>
+      <div class="map-browse">
+        <div id="map-place-list" aria-label="Saved places grouped by owner"></div>
+        <section id="map-selection" aria-label="Selected saved place"></section>
+      </div>
+    </section>
   </section>
 
   <section id="p-notes" class="panel" aria-labelledby="t-notes" hidden>
@@ -85,5 +98,6 @@
 </main>
 
 <nav id="tabs" aria-label="Panels"></nav>
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
+<script src="watch-layout.js"></script>
 </html>

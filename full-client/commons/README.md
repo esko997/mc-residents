@@ -169,11 +169,16 @@ worked out.
 - **Residents**: `GET /state?mode=full` of each client every 10 s (kept in
   memory; a client that refuses the connection is "offline"), `memory.md` size,
   `systemctl --user is-active` for the units, token totals from the newest
-  session file, and `GET /screenshot?format=base64` only while this panel is
-  open: at most every 15 s, or on "Refresh picture" (then at most every 3 s).
+  session file. Live previews use `GET /screenshot?format=base64` while this panel
+  is open: at most every 15 s, or on "Refresh picture" (then at most every 3 s).
   Beside the cards (after them on a phone) is a strip of the console: the last
   40 lines of chat, player events and commands, a box to send a command, a
   switch to show everything, and a link to the Console panel.
+  On desktop, **Arrange panels** makes these same resident cards and the
+  chat/console strip movable and resizable. Drag a Move handle or resize corner;
+  arrow keys on Move/Resize work too (Shift uses smaller steps). Layout is saved
+  only in this browser. **Reset layout** restores the normal flow. Small screens
+  always use the stacked layout without erasing the desktop arrangement.
 - **Activity**: the Codex session files, told apart by the `cwd` in their first
   line, and each resident's call log. Each file is read once and then only its
   new bytes. The session files give remarks (assistant messages), thoughts
@@ -200,7 +205,25 @@ worked out.
 - **Map**: the `positions` table (this app writes one row per online resident
   every 10 s), `places.json` of each resident, `resident/shared/places.json`,
   and deaths from `places.json` plus `died` events in the session files.
-  Overworld only, no terrain.
+  Overworld only, no terrain. Saved places are dots, with a searchable,
+  owner-filtered list below; selecting a dot or list entry centres and highlights
+  it and shows its note. Current resident markers retain their names.
+  Trail geometry merges onto a four-block grid within each resident's history;
+  thicker lines show overlapping samples, **not exact trip counts**. Samples
+  separated by more than a minute, large jumps and overlong spans are not joined.
+  Selection, filters and the camera survive polling; Fit all restores the overview.
+  New/revised places may also receive a saved view: within 30 seconds of observing
+  the file save, the named resident must still be in the same dimension and
+  within 12 blocks, alive and without a GUI open, both before and after capture.
+  This never moves or turns the resident. It is their view near the place shortly
+  after saving, not necessarily a picture of the landmark. Existing places are
+  baselined on startup, not backfilled; missing/failed views stay absent.
+  Capture has its own single-flight work and never delays normal state sampling.
+  Views persist in `COMMONS_DB.place-pictures/` (the database filename plus
+  `.place-pictures`): at most 128 captures, 64 MiB of stored files, and 30 days;
+  removed or revised places discard obsolete views. PNGs are limited to 2 MiB.
+  Files are private, read by opaque hash IDs through the authenticated dashboard,
+  and separate from resident-authored notes.
 - **Notes**: `memory.md`, the last 12 KB of `journal.md`, every other `.md`
   file under the resident's directory, and the places files. Read-only.
 - **Shared Knowledge**: `skills`, `skill_runs`, `shared_notes`, `reviews`, `feedback`
@@ -257,6 +280,7 @@ worked out.
 
 All under `/<token>/api/`, JSON, `Cache-Control: no-store`:
 `GET residents`, `GET picture?resident=&fresh=1` (PNG), `GET activity?boot=&after=&limit=`,
+`GET map-picture?id=<opaque-id>` (PNG for a current saved-place view),
 `GET map?hours=1|6|24|72|168`, `GET notes?resident=`, `GET file?resident=&path=`,
 `GET commons`,
 `POST review` with `{kind: "skill"|"note", id, action: "keep"|"remove"|"restore"|"comment"|"edit", text, reviewer, updatedAt?, fields?}`

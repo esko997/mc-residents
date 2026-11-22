@@ -37,6 +37,8 @@ export interface App {
 
 const STATIC: Record<string, string> = {
   "": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "app.css": "text/css; charset=utf-8",
+  "map-trails.js": "text/javascript; charset=utf-8",
+  "watch-layout.js": "text/javascript; charset=utf-8", "watch-layout.css": "text/css; charset=utf-8",
 };
 const MAX_BODY = 8192;
 
