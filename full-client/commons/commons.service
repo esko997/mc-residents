@@ -16,12 +16,13 @@
 Description=Residents commons web app (LAN only)
 
 [Service]
+Slice=residents.slice
 EnvironmentFile=-%h/.config/commons/env
 WorkingDirectory=%h/gary-client/commons
 ExecStart=%h/gary-client/bin/bun src/server.ts
 Restart=on-failure
 RestartSec=5
-# It shares the machine with the game clients and the owner's own game.
+# Shares the bounded resident slice with the clients and their minds.
 MemoryHigh=384M
 MemoryMax=512M
 CPUQuota=50%

@@ -1,18 +1,14 @@
 #!/usr/bin/env bash
-# Start a resident's real Minecraft client on Cachy with no window: gamescope's
-# headless backend gives it a GPU-rendered display nobody sees, and the client
-# joins simons-vanilla-plus on its own.
-#
-# Run it as a capped transient user service, never from a bare SSH shell
-# (logind kills SSH-session children on logout here):
-#   systemd-run --user --unit=gary-client -p MemoryMax=10G -p MemoryHigh=9G \
-#     -p CPUQuota=400% -p Nice=10 ~/gary-client/launch.sh <username>
+# Start a resident's real Minecraft client and join simons-vanilla-plus.
+# Inspiron uses its NVIDIA X11 desktop; set GARY_CLIENT_DISPLAY_BACKEND=headless
+# on hosts with gamescope. Run through gary-client@.service for resource limits.
 set -euo pipefail
 
 name=${1:?usage: launch.sh <username>}
 base=${GARY_CLIENT_HOME:-$HOME/gary-client}
-java=$HOME/.local/share/PrismLauncher/java/simon-java17/bin/java
-heap=${GARY_CLIENT_HEAP:-6G}
+java=${GARY_CLIENT_JAVA:-$base/jdk17/bin/java}
+heap=${GARY_CLIENT_HEAP:-4G}
+backend=${GARY_CLIENT_DISPLAY_BACKEND:-x11}
 # Each resident needs its own game directory: two clients cannot share logs,
 # options or the mod's port. Set per resident in instances/<name>.env.
 game=${GAME_DIR:-$base/game}
@@ -26,8 +22,18 @@ else
   echo "no $base/baritone-settings.txt: Baritone keeps the settings already in $game" >&2
 fi
 
-exec gamescope --backend headless -W 854 -H 480 -r 20 -- \
-  "$base/venv/bin/portablemc" --main-dir "$base/main" start \
+display=()
+case "$backend" in
+  x11)
+    export DISPLAY=${DISPLAY:-:0}
+    export XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}
+    ;;
+  headless) display=(gamescope --backend headless -W 854 -H 480 -r 20 --) ;;
+  *) echo "unknown GARY_CLIENT_DISPLAY_BACKEND: $backend" >&2; exit 2 ;;
+esac
+
+exec "${display[@]}" "$base/venv/bin/portablemc" --main-dir "$base/main" start \
+  --resolution 854x480 \
   --mc-dir "$game" --jvm "$java" "--jvm-arg=-Xmx$heap" "--jvm-arg=-Xms512m" \
   --username "$name" \
   --join-server 192.168.1.233 --join-server-port 25570 \

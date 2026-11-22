@@ -23,6 +23,35 @@ paths, API routes, service name, database and existing bookmarks are unchanged.
 
 As a service: see `commons.service`.
 
+The dedicated resident host is **Inspiron**, `swatson@192.168.1.69` (Debian 13).
+The Minecraft server remains on pop-os, `192.168.1.233:25570`. Preserve the
+existing URL's secret path when changing an old dashboard bookmark's host to
+`192.168.1.69:8770`; migration does not rotate its token.
+
+Host operations use `tools/with-inspiron.sh <scope>` from the repository root:
+it holds the canonical `DEVICE_ACCESS_INSPIRON7577.md` flock and exports
+`INSPIRON`, `INSPIRON_SSH` and `INSPIRON_NOTE`. Keep every SSH/copy inside that
+wrapper. One-off SSH commands must read `/dev/null`; remote scripts use heredocs.
+
+Clients use the NVIDIA X11 session (`DISPLAY=:0`, `~/.Xauthority`), the portable
+Java 17 at `~/gary-client/jdk17`, and a host-native Python venv with
+`portablemc==5.0.6`. Debian prerequisites: `python3-venv`, `libopenal1`.
+`launch.sh` defaults to a 4 GiB Java heap; each `gary-client@` unit has a
+5.5 GiB soft / 6 GiB hard memory cap and no swap. The shared `residents.slice`
+caps the entire stack at 13 GiB (12 GiB soft), leaving memory for Debian/Xfce.
+Install `full-client/residents.slice` in `~/.config/systemd/user/` and start
+mind/caretaker transient units with `--slice=residents.slice`.
+`GARY_CLIENT_JAVA`,
+`GARY_CLIENT_HEAP` and `GARY_CLIENT_DISPLAY_BACKEND` can be set in the instance
+environment. The optional `headless` backend requires Gamescope; Debian 13's
+configured repositories do not provide it. The X11 backend requires a logged-in,
+unlocked desktop even when user-service lingering is enabled; Inspiron's
+Light Locker/idle sleep/DPMS are disabled for unattended operation.
+
+Only `commons.service` is enabled persistently. Resident sessions and the
+caretaker are started explicitly with `run-session.sh` / `overseer-loop.sh`;
+the web app does not yet implement daily scheduling or pause/resume controls.
+
 Every address is `http://<machine>:<PORT>/<token>/...`. A wrong or missing token
 gets 404. `/<token>` redirects to `/<token>/`. The token is the only access
 control, as with the phone chat page: keep the address to yourself and off

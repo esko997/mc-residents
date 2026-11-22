@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One session of a resident on Cachy: bring the body online, let the mind play
+# One session of a resident: bring the body online, let the mind play
 # until the end time, take the body offline, and commit what it wrote.
 #
 #   run-session.sh <username> <persona-dir-name> <minutes> [model]
@@ -45,9 +45,13 @@ session_log=$base/sessions/$(date +%Y%m%d-%H%M)-$name.log
 
 finish() {
   systemctl --user stop "$unit"
-  # The mind's sandbox cannot write .git, so its notes are committed here.
-  git -C "$base/resident" add -A
-  git -C "$base/resident" commit -q -m "journal($persona): session $(date '+%F %H:%M')" || true
+  # Both residents share this repo and may finish together. Serialize staging
+  # and committing; the mind's sandbox cannot write .git itself.
+  (
+    flock -w 30 9 || { echo "could not lock resident notes; files remain on disk" >&2; exit 1; }
+    git -C "$base/resident" add -A &&
+      git -C "$base/resident" commit -q -m "journal($persona): session $(date '+%F %H:%M')" || true
+  ) 9>>"$base/resident/.git/session-notes.lock"
 }
 trap finish EXIT
 # Stopping the unit must still take the body offline and commit the notes.
@@ -62,7 +66,8 @@ systemctl --user stop "$unit" 2>/dev/null
 systemctl --user reset-failed "$unit" 2>/dev/null
 rm -f "$log"
 systemctl --user start "$unit"
-for _ in $(seq 1 60); do
+# Cold mod/shader loading on the laptop can exceed the old three-minute guard.
+for _ in $(seq 1 100); do
   grep -qa "Time from main menu to in-game" "$log" 2>/dev/null && break
   if [ "$(systemctl --user is-active "$unit")" != active ]; then
     echo "the client stopped before joining the server" | tee -a "$session_log"

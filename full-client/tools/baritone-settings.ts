@@ -15,8 +15,8 @@
 // takes once placed (PLACED), minus terrain and plants that some recipe also makes (NATURAL).
 //
 // Inputs, both cached under full-client/toolserver/.cache (ignored by git):
-//   knowledge.sqlite  tools/with-cachy.sh fetch-knowledge <<'EOF'
-//                     scp -q -o BatchMode=yes $CACHY:gary-client/knowledge.sqlite full-client/toolserver/.cache/
+//   knowledge.sqlite  tools/with-inspiron.sh fetch-knowledge <<'EOF'
+//                     scp -q -o BatchMode=yes $INSPIRON:gary-client/knowledge.sqlite full-client/toolserver/.cache/
 //                     EOF
 //   level.dat         the server's block registry as Forge saves it in the world; one unknown id makes Baritone
 //                     drop the whole line, so only ids the server registered are written:
