@@ -37,11 +37,13 @@ wrapper. One-off SSH commands must read `/dev/null`; remote scripts use heredocs
 Clients use the NVIDIA X11 session (`DISPLAY=:0`, `~/.Xauthority`), the portable
 Java 17 at `~/gary-client/jdk17`, and a host-native Python venv with
 `portablemc==5.0.6`. Debian prerequisites: `python3-venv`, `libopenal1`, `bubblewrap`.
-`launch.sh` defaults to a 4 GiB Java heap; each `gary-client@` unit has a
-5.5 GiB soft / 6 GiB hard memory cap and no swap. The shared `residents.slice`
-caps the entire stack at 13 GiB (12 GiB soft), leaving memory for Debian/Xfce.
+`launch.sh` defaults to a 4 GiB Java heap. Resident clients, minds, caretaker,
+dashboard and `residents.slice` have no systemd memory or swap caps on this
+dedicated host. CPU quotas remain. Linux may still swap or invoke its global
+OOM killer if the machine is exhausted; this is not a guarantee of capacity.
 Install `full-client/residents.slice` in `~/.config/systemd/user/` and start
-mind/caretaker transient units with `--slice=residents.slice`.
+mind/caretaker transient units with `--slice=residents.slice`, without memory
+properties. This runtime policy does not relax the separate build-memory guard.
 `GARY_CLIENT_JAVA`,
 `GARY_CLIENT_HEAP` and `GARY_CLIENT_DISPLAY_BACKEND` can be set in the instance
 environment. The optional `headless` backend requires Gamescope; Debian 13's
@@ -63,14 +65,19 @@ Set `TZ=America/New_York` when calculating/displaying the deadline. Do not use
 `run-until.sh` for continuous-mind experiments. Codex resumes its same thread
 after voluntary early returns; repeated rapid returns and no-body runs stop.
 Deploy `health-watch.py` beside the launcher. It probes authenticated read-only
-body state every 15 seconds, allows five minutes for startup, and pauses after
+body state every 15 seconds, allows five minutes for startup, and recovers after
 at least three failures spanning a minute. A normal death is not disconnection.
-It never replays a world action or automatically restarts a paused resident.
-Health, reason, deadline and resumable thread are recorded in
+Recovery stops the old mind/client, waits 30/60/120 seconds and then up to five
+minutes between later attempts, restarts the client, and resumes the same Codex
+thread. It keeps retrying recoverable body/startup failures until the original
+deadline; it never replays a world action. The resumed resident is told to inspect
+current state because an interrupted action may already have completed.
+Credential/configuration errors and genuine mind failures still require repair.
+Health, reason, deadline, thread, restart count and next retry are recorded in
 `sessions/<Name>-health.json`; transitions also go to its `.jsonl` and session
-log. The Residents panel displays this separately from current body presence.
-Mind/body termination begins at the deadline; note saving and process cleanup
-are bounded. Operator repair and an explicit resume are required after a pause.
+log, and the Residents panel displays recovery progress. An operator stop or the
+absolute deadline interrupts backoff; neither starts another attempt. Shutdown
+and note cleanup remain bounded.
 
 The caretaker loop accepts the same `SESSION_END_AT`, and runs
 `knowledge-research.py` once per cycle: at most two requests, 180 seconds each,

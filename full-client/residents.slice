@@ -2,7 +2,4 @@
 Description=Minecraft resident clients, minds and Shared Knowledge
 
 [Slice]
-MemoryHigh=12G
-MemoryMax=13G
-MemorySwapMax=0
 CPUQuota=600%

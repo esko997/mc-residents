@@ -22,9 +22,7 @@ WorkingDirectory=%h/gary-client/commons
 ExecStart=%h/gary-client/bin/bun src/server.ts
 Restart=on-failure
 RestartSec=5
-# Shares the bounded resident slice with the clients and their minds.
-MemoryHigh=384M
-MemoryMax=512M
+# Share resident CPU scheduling; memory and swap follow the dedicated host.
 CPUQuota=50%
 Nice=10
 

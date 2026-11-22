@@ -206,7 +206,9 @@ function renderResidents(data) {
     setHtml($("header", card), html`<h2>${resident.name}</h2><span class="pill ${resident.status}">${resident.status}</span><span class="meta">${words}</span>
       ${health ? html`<p class="${["paused", "failed"].includes(health.status) ? "error" : "fine"}">
         Session ${health.status}: ${health.reason || "body health watched"}.
-        ${health.status === "healthy" || health.status === "starting" ? `Stops ${stamp(health.end_at * 1000)}.` : ""}
+        ${health.auto_restart ? `Automatic recovery enabled. Stops ${stamp(health.end_at * 1000)}.` : ""}
+        ${health.restart_count ? `Restarts: ${health.restart_count}.` : ""}
+        ${health.next_retry_at ? `Retry ${stamp(health.next_retry_at * 1000)}.` : ""}
         Recorded ${ago(health.updated_at * 1000)}.</p>` : ""}`);
     setHtml($(".info", card), residentInfo(resident));
   }, "article");

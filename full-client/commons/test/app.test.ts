@@ -90,8 +90,8 @@ test("the same routing holds over a real socket", async () => {
   } finally { await server.stop(true); }
 });
 
-test("resident pause/deadline state comes from launcher sessions, not Codex transcripts", async () => {
-  const health = { status: "paused", reason: "Body unreachable for 60 seconds", updated_at: clock / 1000, end_at: clock / 1000 + 3600, thread_id: "resume-this-thread" };
+test("resident recovery/deadline state comes from launcher sessions, not Codex transcripts", async () => {
+  const health = { status: "restarting", reason: "probe_timeout", updated_at: clock / 1000, end_at: clock / 1000 + 3600, thread_id: "resume-this-thread", restart_count: 2, next_retry_at: clock / 1000 + 60, auto_restart: true };
   home.put("sessions/Gary-health.json", JSON.stringify(health));
   home.put("codex-home/sessions/Gary-health.json", JSON.stringify({ ...health, status: "healthy" }));
   start();

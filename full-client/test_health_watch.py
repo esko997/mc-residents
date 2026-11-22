@@ -211,25 +211,94 @@ print("mcp: body/status")
         self.addCleanup(self.stop_process, process)
         return process
 
-    def test_startup_health_pause_retains_resumable_mind_without_restart(self):
+    def fast_supervisor(self, command, seconds=1200, startup=2, delay=0.1):
+        self.env["SESSION_END_AT"] = str(int(time.time()) + seconds)
         runner = (
-            "import functools,importlib.util,sys;"
+            "import functools,importlib.util,json,sys;"
             "s=importlib.util.spec_from_file_location('watch',sys.argv[1]);"
             "w=importlib.util.module_from_spec(s);s.loader.exec_module(w);"
-            "w.Health=functools.partial(w.Health,startup_grace=0.5);"
-            "sys.exit(w.supervise([sys.executable,'-c',sys.argv[2]]))"
+            f"w.Health=functools.partial(w.Health,startup_grace={startup},failure_seconds=0.2,failure_count=2);"
+            f"w.PROBE_INTERVAL=0.1;w.restart_delay=lambda count:{delay};"
+            "sys.exit(w.supervise(json.loads(sys.argv[2])))"
         )
-        child = 'import os,time; open(os.environ["SESSION_LOG"],"a").write("session id: thread-paused\\n"); time.sleep(60)'
-        process = subprocess.Popen([sys.executable, "-c", runner, str(ROOT / "health-watch.py"), child],
+        process = subprocess.Popen([sys.executable, "-c", runner, str(ROOT / "health-watch.py"), json.dumps(command)],
                                    env=self.env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.addCleanup(self.stop_process, process)
-        self.assertEqual(process.wait(timeout=8), 20)
+        return process
+
+    def wait_until(self, predicate, timeout=8):
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            try:
+                if predicate():
+                    return
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+            time.sleep(0.02)
+        self.fail("Expected process/state transition did not occur")
+
+    def test_body_failure_restarts_same_thread_repeatedly_without_overlapping_minds(self):
+        self.program("codex", '''#!/usr/bin/env python3
+import json, os, pathlib, sys, time
+p = pathlib.Path(os.environ["GARY_CLIENT_HOME"]) / "invocations"
+with p.open("a") as f: f.write(json.dumps({"args":sys.argv[1:], "pid":os.getpid()}) + "\\n")
+print("session id: thread-one", flush=True)
+print("mcp: body/status", flush=True)
+while True: time.sleep(10)
+''')
+        process = self.fast_supervisor(["bash", str(ROOT / "run-session.sh"), "Gary", "gary", "20"])
+        def invocations():
+            return [json.loads(line) for line in (self.base / "invocations").read_text().splitlines()]
+        self.wait_until(lambda: len(invocations()) == 1)
+        first_deadline = self.state()["end_at"]
+        for expected in (2, 3):
+            old_pid = invocations()[-1]["pid"]
+            self.reply = {"ok": False}
+            self.wait_until(lambda: self.state()["restart_count"] == expected - 1)
+            self.reply = world()
+            self.wait_until(lambda: len(invocations()) == expected)
+            args = invocations()[-1]["args"]
+            self.assertEqual(args[:2], ["exec", "resume"])
+            self.assertEqual(args[-2], "thread-one")
+            self.assertIn("interrupted action may already have completed", args[-1])
+            with self.assertRaises(ProcessLookupError):
+                os.kill(old_pid, 0)
+            self.assertEqual(self.state()["end_at"], first_deadline)
+            self.assertEqual(self.state()["status"], "healthy")
+        process.terminate()
+        self.assertEqual(process.wait(timeout=8), 143)
+        self.assertFalse((self.base / "active").exists())
+
+    def test_startup_failure_backoff_stops_at_original_deadline(self):
+        child = 'import os,time; open(os.environ["SESSION_LOG"],"a").write("session id: thread-paused\\n"); time.sleep(60)'
+        process = self.fast_supervisor([sys.executable, "-c", child], seconds=3, startup=0.4, delay=30)
+        self.wait_until(lambda: self.state()["status"] == "restarting" and self.state()["next_retry_at"] is not None)
+        self.assertTrue(self.state()["auto_restart"])
+        self.assertFalse(self.state()["terminal"])
+        self.assertEqual(process.wait(timeout=8), 0)
         state = self.state()
-        self.assertEqual((state["status"], state["reason"]), ("paused", "startup_unavailable"))
+        self.assertEqual((state["status"], state["reason"]), ("stopped", "deadline"))
         self.assertEqual(state["thread_id"], "thread-paused")
-        self.assertTrue(state["paused"])
-        self.assertTrue(state["terminal"])
-        self.assertFalse(state["auto_restart"])
+        self.assertEqual(state["restart_count"], 0)
+
+    def test_admin_stop_interrupts_recovery_backoff(self):
+        process = self.fast_supervisor([sys.executable, "-c", "import time;time.sleep(60)"], startup=0.4, delay=30)
+        self.wait_until(lambda: self.state()["next_retry_at"] is not None)
+        process.terminate()
+        self.assertEqual(process.wait(timeout=8), 143)
+        self.assertEqual((self.state()["status"], self.state()["reason"]), ("stopped", "admin_stop"))
+        self.assertEqual(self.state()["restart_count"], 0)
+
+    def test_authentication_failure_requires_repair_not_restart(self):
+        self.http_status = 401
+        child = ('import os,pathlib,time;'
+                 'pathlib.Path(os.environ["GARY_CLIENT_HOME"],"active").touch();'
+                 'pathlib.Path(os.environ["SESSION_BODY_STARTED_FILE"]).touch();time.sleep(60)')
+        process = self.fast_supervisor([sys.executable, "-c", child])
+        self.assertEqual(process.wait(timeout=8), 20)
+        self.assertEqual((self.state()["status"], self.state()["reason"]), ("paused", "unauthorized"))
+        self.assertEqual(self.state()["restart_count"], 0)
+        self.assertFalse(self.state()["auto_restart"])
 
     def test_absolute_deadline_covers_startup_and_preserves_thread(self):
         process = self.supervisor('import os,time; open(os.environ["SESSION_LOG"], "a").write("session id: thread-deadline\\n"); time.sleep(60)', seconds=2)

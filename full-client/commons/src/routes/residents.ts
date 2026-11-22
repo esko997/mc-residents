@@ -11,16 +11,20 @@ import { refuse, type Context, type Routes } from "./context.ts";
 interface UnitState { unit: string; state: string }
 interface SessionHealth {
   status: string; reason: string; updated_at: number; end_at: number; thread_id: string | null;
+  restart_count: number; next_retry_at: number | null; auto_restart: boolean;
 }
 async function sessionHealth(path: string): Promise<SessionHealth | null> {
   try {
     const value = JSON.parse(await readFile(path, "utf8"));
-    if (!value || !["starting", "healthy", "degraded", "paused", "stopped", "failed"].includes(value.status)
+    if (!value || !["starting", "healthy", "degraded", "restarting", "paused", "stopped", "failed"].includes(value.status)
       || !Number.isFinite(value.updated_at) || !Number.isFinite(value.end_at)) return null;
     return {
       status: value.status, reason: typeof value.reason === "string" ? value.reason.slice(0, 600) : "",
       updated_at: value.updated_at, end_at: value.end_at,
       thread_id: typeof value.thread_id === "string" ? value.thread_id : null,
+      restart_count: Number.isInteger(value.restart_count) && value.restart_count >= 0 ? value.restart_count : 0,
+      next_retry_at: Number.isFinite(value.next_retry_at) ? value.next_retry_at : null,
+      auto_restart: value.auto_restart === true,
     };
   } catch { return null; }
 }

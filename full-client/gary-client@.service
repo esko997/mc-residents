@@ -7,11 +7,8 @@ Description=Resident full client (%i)
 [Service]
 Slice=residents.slice
 ExecStart=%h/gary-client/launch.sh %i
-MemoryHigh=5632M
 # Per-resident settings (GAME_DIR, SYNAPSE_URL); Gary's defaults need none.
 EnvironmentFile=-%h/gary-client/instances/%i.env
-MemoryMax=6G
-MemorySwapMax=0
 CPUQuota=400%
 Nice=10
 Restart=no

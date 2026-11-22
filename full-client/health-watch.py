@@ -6,7 +6,7 @@ SESSION_HEALTH_FILE and SESSION_HEALTH_LOG. SYNAPSE_URL and SYNAPSE_TOKEN_FILE
 are environment/file inputs, never command-line secrets. Defaults: probe every
 15s, hard 5s probe budget, 300s startup grace, then 3 failures spanning 60s.
 The atomic health JSON is the dashboard contract; transition JSONL is append-only.
-A terminal pause requires an explicit operator resume with its thread_id.
+Recoverable body failures restart with backoff and resume the same conversation.
 """
 import json
 import math
@@ -25,6 +25,12 @@ import urllib.request
 
 THREAD = re.compile(r"^session id: ([A-Za-z0-9_-]+)$")
 TERMINAL = {"paused", "failed", "stopped"}
+PERMANENT = {"unauthorized", "token_unavailable", "invalid_url"}
+PROBE_INTERVAL = 15
+
+
+def restart_delay(count):
+    return min(300, 30 * 2 ** min(count, 4))
 
 
 def finite(value):
@@ -107,6 +113,8 @@ class Health:
         self.failures = 0
 
     def observe(self, reason, now):
+        if reason in PERMANENT:
+            return "paused"
         if reason in ("healthy", "in_game_dead"):
             self.ever_healthy = True
             self.bad_since = None
@@ -131,7 +139,7 @@ class StateFile:
 
     def put(self, status, reason, **extra):
         self.fields.update(extra, status=status, reason=reason, updated_at=int(time.time()),
-                           paused=status == "paused", terminal=status in TERMINAL, auto_restart=False)
+                           paused=status == "paused", terminal=status in TERMINAL, auto_restart=status not in TERMINAL)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd, name = tempfile.mkstemp(prefix=".health-", dir=self.path.parent)
         try:
@@ -192,30 +200,29 @@ def systemctl(*args, timeout=2):
     except (OSError, subprocess.TimeoutExpired):
         return -1
 
-def supervise(command):
-    end_at = int(os.environ["SESSION_END_AT"])
+def supervise_once(command, end_at, state, reader, restart_count, interrupted):
     started = time.monotonic()
     health = Health(started)
-    reader = ThreadReader(os.environ["SESSION_LOG"], os.environ.get("RESUME_THREAD"))
-    state = StateFile(os.environ["SESSION_HEALTH_FILE"], os.environ["SESSION_HEALTH_LOG"], {
-        "version": 1, "resident": os.environ["SESSION_RESIDENT"], "end_at": end_at,
-        "started_at": int(time.time()), "thread_id": reader.thread,
-        "session_log": os.environ["SESSION_LOG"], "supervisor_pid": os.getpid(),
-        "last_healthy_at": None, "consecutive_failures": 0,
-    })
-    interrupted = []
-    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-        signal.signal(sig, lambda signum, frame: interrupted.append(signum))
     child = None
     pending = None
     status, reason, code = "failed", "supervisor_failure", 1
-    state.put("starting", "startup_grace")
+    state.put("starting", "startup_grace", restart_count=restart_count, next_retry_at=None,
+              consecutive_failures=0, cleanup_complete=False)
     with tempfile.TemporaryDirectory(prefix="resident-health-") as runtime:
         ready = Path(runtime) / "ready"
         child_env = dict(os.environ, SESSION_HEALTH_CHILD="1", SESSION_READY_FILE=str(ready),
                          SESSION_BODY_STARTED_FILE=str(Path(runtime) / "body-started"))
+        if reader.thread:
+            child_env["RESUME_THREAD"] = reader.thread
+        if restart_count:
+            child_env["SESSION_NOTE"] = (os.environ.get("SESSION_NOTE", "") +
+                " Your body was restarted after a sustained connection failure. This is the same conversation "
+                "and original end time. Inspect your current surroundings, inventory and project state before "
+                "continuing; an interrupted action may already have completed, so do not blindly repeat it.")
         try:
-            if time.time() >= end_at:
+            if interrupted:
+                status, reason, code = "stopped", "admin_stop", 128 + interrupted[0]
+            elif time.time() >= end_at:
                 status, reason, code = "stopped", "deadline", 0
             else:
                 child = subprocess.Popen(command, env=child_env, start_new_session=True)
@@ -270,14 +277,20 @@ def supervise(command):
                                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                                    stdin=subprocess.DEVNULL, start_new_session=True)
                         probe_started = now
-                        next_probe = now + 15
+                        next_probe = now + PROBE_INTERVAL
                     time.sleep(max(0, min(0.25, end_at - time.time())))
         except Exception:
             # Do not emit exception text: HTTP errors can include sensitive URLs.
             status, reason, code = "failed", "supervisor_failure", 1
         finally:
-            # Publish the reason before shutdown; an operator need not infer it
-            # from a dead process. No restart/replay or world mutation is attempted.
+            # Recovery is permitted only for body/startup faults, never credentials,
+            # an operator stop, deadline, or a failed model invocation.
+            if ((status == "paused" and reason not in PERMANENT)
+                    or (status == "failed" and reason == "startup_failure")):
+                if health.ever_healthy and not reader.read():
+                    status, reason, code = "failed", "thread_missing", 4
+                elif not interrupted and time.time() < end_at:
+                    status = "restarting"
             try:
                 state.put(status, reason, thread_id=reader.read(), exit_code=code, cleanup_complete=False)
             except OSError:
@@ -301,6 +314,36 @@ def supervise(command):
             state.put(status, reason, thread_id=reader.read(), exit_code=code,
                       cleanup_complete=True, client_stopped=stopped)
     return code
+
+
+def supervise(command):
+    end_at = int(os.environ["SESSION_END_AT"])
+    reader = ThreadReader(os.environ["SESSION_LOG"], os.environ.get("RESUME_THREAD"))
+    state = StateFile(os.environ["SESSION_HEALTH_FILE"], os.environ["SESSION_HEALTH_LOG"], {
+        "version": 1, "resident": os.environ["SESSION_RESIDENT"], "end_at": end_at,
+        "started_at": int(time.time()), "thread_id": reader.thread,
+        "session_log": os.environ["SESSION_LOG"], "supervisor_pid": os.getpid(),
+        "last_healthy_at": None, "consecutive_failures": 0,
+        "restart_count": 0, "next_retry_at": None,
+    })
+    interrupted = []
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(sig, lambda signum, frame: interrupted.append(signum))
+    restart_count = 0
+    while True:
+        code = supervise_once(command, end_at, state, reader, restart_count, interrupted)
+        if state.fields["status"] != "restarting":
+            return code
+        retry_at = min(end_at, time.time() + restart_delay(restart_count))
+        state.put("restarting", state.fields["reason"], next_retry_at=math.ceil(retry_at))
+        while not interrupted and time.time() < retry_at:
+            time.sleep(max(0, min(0.25, retry_at - time.time())))
+        if interrupted or time.time() >= end_at:
+            reason = "admin_stop" if interrupted else "deadline"
+            code = 128 + interrupted[0] if interrupted else 0
+            state.put("stopped", reason, exit_code=code, next_retry_at=None)
+            return code
+        restart_count += 1
 
 
 if __name__ == "__main__":

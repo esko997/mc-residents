@@ -14,7 +14,7 @@
 # putting a resident back after its body was updated in the middle of a run.
 # SESSION_END_AT is an absolute Unix-seconds deadline, overriding minutes and
 # including client startup. health-watch.py enforces it independently of the
-# mind and pauses on sustained body loss; only an operator may resume a pause.
+# mind and recovers sustained body loss by restarting and resuming the same thread.
 #
 # Start it as a transient user unit so it outlives the SSH session:
 #   systemd-run --user --unit=gary-session ~/gary-client/run-session.sh Gary gary 60
