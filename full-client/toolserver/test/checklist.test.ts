@@ -5,6 +5,9 @@ import { fixture as fakeFixture, type Fixture } from "./fake-synapse.ts";
 
 const fixture = () => fakeFixture({ rotation: { yaw: 73, pitch: 10 }, selectedSlot: 4 });
 const toolText = (result: CallToolResult) => result.content.filter(c => c.type === "text").map(c => c.text).join("\n");
+// Exact mode-boundary commands: keep every later #stop visible to cancellation assertions.
+const walkPreamble = ["#stop", "#set allowBreak false", "#set allowPlace false", "#set allowWaterBucketFall false"];
+const restoreTripSettings = ["#set allowBreak true", "#set allowPlace true", "#set allowWaterBucketFall true"];
 function moveTo(f: Fixture, x: number, y: number, z: number) {
   f.state.pos = { x, y, z }; f.state.eye = { x, y: y + 1.62, z };
 }
@@ -117,7 +120,7 @@ test.each(["abort", "timeout"] as const)("R04 Cancelled wait is mistaken for can
   expect(f.requests).toHaveLength(start);
   f.tick(4000); await f.body.poll();
   expect(f.body.events.consume()).toContain("stopped_short");
-  expect(f.requests.some(r => r.body.text === "#stop")).toBe(false);
+  expect(f.requests.slice(start).some(r => r.body.text === "#stop")).toBe(false);
 });
 
 test("A23 retreat follows the newest safer crumb and re-aims twice a second", async () => {
@@ -137,7 +140,8 @@ test("A23 retreat follows the newest safer crumb and re-aims twice a second", as
   expect(f.requests.filter(r => r.body.action === "release")).toHaveLength(1);
   expect(f.requests.filter(r => r.body.text === "#resume")).toHaveLength(1);
   const events = f.body.events.consume();
-  expect(events).toContain("retreat rescue started"); expect(events).toContain("clear of threat");
+  expect(events).toContain("retreat rescue started");
+  expect(events).toContain("20 blocks from minecraft:zombie (2 at the start); it may still follow or shoot");
 });
 
 test("A23 retreat never heads for a crumb on the far side of the threat", async () => {
@@ -485,7 +489,7 @@ test("status shows air and burning/lava, and new rescues can be disabled", async
   expect(status).toContain("Air 20/300"); expect(status).toContain("Hazard: burning, in lava");
 });
 
-const chats = (f: Fixture) => f.requests.filter(r => r.path === "/chat").map(r => r.body.text);
+const chats = (f: Fixture, from = 0) => f.requests.slice(from).filter(r => r.path === "/chat").map(r => r.body.text);
 async function startDrowning(f: Fixture, air = 40) {
   Object.assign(f.state, { underwater: true, inWater: true, onGround: false, air, maxAir: 300 });
   await f.body.poll(); await f.body.api.state();
@@ -544,14 +548,14 @@ test("A13 a breath during a go_to holds the head up until the air is back, then 
   // Head out, air still short of 80%: he is held up where he is, not sent back to the shore crumb at 0,0.
   Object.assign(f.state, { underwater: false, air: 239 });
   f.tick(1000); await f.body.poll(); await f.body.api.state();
-  expect(chats(f)).toEqual(["#goto 400 -621", "#pause"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 400 -621", "#pause"]);
   expect(f.body.events.consume()).not.toContain("surface rescue ended");
   const moves = f.requests.filter(r => r.body.action === "move").map(r => r.body);
   expect(moves).toHaveLength(2);
   for (const move of moves) expect(move).toEqual({ action: "move", jump: true, ticks: 5 });
   expect(f.requests.some(r => r.body.action === "look")).toBe(false);
   f.state.air = 240; f.tick(2400); await f.body.poll();
-  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#resume"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 400 -621", "#pause", "#resume"]);
   expect(f.requests.filter(r => r.body.action === "release")).toHaveLength(1);
   expect(f.body.navigation?.description).toBe("goto 400 -621");
   const events = f.body.events.consume();
@@ -572,14 +576,14 @@ test("A13 breaths that come with 8 blocks of progress keep the trip; three that 
     const events = await breath(f);
     expect(events).toContain("trip resumed"); expect(events).not.toContain("navigation_stopped");
   }
-  expect(chats(f)).toEqual(["#goto 100 0", "#pause", "#resume", "#pause", "#resume", "#pause", "#resume"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 100 0", "#pause", "#resume", "#pause", "#resume", "#pause", "#resume"]);
   expect(f.body.navigation?.description).toBe("goto 100 0");
   moveTo(f, 12, 62, 0); // the last three breaths were at 5, 9 and 12: 7 blocks
   const events = await breath(f);
   expect(events).toContain("surface rescue ended after 3 s: took a breath, air 148 -> 300");
   expect(events).not.toContain("trip resumed");
   expect(events).toContain("navigation_stopped goal=goto 100 0 reason=needed air 3 times in 2 minutes and got only 7 closer you=12,62,0 remaining=88");
-  expect(chats(f).slice(-2)).toEqual(["#pause", "#stop"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 100 0", "#pause", "#resume", "#pause", "#resume", "#pause", "#resume", "#pause", "#stop", ...restoreTripSettings]);
   expect(f.body.navigation).toBeUndefined();
 });
 
@@ -592,34 +596,37 @@ test("A13 the third breath in two minutes with no progress stops the go_to; the 
   const third = await breath(f);
   expect(third).toContain("navigation_stopped goal=goto 27 0 reason=needed air 3 times in 2 minutes and got no closer you=3,62,0 remaining=23.5");
   expect(third).not.toContain("times=");
-  expect(chats(f)).toEqual(["#goto 27 0", "#pause", "#resume", "#pause", "#resume", "#pause", "#stop"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 27 0", "#pause", "#resume", "#pause", "#resume", "#pause", "#stop", ...restoreTripSettings]);
   expect(f.body.navigation).toBeUndefined();
   f.tick(4000); await f.body.poll();
   expect(f.body.events.consume()).not.toContain("stopped_short");
   await f.tools.call("go_to", { x: 27, z: 0 });
+  const restarted = f.requests.length;
   for (let i = 0; i < 2; i++) {
     const events = await breath(f);
     expect(events).toContain("trip resumed"); expect(events).not.toContain("navigation_stopped");
   }
   expect(f.body.navigation?.description).toBe("goto 27 0");
   expect(await breath(f)).toContain("reason=needed air 3 times in 2 minutes and got no closer you=3,62,0 remaining=23.5 times=2 in ten minutes");
-  expect(chats(f).filter(text => text === "#stop")).toHaveLength(2);
+  expect(chats(f, restarted)).toEqual(["#pause", "#resume", "#pause", "#resume", "#pause", "#stop", ...restoreTripSettings]);
 });
 
 test("A13 explore is stopped on the third breath within two minutes; older breaths do not count", async () => {
   const f = await fixture(); await f.body.poll();
   await f.tools.call("explore");
+  expect(chats(f)).toEqual([...walkPreamble, "#explore"]);
+  const started = f.requests.length;
   expect(await breath(f)).toContain("trip resumed");
   expect(await breath(f)).toContain("trip resumed");
   f.tick(121_000); moveTo(f, 40, 62, 0); // still swimming; the first two breaths are now too old
   expect(await breath(f)).toContain("trip resumed");
   expect(await breath(f)).toContain("trip resumed");
-  expect(chats(f)).not.toContain("#stop");
+  expect(chats(f, started)).not.toContain("#stop");
   const events = await breath(f);
   expect(events).toContain("navigation_stopped goal=explore reason=needed air 3 times in 2 minutes; no destination to measure progress by you=40,62,0");
   expect(events).not.toContain("remaining=");
   expect(chats(f).filter(text => text === "#resume")).toHaveLength(4);
-  expect(chats(f).slice(-2)).toEqual(["#pause", "#stop"]);
+  expect(chats(f, started)).toEqual(["#pause", "#resume", "#pause", "#resume", "#pause", "#resume", "#pause", "#resume", "#pause", "#stop", ...restoreTripSettings]);
   expect(f.body.navigation).toBeUndefined();
 });
 
@@ -632,15 +639,16 @@ test("A13 a breath that cannot get the head out in 12 s stops the trip, and the 
   expect(f.requests.filter(r => r.body.action === "move").at(-1)?.body).toEqual({ action: "move", jump: true, ticks: 5 });
   expect(f.requests.some(r => r.body.action === "look")).toBe(false);
   f.state.air = 35; f.tick(5500); await f.body.poll();
-  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#stop"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 400 -621", "#pause", "#stop", ...restoreTripSettings]);
   expect(f.body.navigation).toBeUndefined();
   let events = f.body.events.consume();
   expect(events).toContain("surface rescue ended after 12 s: timed out, air 40 -> 35");
   expect(events).toContain("navigation_stopped goal=goto 400 -621 reason=could not keep your head above water for 12 s (air 35/300) you=0,64,0 remaining=738.7");
+  const stopped = f.requests.length;
   await f.body.poll(); await f.body.api.state();
   events = f.body.events.consume();
   expect(events).toContain("surface rescue started: air 35/300");
-  expect(chats(f).slice(3)).toEqual(["#pause"]);
+  expect(chats(f, stopped)).toEqual(["#pause"]);
   f.tick(6000); await f.body.poll(); await f.body.api.state();
   expect(f.requests.filter(r => r.body.action === "move").at(-1)?.body).toEqual({ action: "move", forward: true, jump: true, ticks: 5 });
 });
@@ -659,7 +667,7 @@ test("A13 with the trip already reported as stopped short, the rescue makes for 
   expect(f.requests.filter(r => r.body.action === "look").at(-1)?.body.yaw as number).toBeCloseTo(90);
   moveTo(f, 0.5, 64, 0); Object.assign(f.state, { inWater: false, onGround: true });
   f.tick(1000); await f.body.poll();
-  expect(chats(f)).toEqual(["#goto 50 0", "#pause", "#stop"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 50 0", "#proc", "#pause", "#stop", ...restoreTripSettings]);
   expect(f.body.navigation).toBeUndefined();
   const events = f.body.events.consume();
   expect(events).toContain("out of the water after 1.6 s, air 40 -> 300");
@@ -667,24 +675,33 @@ test("A13 with the trip already reported as stopped short, the rescue makes for 
   expect(toolText(await f.tools.call("status"))).toContain("Navigation: none");
 });
 
-test("A13 a tool call during a breath hands the body over with the trip resumed; stop then sends one stop", async () => {
+test("A13 a tool call during a breath leaves the rescue in control; explicit stop sends one cancellation", async () => {
   const f = await fixture(); await f.body.poll();
   await f.tools.call("go_to", { x: 400, z: -621 });
   await startDrowning(f, 148);
+  const rescuing = f.requests.length;
   const looked = await f.tools.call("look", { yaw: 10, pitch: 0 });
-  expect(looked.isError).toBe(false);
-  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#resume"]);
+  expect(looked.isError).toBe(true);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 400 -621", "#pause"]);
+  expect(f.requests.slice(rescuing).some(r => r.body.action === "look")).toBe(false);
+  expect(f.body.rescuing).toBe("surface");
   expect(f.body.navigation?.description).toBe("goto 400 -621");
   const events = toolText(looked);
-  expect(events).toContain("surface rescue ended after 0 s: interrupted by your action");
+  expect(events).toContain("coming up for air (air 148/300) and keeps the controls until it is out");
+  expect(events).not.toContain("surface rescue ended");
   expect(events).not.toContain("navigation_stopped");
-  // Still under water with little air: the next poll takes another breath rather than leaving him to drown.
+  // The same breath continues: no extra pause, resume or cancellation from the rejected look.
   await f.body.poll(); await f.body.api.state();
-  expect(chats(f).slice(3)).toEqual(["#pause"]);
+  expect(chats(f, rescuing)).toEqual([]);
+  expect(f.body.rescuing).toBe("surface");
   const result = await f.tools.call("stop");
   expect(toolText(result)).toContain("Stopped navigation and released keys.");
+  expect(result.isError).toBe(false);
+  expect(toolText(result)).toContain("ended by your stop; still under water, air 148/300");
   expect(toolText(result)).not.toContain("navigation_stopped");
-  expect(chats(f).slice(4)).toEqual(["#resume", "#stop"]);
+  expect(chats(f, rescuing)).toEqual(["#resume", "#stop", ...restoreTripSettings]);
+  expect(f.body.rescuing).toBeUndefined();
+  expect(f.baritone).toEqual({ active: false, paused: false });
   expect(f.body.navigation).toBeUndefined();
 });
 
@@ -693,11 +710,13 @@ test("A12 lava taking over from a breath stops the trip once and leaves Baritone
   await f.tools.call("go_to", { x: 400, z: -621 });
   await startDrowning(f, 148);
   Object.assign(f.state, { inLava: true, onFire: true }); f.tick(500); await f.body.poll(); await f.body.api.state();
-  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#stop", "#pause"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 400 -621", "#pause", "#stop", "#pause", ...restoreTripSettings]);
+  const lava = f.requests.length;
   expect(f.body.navigation).toBeUndefined();
   Object.assign(f.state, { inLava: false, onFire: false, underwater: false, inWater: false, onGround: true, air: 300 });
   f.tick(1000); await f.body.poll();
-  expect(chats(f).slice(4)).toEqual(["#resume"]);
+  expect(chats(f, lava)).toEqual(["#resume"]);
+  expect(f.baritone).toEqual({ active: false, paused: false });
   const events = f.body.events.consume();
   expect(events).toContain("surface rescue ended after 0.5 s: superseded by lava");
   expect(events.match(/navigation_stopped/g)).toHaveLength(1);
@@ -705,7 +724,13 @@ test("A12 lava taking over from a breath stops the trip once and leaves Baritone
 
 test("A12 the second lava rescue on one goal within ten minutes says so; other goals and later rescues count afresh", async () => {
   const f = await fixture(); await f.body.poll();
-  const rescued = async (goal: { x: number; z: number }) => { await f.tools.call("go_to", goal); await lavaDip(f); return f.body.events.consume(); };
+  const rescued = async (goal: { x: number; z: number }) => {
+    await f.tools.call("go_to", goal);
+    const started = f.requests.length;
+    await lavaDip(f);
+    expect(chats(f, started)).toEqual(["#pause", "#stop", ...restoreTripSettings]);
+    return f.body.events.consume();
+  };
   expect(await rescued({ x: 400, z: -621 })).not.toContain("times=");
   f.tick(60_000);
   expect(await rescued({ x: 400, z: -621 })).toContain("navigation_stopped goal=goto 400 -621 reason=the path led into lava you=0,64,0 remaining=738.7 times=2 in ten minutes");
@@ -713,7 +738,6 @@ test("A12 the second lava rescue on one goal within ten minutes says so; other g
   f.tick(600_000);
   const later = await rescued({ x: 400, z: -621 });
   expect(later).toContain("navigation_stopped goal=goto 400 -621"); expect(later).not.toContain("times=");
-  expect(chats(f).filter(text => text === "#stop")).toHaveLength(4);
   expect(chats(f)).not.toContain("#resume");
 });
 
@@ -738,7 +762,7 @@ test("A23 a retreat during a go_to still pauses and resumes the same navigation"
   f.tick(1000); await f.body.poll(); await f.body.api.state();
   f.state.nearbyEntities = [{ id: 7, type: "minecraft:creeper", hostile: true, distance: 12, pos: [12, 64, 0], health: 20 }];
   f.tick(1000); await f.body.poll();
-  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#resume"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 400 -621", "#pause", "#resume"]);
   expect(f.body.navigation?.description).toBe("goto 400 -621");
   const events = f.body.events.consume();
   expect(events).toContain("retreat rescue ended"); expect(events).not.toContain("navigation_stopped");
@@ -751,14 +775,14 @@ test("A13 death during a breath on a go_to stops Baritone once and never resumes
   await f.tools.call("go_to", { x: 400, z: -621 });
   await startDrowning(f);
   f.state.health = 0; f.tick(1000); await f.body.poll();
-  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#stop"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 400 -621", "#pause", "#stop", ...restoreTripSettings]);
   expect(f.body.navigation).toBeUndefined();
   const events = f.body.events.consume();
   expect(events).toContain("died at=0,64,0");
   expect(events).toContain("navigation_stopped goal=goto 400 -621 reason=the path led into deep water and you died there");
   expect(events).not.toContain("you="); expect(events).not.toContain("remaining=");
   f.tick(1000); await f.body.poll();
-  expect(chats(f)).toHaveLength(3);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 400 -621", "#pause", "#stop", ...restoreTripSettings]);
 });
 
 test("A13 a go_to given during a breath is a new trip: it is resumed, and the breath is not counted against it", async () => {
@@ -767,7 +791,7 @@ test("A13 a go_to given during a breath is a new trip: it is resumed, and the br
   await startDrowning(f);
   await f.tools.call("go_to", { x: -30, z: 8 });
   await reachDryGround(f, 1, 64, 1);
-  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#goto -30 8", "#pause", "#resume"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 400 -621", "#pause", "#goto -30 8", "#pause", "#resume"]);
   expect(f.body.navigation?.description).toBe("goto -30 8");
   const events = f.body.events.consume();
   expect(events).toContain("took a breath, air 40 -> 300; trip resumed"); expect(events).not.toContain("navigation_stopped");
@@ -782,7 +806,7 @@ test("A13 shutdown during a rescue on a go_to sends one stop and no resume", asy
   await f.tools.call("go_to", { x: 400, z: -621 });
   await startDrowning(f);
   await f.body.close();
-  expect(chats(f)).toEqual(["#goto 400 -621", "#pause", "#stop"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 400 -621", "#pause", "#stop", ...restoreTripSettings]);
 });
 
 test("a wait for arrival wakes when a rescue stops the navigation instead", async () => {
@@ -797,10 +821,10 @@ test("a wait for arrival wakes when a rescue stops the navigation instead", asyn
 
 test("the third stop-short of one destination from one place says so, and an arrival starts the count over", async () => {
   const f = await fixture(); const goal = { x: 50, z: 0 };
-  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 baritone=no reply observed since start");
-  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 baritone=no reply observed since start");
-  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 attempts=3 text=same destination has stopped short 3 times from about here baritone=no reply observed since start");
-  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 attempts=4 text=same destination has stopped short 4 times from about here baritone=");
+  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 mode=walk-only baritone=no reply observed since start");
+  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 mode=walk-only baritone=no reply observed since start");
+  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 attempts=3 text=same destination has stopped short 3 times from about here mode=walk-only baritone=no reply observed since start");
+  expect(await stall(f, "go_to", goal)).toContain("stopped_short distance=50 attempts=4 text=same destination has stopped short 4 times from about here mode=walk-only baritone=");
   await f.tools.call("go_to", goal); moveTo(f, 49, 64, 0); await f.body.poll();
   expect(f.body.events.consume()).toContain("arrived goal=goto 50 0");
   moveTo(f, 0, 64, 0);
@@ -938,7 +962,7 @@ test("N04 death ends the trip at once: Baritone is stopped, no stop-short follow
   const start = f.requests.length;
   f.state.health = 0; f.setScreen({ screen: "DeathScreen" }); f.tick(500); await f.body.poll();
   expect(f.baritone).toEqual({ active: false, paused: false });
-  expect(chats(f)).toEqual(["#goto 20 0", "#pause", "#stop"]);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 20 0", "#pause", "#stop", ...restoreTripSettings]);
   expect(f.body.navigation).toBeUndefined();
   f.tick(4000); await f.body.poll();
   const events = f.body.events.consume();
@@ -948,7 +972,7 @@ test("N04 death ends the trip at once: Baritone is stopped, no stop-short follow
   const trip = await f.tools.call("go_to", { x: 5, z: 0 });
   expect(trip.isError).toBe(true);
   expect(toolText(trip)).toContain("Error: You are dead; no trip can start before you respawn.");
-  expect(chats(f)).toHaveLength(3);
+  expect(chats(f)).toEqual([...walkPreamble, "#goto 20 0", "#pause", "#stop", ...restoreTripSettings]);
 });
 
 test("a wait for arrival wakes when death ends the trip", async () => {
@@ -976,10 +1000,10 @@ test("following a player who stands still is arrival within Baritone's three blo
 
 test("a stop short of a goal with a height says how far across and how far above or below the goal is", async () => {
   const f = await fixture(); moveTo(f, 50.5, 117, -189.5);
-  expect(await stall(f, "go_to", { x: 50, y: 120, z: -190 })).toContain("stopped_short distance=3.1 across=0.7 height=goal is 3 above you baritone=");
-  expect(await stall(f, "go_to", { x: 50, y: 112, z: -190 })).toContain("stopped_short distance=5 across=0.7 height=goal is 5 below you baritone=");
-  expect(await stall(f, "go_to", { x: 60, y: 117, z: -190 })).toContain("stopped_short distance=9.5 across=9.5 height=goal is level with you baritone=");
-  expect(await stall(f, "go_to", { x: 60, z: -190 })).toContain("stopped_short distance=9.5 baritone=");
+  expect(await stall(f, "go_to", { x: 50, y: 120, z: -190 })).toContain("stopped_short distance=3.1 across=0.7 height=goal is 3 above you mode=walk-only baritone=");
+  expect(await stall(f, "go_to", { x: 50, y: 112, z: -190 })).toContain("stopped_short distance=5 across=0.7 height=goal is 5 below you mode=walk-only baritone=");
+  expect(await stall(f, "go_to", { x: 60, y: 117, z: -190 })).toContain("stopped_short distance=9.5 across=9.5 height=goal is level with you mode=walk-only baritone=");
+  expect(await stall(f, "go_to", { x: 60, z: -190 })).toContain("stopped_short distance=9.5 mode=walk-only baritone=");
 });
 
 test("Baritone's Paused and Resumed, answers to the body's own reflexes, take no event line and do not replace its last word on the trip", async () => {
@@ -988,7 +1012,7 @@ test("Baritone's Paused and Resumed, answers to the body's own reflexes, take no
   await f.body.poll();
   expect(f.body.events.consume()).toBe("Since last time:\n1 baritone text=Going to: GoalXZ{x=50,z=0}");
   f.tick(4000); await f.body.poll();
-  expect(f.body.events.consume()).toContain("stopped_short distance=50 baritone=Going to: GoalXZ{x=50,z=0}");
+  expect(f.body.events.consume()).toContain("stopped_short distance=50 mode=walk-only baritone=Going to: GoalXZ{x=50,z=0}");
 });
 
 test("breaking blocks from one spot is work, not a stop, until 30 s have passed in one place", async () => {
@@ -1134,12 +1158,27 @@ test("N04 death stops a mine job that outlived its stall report, and its breakin
   expect(f.body.events.consume()).toContain("navigation_stopped goal=mine minecraft:chest reason=you died");
 });
 
-test("S05 a trip that could not be sent leaves the mine job before it watched: its radius holds and its cost follows the job", async () => {
+test.each(["excavate", "walk"] as const)("S05 a trip that could not be sent preserves the mine job unless the mode switch cancelled it (%s)", async mode => {
   const f = await avoidingChests(); await f.tools.call("mine", { block: "chest", radius: 8 });
   const chat = f.body.api.chat.bind(f.body.api);
   f.body.api.chat = text => text.startsWith("#goto") ? Promise.reject(new Error("Synapse did not answer.")) : chat(text);
-  expect((await f.tools.call("go_to", { x: 50, z: 0 })).isError).toBe(true);
-  // The cost went back for the trip that never started. Baritone is still at the chest, which needs it lifted.
+  expect((await f.tools.call("go_to", { x: 50, z: 0, mode })).isError).toBe(true);
+  if (mode === "walk") {
+    // A path planned with digging must be cancelled before walk-only settings are applied,
+    // even if sending the replacement goal then fails. It must not revive the old mine.
+    expect(chats(f)).toEqual([lift, "#mine minecraft:chest", ...walkPreamble, keep]);
+    expect(f.body.navigation).toBeUndefined();
+    expect(f.baritone).toEqual({ active: false, paused: false });
+    const failed = f.requests.length;
+    await f.body.poll();
+    expect(chats(f, failed)).toEqual(restoreTripSettings);
+    moveTo(f, 9, 64, 0); await f.body.poll();
+    expect(chats(f, failed)).toEqual(restoreTripSettings);
+    expect(f.body.navigation).toBeUndefined();
+    expect(f.baritone).toEqual({ active: false, paused: false });
+    return;
+  }
+  // No mode change: the failed send leaves Baritone at the chest, which still needs the cost lifted.
   expect(chats(f)).toEqual([lift, "#mine minecraft:chest", keep]);
   expect(f.body.navigation?.description).toBe("mine minecraft:chest");
   await f.body.poll();
