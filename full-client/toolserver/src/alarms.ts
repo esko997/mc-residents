@@ -24,7 +24,9 @@ export function automaticAlarmReasons(state: State, entities: readonly Entity[],
 }
 
 export function alarmFromState(kind: AlarmRequest["kind"], reason: string, state: State): AlarmRequest {
-  return { kind, reason, ...state.pos, dimension: state.dimension, health: state.health, maxHealth: state.maxHealth ?? 20 };
+  // Only the coordinates: Synapse's pos also carries `block`, which the hub's strict schema refuses.
+  const { x, y, z } = state.pos;
+  return { kind, reason, x, y, z, dimension: state.dimension, health: state.health, maxHealth: state.maxHealth ?? 20 };
 }
 
 /** Perception seam: future server-backed clear sight within 96 blocks belongs here, not in the hub fan-out. */

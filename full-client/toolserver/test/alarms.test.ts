@@ -137,7 +137,8 @@ test("manual tool -> authenticated hub -> poller -> local waking alarm, never ra
   const sender = await fixture({ ...margo, name: "Margo" });
   const listener = await fixture({ ...gary, name: "Gary" });
   try {
-    sender.state.pos = { x: 24, y: 64, z: -24 };
+    // Real Synapse positions also carry `block`; the hub's strict alarm schema must still accept the call.
+    sender.state.pos = { x: 24, y: 64, z: -24, block: [24, 64, -24] } as typeof sender.state.pos;
     sender.state.health = 6;
     // All other remote alarms must be consumed silently before the in-range one.
     hub.api.events.publish("Gary", "alarm", event({ x: 1000 }));
