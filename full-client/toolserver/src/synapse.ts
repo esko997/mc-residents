@@ -11,6 +11,19 @@ export interface Entity {
   passengers?: number; mountable?: boolean;
 }
 export interface FluidHit { fluid: string; source: boolean; blockPos: number[]; face: string }
+/**
+ * The latest held attack as a Synapse that keeps breaking without window focus reports it (`HeldKeys`,
+ * `AttackHold`): its hold reply carries the same `id`. `progress` is the most of the block's breaking seen (0..1;
+ * vanilla starts from zero again on every hold), `ticksNeeded` the hold that breaks it from zero at the measured
+ * rate. `ended`: done (all ticks held), target (the crosshair left the block: it broke, the view turned, or
+ * something moved into the line), screen, released, replaced, player (death, respawn, leaving, pause).
+ */
+export interface AttackHoldState {
+  id: number; active: boolean; requestedTicks: number; heldTicks: number;
+  target: { type: string; pos?: number[]; entityId?: number };
+  progress?: number; ticksNeeded?: number;
+  ended?: "done" | "target" | "screen" | "released" | "replaced" | "player";
+}
 export interface State {
   pos: Position; dimension: string; health: number; food: number;
   maxHealth?: number;
@@ -31,6 +44,7 @@ export interface State {
   underwater?: boolean; inWater?: boolean; inLava?: boolean; onFire?: boolean;
   onGround?: boolean; fallDistance?: number; velocity?: Position;
   riding?: boolean; vehicle?: VehicleSnapshot;
+  attackHold?: AttackHoldState;
 }
 export interface Widget {
   index: number; label: string; button?: boolean; editable?: boolean;

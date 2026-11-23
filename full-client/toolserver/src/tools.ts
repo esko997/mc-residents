@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Body, mineCounted } from "./body.ts";
-import { hostileEntity, nonempty, playerEntity, unseenSights, type Stack } from "./synapse.ts";
+import { hostileEntity, nonempty, playerEntity, unseenSights, type AttackHoldState, type Stack } from "./synapse.ts";
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 import { craft } from "./craft.ts";
 import { createNotes, notesDefinitions, type Notes } from "./notes.ts";
@@ -387,8 +387,21 @@ export class Tools {
         if (!args.hold_ticks) return attackReport(before.lookingAt, swing.on);
         if (swing.on === "air") return holdReport(before, undefined, args.hold_ticks);
         // The hold ends on the client after its ticks; the server's answer about the block follows within a tick or two.
-        await Bun.sleep(args.hold_ticks * 50 + 300);
-        return holdReport(before, await api.state().catch(() => undefined), args.hold_ticks);
+        // A Synapse that breaks without window focus numbers the hold and reports it in the state until it ends,
+        // earlier when the block breaks; an older build says nothing of it, so the whole hold is waited out.
+        const id = typeof swing.id === "number" ? swing.id : undefined;
+        const deadline = Date.now() + args.hold_ticks * 50 + 2000;
+        let hold: AttackHoldState | undefined;
+        if (id === undefined) await Bun.sleep(args.hold_ticks * 50 + 300);
+        else {
+          do {
+            await Bun.sleep(Math.min(250, args.hold_ticks * 50));
+            const seen = (await api.state().catch(() => undefined))?.attackHold;
+            if (seen?.id === id) hold = seen;
+          } while ((!hold || hold.active) && Date.now() < deadline);
+          await Bun.sleep(300);
+        }
+        return holdReport(before, await api.state().catch(() => undefined), args.hold_ticks, hold);
       }
       case "use": {
         const before = !args.hold_ticks ? await api.state() : undefined;

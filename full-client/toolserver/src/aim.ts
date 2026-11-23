@@ -6,7 +6,7 @@
  */
 import type { Body } from "./body.ts";
 import { interactable } from "./body.ts";
-import { nonempty, type FluidHit, type Position, type State } from "./synapse.ts";
+import { nonempty, type AttackHoldState, type FluidHit, type Position, type State } from "./synapse.ts";
 
 type Sights = State["lookingAt"];
 const normals: Record<string, readonly [number, number, number]> = {
@@ -32,15 +32,17 @@ export function attackReport(at: Sights, on: unknown): string {
 }
 /**
  * The reply to a held attack, once the hold is over: what became of the block it began on. Vanilla goes on
- * breaking a block only while the game window has the mouse captured (Minecraft.continueAttack is passed
- * `MouseHandler.isMouseGrabbed()`), so on a client in the background a hold is one click and no more. Live on
- * 2026-11-23, 01:03 to 02:40 UTC, Gary's holds on chalk, bauxite, amethyst and obsidian changed nothing while each
- * reply said only "Holding attack for N ticks."; Margo's hold broke the same obsidian block with the same pick.
+ * breaking a block only while `continueAttack` is passed `MouseHandler.isMouseGrabbed()`, and only the focused
+ * window has the mouse, so a Synapse built before the fix gives a client in the background one click and no more
+ * (live on 2026-11-23, 01:03 to 02:40 UTC, Gary's holds on chalk, bauxite, amethyst and obsidian changed nothing
+ * while Margo's broke the same obsidian with the same pick). A Synapse with the fix opens that gate for its own hold
+ * while the crosshair stays on the hold's target, and reports the hold (`hold`, matched by the id in its hold reply):
+ * ticks held, breaking progress and why it ended. Without `hold` the reply says that this build needs focus.
  */
-export function holdReport(before: State, after: State | undefined, ticks: number): string {
+export function holdReport(before: State, after: State | undefined, ticks: number, hold?: AttackHoldState): string {
   const at = before.lookingAt, slot = before.selectedSlot;
   const hand = before.hotbar.find(s => s.slot === slot && nonempty(s));
-  const head = `Held attack for ${ticks} ticks with ${hand?.item ?? "an empty hand"}`;
+  const head = `Held attack for ${hold ? hold.heldTicks : ticks} ticks with ${hand?.item ?? "an empty hand"}`;
   if (at.type === "entity") return `${head} on ${at.entity}: a held attack hits a creature once, on its first tick, as in the game. To fight, attack once per swing (a sword is ready again after about 0.6 s, an axe after 1 s), or leave it to your body, which fights back when attacked.`;
   if (at.type !== "block" || !at.blockPos) return `${head} at nothing in reach: nothing was broken.`;
   const block = `${at.block} at ${xyz(at.blockPos)}`;
@@ -49,10 +51,31 @@ export function holdReport(before: State, after: State | undefined, ticks: numbe
   const kept = after.hotbar.find(s => s.slot === slot && nonempty(s));
   const wear = hand?.durability !== undefined && kept?.item === hand.item && kept.durability !== undefined ? ` (${hand.item} durability ${hand.durability} -> ${kept.durability})` : "";
   if (now.type === "block" && now.block === at.block && same(now.blockPos, at.blockPos)) {
-    return `${head} on ${block}: it is still there${wear}. Holding attack goes on breaking a block only while this client's game window has input focus (the game stops when the mouse is not captured), so a client running in the background gets one hit and no more; the block may also need a better tool or a longer hold, or be protected. mine breaks blocks through Baritone without needing focus.`;
+    if (!hold) return `${head} on ${block}: it is still there${wear}. This client's Synapse goes on breaking a block under a held attack only while its game window has input focus (an older build), so in the background a hold is one hit and no more; the block may also need a better tool or a longer hold, or be protected. mine breaks blocks through Baritone without needing focus.`;
+    return `${head} on ${block}: it is still there${wear}. ${stillThere(hold, hand?.item ?? "an empty hand")}`;
   }
   if (moved) return `${head} on ${block}: your view moved during the hold (something else turned it), and now rests on ${sightsText(now)}; whether the block broke was not seen.`;
   return `${head}: ${block} broke${wear}. Now in your sights: ${sightsText(now)}.`;
+}
+/** Why a block outlived a hold, from the hold Synapse reports. */
+function stillThere(hold: AttackHoldState, tool: string): string {
+  const got = `Breaking got ${Math.round((hold.progress ?? 0) * 100)}% of the way`;
+  const needs = hold.ticksNeeded === undefined ? "" : hold.ticksNeeded > 200
+    ? ` With ${tool} it needs about ${hold.ticksNeeded} ticks, more than one hold (200 at most): use a better tool, or mine.`
+    : ` With ${tool} it needs about ${hold.ticksNeeded} ticks of holding.`;
+  const restart = " Breaking starts again from zero on every hold.";
+  switch (hold.ended) {
+    case "done":
+      if (hold.ticksNeeded === undefined) return "Holding made no breaking progress: it cannot be broken by hand here (an unbreakable block, or a game mode that cannot break).";
+      return `${got}.${needs}${restart}`;
+    case "target":
+      return `The hold stopped after ${hold.heldTicks} ticks because the crosshair left the block: something moved into the line, the view turned, or it broke on this client and the server put it back (a protected spot, a claim). ${got}.${needs}`;
+    case "screen": return `A screen opened after ${hold.heldTicks} ticks and ended the hold. ${got}.${needs}`;
+    case "player": return `The hold ended after ${hold.heldTicks} ticks: you died, respawned, left the world or the game paused. ${got}.`;
+    case "released": return `The hold was released after ${hold.heldTicks} ticks. ${got}.${needs}`;
+    case "replaced": return `Another attack hold replaced this one after ${hold.heldTicks} ticks. ${got}.`;
+    default: return `The hold had not finished when it was read back. ${got} so far.`;
+  }
 }
 
 /** The reply to `look` at block x,y,z, after aiming at its centre: what is actually in the sights, fluids included. */

@@ -115,8 +115,29 @@ test("attack says what one click hit, and after a hold whether the block broke",
   f.state.lookingAt = { type: "block", block: "minecraft:obsidian", blockPos: [0, 64, 2], face: "north" };
   const stuck = text(await f.tools.call("attack", { hold_ticks: 2 }));
   expect(stuck).toStartWith("Held attack for 2 ticks with minecraft:iron_pickaxe on minecraft:obsidian at 0,64,2: it is still there (minecraft:iron_pickaxe durability 200 -> 200).");
-  expect(stuck).toContain("only while this client's game window has input focus");
+  expect(stuck).toContain("only while its game window has input focus (an older build)");
   // This time the block breaks during the hold.
   f.options.onHold = state => { state.lookingAt = { type: "block", block: "minecraft:stone", blockPos: [0, 64, 3], face: "north" }; state.hotbar[0]!.durability = 199; };
   expect(text(await f.tools.call("attack", { hold_ticks: 2 }))).toStartWith("Held attack for 2 ticks with minecraft:iron_pickaxe: minecraft:obsidian at 0,64,2 broke (minecraft:iron_pickaxe durability 200 -> 199). Now in your sights: minecraft:stone at 0,64,3.");
+});
+
+test("with a Synapse that breaks without focus, a hold that left the block standing says how far it got and why it ended", async () => {
+  const f = await fixture(); f.state.hotbar = [{ slot: 0, item: "minecraft:wooden_pickaxe", count: 1, durability: 59, maxDurability: 59 }];
+  f.state.lookingAt = { type: "block", block: "minecraft:deepslate", blockPos: [0, 64, 2], face: "north" };
+  const target = { type: "block", pos: [0, 64, 2] };
+  f.options.attackHold = { active: false, requestedTicks: 20, heldTicks: 20, target, progress: 0.44, ticksNeeded: 45, ended: "done" };
+  const short = text(await f.tools.call("attack", { hold_ticks: 20 }));
+  expect(short).toStartWith("Held attack for 20 ticks with minecraft:wooden_pickaxe on minecraft:deepslate at 0,64,2: it is still there");
+  expect(short).toContain("Breaking got 44% of the way. With minecraft:wooden_pickaxe it needs about 45 ticks of holding. Breaking starts again from zero on every hold.");
+  expect(short).not.toContain("focus");
+  // A screen cut the next one short; the reply says so instead of blaming the tool.
+  f.options.attackHold = { active: false, requestedTicks: 60, heldTicks: 12, target, progress: 0.27, ticksNeeded: 45, ended: "screen" };
+  expect(text(await f.tools.call("attack", { hold_ticks: 60 }))).toContain("A screen opened after 12 ticks and ended the hold. Breaking got 27% of the way.");
+  // An unbreakable block makes no progress at all.
+  f.options.attackHold = { active: false, requestedTicks: 10, heldTicks: 10, target, progress: 0, ended: "done" };
+  expect(text(await f.tools.call("attack", { hold_ticks: 10 }))).toContain("Holding made no breaking progress: it cannot be broken by hand here");
+  // A block that broke ends the hold early; the reply counts the ticks it took.
+  f.options.attackHold = { active: false, requestedTicks: 60, heldTicks: 23, target, progress: 0.98, ticksNeeded: 23, ended: "target" };
+  f.options.onHold = state => { state.lookingAt = { type: "block", block: "minecraft:stone", blockPos: [0, 64, 3], face: "north" }; state.hotbar[0]!.durability = 58; };
+  expect(text(await f.tools.call("attack", { hold_ticks: 60 }))).toStartWith("Held attack for 23 ticks with minecraft:wooden_pickaxe: minecraft:deepslate at 0,64,2 broke (minecraft:wooden_pickaxe durability 59 -> 58). Now in your sights: minecraft:stone at 0,64,3.");
 });

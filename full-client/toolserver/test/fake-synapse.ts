@@ -3,7 +3,7 @@ import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Body } from "../src/body.ts";
-import { Synapse, defaultResidents, defaultUnseen, nonempty, type BlockSearch, type Screen, type Stack, type State } from "../src/synapse.ts";
+import { Synapse, defaultResidents, defaultUnseen, nonempty, type AttackHoldState, type BlockSearch, type Screen, type Stack, type State } from "../src/synapse.ts";
 import { Tools } from "../src/tools.ts";
 
 export interface Request { path: string; body: Record<string, unknown> }
@@ -60,6 +60,9 @@ export interface FakeOptions {
   onUse?: (state: State) => void;
   /** What a held attack does to the world as the client then sees it (a block broken, say). */
   onHold?: (state: State) => void;
+  /** A Synapse that keeps breaking without window focus: the hold reply carries an id and the state reports the
+   * hold, already over, as this. Unset: the build before that fix, which reports nothing of a hold. */
+  attackHold?: Omit<AttackHoldState, "id">;
   /** What changes in the world between the body's last state read and the click arriving (someone steps into the crosshair). */
   beforeAttack?: (state: State) => void;
   /** false: the Synapse built so far, which ignores `expectEntityId` and clicks whatever is in the crosshair. */
@@ -363,7 +366,12 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
         if (struck && on === "entity") (options.struck ??= []).push(at.entityId!);
         data = { action: "attack", on, ...(checked ? { struck, ...(on === "entity" ? { entityId: at.entityId } : {}) } : {}) };
       }
-      if (body.action === "attack" && body.ticks) { data = { holding: "attack", ticks: body.ticks }; options.onHold?.(state); }
+      if (body.action === "attack" && body.ticks) {
+        const id = options.attackHold ? (state.attackHold?.id ?? 0) + 1 : undefined;
+        data = { holding: "attack", ticks: body.ticks, ...(id === undefined ? {} : { id }) };
+        if (id !== undefined) state.attackHold = { id, ...options.attackHold! };
+        options.onHold?.(state);
+      }
       if (body.action === "look") state.rotation = { yaw: body.yaw as number, pitch: body.pitch as number };
       // A hold begins on the next client tick, with the view as it is then.
       if (body.action === "use" && body.ticks) steer();
