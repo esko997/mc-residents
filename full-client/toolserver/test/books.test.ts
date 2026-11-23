@@ -75,6 +75,26 @@ test("read_book reads whole pages from hand or lectern, continues long books, an
   expect(text(await shelf.tools.call("read_book", {}))).toContain("cannot be read in place: use the shelf where the book stands");
 });
 
+test("read_book reads a page longer than one reply in parts, each bounded, with a handle to the next", async () => {
+  // Written by a command, not the editor: a page can hold 32,767 characters.
+  const long = Array.from({ length: 500 }, (_, i) => `w${i}`).join(" ").padEnd(5000, " x");
+  const f = await body([written(4)], { books: { 4: { kind: "written", title: "Ledger", author: "Server", generation: 0, pages: [long, "short tail"] } } });
+  const replies: string[] = [];
+  let args: Record<string, unknown> = { from: 4 };
+  for (let guard = 0; guard < 12; guard++) {
+    const reply = text(await f.tools.call("read_book", args));
+    replies.push(reply);
+    const next = /Continue: read_book \{from: 4, page: (\d+)(?:, part: (\d+))?\}/.exec(reply);
+    if (!next) break;
+    args = { from: 4, page: Number(next[1]), ...(next[2] ? { part: Number(next[2]) } : {}) };
+  }
+  expect(replies[0]).toMatch(/— page 1, part 1 of \d+ —/);
+  for (const reply of replies) expect(reply.length).toBeLessThan(1499);
+  expect(replies.at(-1)).toContain("short tail");
+  const parts = replies.slice(0, -1).map(reply => reply.split(/— page 1, part \d+ of \d+ —\n/)[1]!.split("\n\nSince last time")[0]!);
+  expect(parts.join("")).toBe(long);
+});
+
 test("the catalogue through the body: text read from the item, place from the sights, reports by a neighbour", async () => {
   const db = new Database(":memory:"); databases.push(db);
   db.exec(readFileSync(schemaFile, "utf8"));
