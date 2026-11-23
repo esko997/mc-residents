@@ -1,8 +1,9 @@
 import { Database } from "bun:sqlite";
 import { unzipSync, strFromU8 } from "fflate";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { mkdir, readdir, rename, rm } from "node:fs/promises";
 import type { RecipeIngredient, RecipeSummary } from "./types";
+import { countWorldgen, indexMods, modsFromFabric, modsFromToml, type JarFacts } from "./pack";
 
 type Json = Record<string, unknown>;
 type Counts = Record<string, number>;
@@ -118,6 +119,17 @@ export function summarizeRecipe(id: string, recipe: Json): RecipeSummary {
     notes.push("ingredient alternatives are listed together, not all required");
   }
   if (!outputs.length) notes.push("no static item/fluid output (dynamic or effect recipe)");
+  if (type === "tacz:gun_smith_table_crafting" && isObject(recipe.result)) {
+    // TaCZ gun-pack results are not registry items: the id rides in a generic item's data.
+    const kind = String(recipe.result.type);
+    const carrier: Record<string, [string, string, string]> = {
+      gun: ["the Gun Smith Table (tacz:gun_smith_table)", "tacz:modern_kinetic_gun", "GunId"],
+      ammo: ["the Ammo Workbench (tacz:workbench_a)", "tacz:ammo", "AmmoId"],
+      attachment: ["the Attachment Workbench (tacz:workbench_c)", "tacz:attachment", "AttachmentId"],
+    };
+    const [where, item, field] = carrier[kind] ?? ["a TaCZ workbench", "a TaCZ item", "its data"];
+    notes.push(`made at ${where}; carried as ${item} with ${field} ${String(recipe.result.id)}`);
+  }
   return { id, type, inputs: merge(inputs), outputs: merge(outputs), pattern, note: notes.length ? [...new Set(notes)].join("; ") : null };
 }
 
@@ -148,6 +160,35 @@ export function lootDrops(table: unknown): string[] {
   return [...items];
 }
 
+/** A jar, then the jars Forge loads from inside it (`META-INF/jarjar`), each labelled for the pack overview. */
+async function* jarSources(path: string): AsyncGenerator<{ file: string; data: Uint8Array }> {
+  const data = new Uint8Array(await Bun.file(path).arrayBuffer());
+  yield { file: basename(path), data };
+  const nested = unzipSync(data, { filter: (entry) => /^META-INF\/jarjar\/[^/]+\.jar$/.test(entry.name) });
+  for (const name of Object.keys(nested).sort()) yield { file: `${basename(path)}!${basename(name)}`, data: nested[name]! };
+}
+
+/** Gun packs write JSON with `//` and block comments; strings (which may hold `//`) are kept. */
+export function withoutComments(text: string): string {
+  return text.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (_match, string: string | undefined) => string ?? "");
+}
+
+/** Item ids an advancement's criteria name, such as inventory_changed's `items`; tags and other predicates are left out. */
+export function criteriaItems(criteria: unknown): string[] {
+  const found = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (!isObject(value)) return;
+    for (const [key, inner] of Object.entries(value)) {
+      if ((key === "items" || key === "item") && typeof inner === "string") found.add(registryId(inner));
+      else if (key === "items" && Array.isArray(inner) && inner.every((entry) => typeof entry === "string")) for (const entry of inner) found.add(registryId(entry));
+      else visit(inner);
+    }
+  };
+  if (isObject(criteria)) for (const criterion of Object.values(criteria)) if (isObject(criterion)) visit(criterion.conditions);
+  return [...found];
+}
+
 export async function buildKnowledge(jarPaths: string[], modDirs: string[], output: string): Promise<void> {
   const jars = new Set(jarPaths.map((path) => resolve(path)));
   for (const dir of modDirs) {
@@ -170,8 +211,13 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
       CREATE TABLE recipe_outputs(recipe TEXT NOT NULL, what TEXT NOT NULL, PRIMARY KEY(recipe,what));
       CREATE TABLE tag_items(tag TEXT NOT NULL, item TEXT NOT NULL, PRIMARY KEY(tag,item));
       CREATE TABLE block_drops(block TEXT NOT NULL, item TEXT NOT NULL, PRIMARY KEY(block,item));
+      CREATE TABLE registered(id TEXT PRIMARY KEY, mod TEXT, kind TEXT NOT NULL);
+      CREATE TABLE advancements(id TEXT PRIMARY KEY, parent TEXT, title TEXT NOT NULL, description TEXT NOT NULL, items TEXT NOT NULL);
+      CREATE TABLE books(id TEXT PRIMARY KEY, name TEXT NOT NULL, item TEXT);
       CREATE VIRTUAL TABLE guides USING fts5(book UNINDEXED, title, text, tokenize='unicode61');`);
     const itemInsert = db.query("INSERT INTO items VALUES (?,?) ON CONFLICT(id) DO UPDATE SET name=coalesce(excluded.name,items.name)");
+    // A block's item model does not make it less of a block.
+    const registeredInsert = db.query("INSERT INTO registered(id, kind) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET kind = CASE WHEN excluded.kind = 'item' THEN registered.kind ELSE excluded.kind END");
     const langInsert = db.query("INSERT OR REPLACE INTO lang VALUES (?,?)");
     const langGet = db.query<{ value: string }, [string]>("SELECT value FROM lang WHERE key=?");
     const translate = (value: unknown): string => {
@@ -183,30 +229,46 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
       if (isObject(value)) return translate(value.translate ?? value.text ?? "") + (value.extra ? ` ${translate(value.extra)}` : "");
       return "";
     };
+    const jarFacts: JarFacts[] = [];
     // First discover every mod id, including multi-mod Forge jars, before checking compat recipes.
-    for (const jar of jars) {
-      const files = unzipSync(new Uint8Array(await Bun.file(jar).arrayBuffer()), { filter: (entry) =>
-        /^(META-INF\/(?:mods|neoforge\.mods)\.toml|fabric\.mod\.json|assets\/[^/]+\/lang\/en_us\.json)$/.test(entry.name) });
+    for (const jar of jars) for await (const source of jarSources(jar)) {
+      const facts: JarFacts = { file: source.file, mods: [], namespaces: new Set(), biomes: 0, structures: 0, worldgen: 0 };
+      const registered: [string, string][] = [];
+      const files = unzipSync(source.data, { filter: (entry) => {
+        const name = entry.name;
+        const ns = /^(?:assets|data)\/([^/]+)\//.exec(name)?.[1];
+        if (ns) facts.namespaces.add(ns);
+        countWorldgen(facts, name);
+        let match = /^assets\/([^/]+)\/blockstates\/([^/]+)\.json$/.exec(name);
+        if (match) registered.push([`${match[1]}:${match[2]}`, "block"]);
+        else if ((match = /^assets\/([^/]+)\/models\/item\/([^/]+)\.json$/.exec(name))) registered.push([`${match[1]}:${match[2]}`, "item"]);
+        return /^(?:META-INF\/(?:mods|neoforge\.mods)\.toml|fabric\.mod\.json|assets\/[^/]+\/lang\/en_us\.json|assets\/tacz\/custom\/[^/]+\/assets\/[^/]+\/lang\/en_us\.json)$/.test(name);
+      } });
+      const toml = files["META-INF/mods.toml"] ?? files["META-INF/neoforge.mods.toml"];
+      try { if (toml) facts.mods.push(...modsFromToml(strFromU8(toml))); } catch { skip("invalid mods.toml"); }
+      try { if (!facts.mods.length && files["fabric.mod.json"]) facts.mods.push(...modsFromFabric(strFromU8(files["fabric.mod.json"]))); } catch { skip("invalid fabric.mod.json"); }
+      for (const meta of facts.mods) mods.add(meta.id);
       db.transaction(() => {
         for (const [path, bytes] of Object.entries(files)) {
-          const text = strFromU8(bytes);
-          if (path.endsWith(".toml")) {
-            for (const match of text.matchAll(/^\s*modId\s*=\s*["']([^"']+)["']/gm)) mods.add(match[1]!);
-          } else {
-            try {
-              const data: unknown = JSON.parse(text);
-              if (!isObject(data)) throw new Error("Expected metadata/language object");
-              if (path === "fabric.mod.json") { if (typeof data.id === "string") mods.add(data.id); continue; }
-              for (const [key, value] of Object.entries(data)) {
-                if (typeof value !== "string") continue;
-                langInsert.run(key, value);
-                const match = /^(?:item|block)\.([^.]+)\.(.+)$/.exec(key);
-                if (match) itemInsert.run(`${match[1]}:${match[2]}`, plainText(value));
-              }
-            } catch { skip("invalid metadata/language JSON"); }
-          }
+          if (!path.endsWith("/en_us.json")) continue;
+          try {
+            const data: unknown = JSON.parse(strFromU8(bytes));
+            if (!isObject(data)) throw new Error("Expected language object");
+            // A gun pack's names (tacz.gun.ak47.name) are not registry keys.
+            const gunPack = path.startsWith("assets/tacz/custom/");
+            for (const [key, value] of Object.entries(data)) {
+              if (typeof value !== "string") continue;
+              langInsert.run(key, value);
+              const match = gunPack ? null : /^(?:item|block)\.([^.]+)\.(.+)$/.exec(key);
+              if (!match) continue;
+              itemInsert.run(`${match[1]}:${match[2]}`, plainText(value));
+              facts.namespaces.add(match[1]!);
+            }
+          } catch { skip("invalid language JSON"); }
         }
+        for (const [id, kind] of registered) registeredInsert.run(id, kind);
       })();
+      jarFacts.push(facts);
     }
     const recipeInsert = db.query("INSERT OR REPLACE INTO recipes VALUES (?,?,?)");
     const dropInsert = db.query("INSERT OR IGNORE INTO block_drops VALUES (?,?)");
@@ -238,17 +300,23 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
         if (!part.what.startsWith("#")) itemInsert.run(part.what, null);
       }
     };
-    for (const jar of jars) {
-      const files = unzipSync(new Uint8Array(await Bun.file(jar).arrayBuffer()), { filter: (entry) =>
+    const advancementInsert = db.query("INSERT OR REPLACE INTO advancements VALUES (?,?,?,?,?)");
+    const bookInsert = db.query("INSERT OR REPLACE INTO books VALUES (?,?,?)");
+    const gunPackKinds: Record<string, string> = { guns: "gun", ammo: "ammo", attachments: "attachment" };
+    for (const jar of jars) for await (const source of jarSources(jar)) {
+      const files = unzipSync(source.data, { filter: (entry) =>
         /^data\/[^/]+\/(recipes|tags\/items|loot_tables\/blocks)\/.+\.json$/.test(entry.name) ||
+        /^data\/[^/]+\/advancements\/(?!recipes\/).+\.json$/.test(entry.name) ||
         /^(?:data|assets)\/[^/]+\/(?:patchouli_books|modonomicon\/books)\/.+\.json$/.test(entry.name) ||
-        /^assets\/immersiveengineering\/manual\/en_us\/.+\.txt$/.test(entry.name) });
+        /^assets\/immersiveengineering\/manual\/en_us\/.+\.txt$/.test(entry.name) ||
+        /^assets\/tacz\/custom\/[^/]+\/data\/[^/]+\/(?:index\/(?:guns|ammo|attachments)|recipes)\/.+\.json$/.test(entry.name) });
       db.transaction(() => {
         for (const [path, bytes] of Object.entries(files)) {
           try {
             const text = strFromU8(bytes);
             let match = /^assets\/immersiveengineering\/manual\/en_us\/(.+)\.txt$/.exec(path);
             if (match) {
+              bookInsert.run("immersiveengineering:manual", plainText(translate("item.immersiveengineering.manual")), "immersiveengineering:manual");
               const [title, ...body] = text.split(/\r?\n/);
               for (const page of body.join("\n").split(/<np>/)) {
                 const clean = plainText(page);
@@ -256,10 +324,40 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
               }
               continue;
             }
+            // TaCZ keeps its guns, ammo and attachments in gun packs inside its jar, as commented JSON.
+            match = /^assets\/tacz\/custom\/[^/]+\/data\/([^/]+)\/(?:index\/(guns|ammo|attachments)\/(.+)|recipes\/(.+))\.json$/.exec(path);
+            if (match) {
+              const data: unknown = JSON.parse(withoutComments(text));
+              if (!isObject(data)) throw new Error("Expected gun pack object");
+              if (match[4]) { addRecipe(`${match[1]}:${match[4]}`, data); continue; }
+              const id = `${match[1]}:${match[3]}`;
+              itemInsert.run(id, plainText(translate(data.name ?? id)));
+              registeredInsert.run(id, gunPackKinds[match[2]!]!);
+              continue;
+            }
             const data: unknown = JSON.parse(text);
             if (!isObject(data)) throw new Error("Expected resource object");
             match = /^data\/([^/]+)\/recipes\/(.+)\.json$/.exec(path);
             if (match) { addRecipe(`${match[1]}:${match[2]}`, data); continue; }
+            match = /^data\/([^/]+)\/advancements\/(.+)\.json$/.exec(path);
+            if (match) {
+              const id = `${match[1]}:${match[2]}`;
+              const display = data.display;
+              // Hidden advancements stay off the advancement screen until earned; so do they here.
+              if (!isObject(display) || display.hidden === true) { db.query("DELETE FROM advancements WHERE id=?").run(id); continue; }
+              advancementInsert.run(id, typeof data.parent === "string" ? registryId(data.parent) : null,
+                plainText(translate(display.title)), plainText(translate(display.description)), JSON.stringify(criteriaItems(data.criteria)));
+              continue;
+            }
+            match = /^(?:data|assets)\/([^/]+)\/(patchouli_books|modonomicon\/books)\/([^/]+)\/book\.json$/.exec(path);
+            if (match) {
+              const custom = data.custom_book_item;
+              const item = typeof custom === "string" ? custom : isObject(custom) && typeof custom.item === "string" ? custom.item : undefined;
+              // Patchouli gives every book its generic guide_book unless told otherwise; Modonomicon's default item is not in the data.
+              const fallback = match[2] === "patchouli_books" && data.dont_generate_book !== true ? "patchouli:guide_book" : null;
+              bookInsert.run(`${match[1]}:${match[3]}`, plainText(translate(data.name ?? match[3])), item ? registryId(item) : fallback);
+              continue;
+            }
             match = /^data\/([^/]+)\/loot_tables\/blocks\/(.+)\.json$/.exec(path);
             if (match) {
               // A later jar's table replaces an earlier one, as a datapack does.
@@ -291,7 +389,7 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
               const clean = plainText(fragments.join(" "));
               if (clean) guideInsert.run(book, title, clean);
             }
-          } catch { skip(`invalid ${path.includes("/recipes/") ? "recipe" : path.includes("/tags/") ? "tag" : path.includes("/loot_tables/") ? "loot table" : "guide"} file`); }
+          } catch { skip(`invalid ${path.includes("/recipes/") ? "recipe" : path.includes("/tags/") ? "tag" : path.includes("/loot_tables/") ? "loot table" : path.includes("/advancements/") ? "advancement" : path.includes("/index/") ? "gun pack" : "guide"} file`); }
         }
       })();
     }
@@ -314,10 +412,11 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
     })();
     db.exec(`CREATE INDEX input_what ON recipe_inputs(what,recipe);
       CREATE INDEX output_what ON recipe_outputs(what,recipe);
-      CREATE INDEX tag_item ON tag_items(item,tag);
-      DROP TABLE lang; INSERT INTO guides(guides) VALUES('optimize'); PRAGMA optimize; VACUUM;`);
-    console.log(`Jars: ${jars.size}; detected mods: ${mods.size}`);
-    for (const table of ["items", "recipes", "guides", "block_drops"]) {
+      CREATE INDEX tag_item ON tag_items(item,tag);`);
+    indexMods(db, jarFacts);
+    db.exec("DROP TABLE lang; INSERT INTO guides(guides) VALUES('optimize'); PRAGMA optimize; VACUUM;");
+    console.log(`Jars: ${jars.size} (${jarFacts.length} with nested jars); detected mods: ${mods.size}`);
+    for (const table of ["items", "registered", "recipes", "guides", "block_drops", "advancements", "books", "mods"]) {
       const row = db.query<{ n: number }, []>(`SELECT count(*) AS n FROM ${table}`).get();
       console.log(`${table}: ${row?.n}`);
     }

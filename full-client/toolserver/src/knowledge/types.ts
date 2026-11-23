@@ -59,5 +59,62 @@ export interface Knowledge {
    * predates loot tables; empty when the block has none.
    */
   blockDrops?(blockId: string): string[] | undefined;
+  /** Every installed mod with what the export found in its jar; undefined when the export predates the pack overview. */
+  modList?(): ModFacts[] | undefined;
+  /** The installed mod an item or block id belongs to (by its namespace), with that mod's display name. */
+  modOf?(itemId: string): { id: string; name: string } | undefined;
+  /** One mod's registered items, by display name, like JEI's `@mod` search; `words` narrows by name or id. */
+  modItems?(mod: string, words: string, offset: number, limit: number): { items: (ItemHit & { kind: string })[]; total: number };
   close(): void;
+}
+
+export interface ModItemRef { readonly id: string; readonly name: string | null }
+export interface ModRecipeRef extends ModItemRef { readonly recipe: RecipeSummary }
+
+/** One installed mod as the export sees it: metadata, contents, and where a player gets into it. */
+export interface ModFacts {
+  readonly id: string;
+  readonly name: string;
+  /** From mods.toml/fabric.mod.json, else its advancement tab's own description; may be empty. */
+  readonly description: string;
+  /** "client" when the mod declares it is needed only on the client (rendering, menus, sounds). */
+  readonly side: "both" | "client";
+  readonly jar: string;
+  /** Installed mods it needs, and installed mods that need it (its add-ons, or the mods a library serves). */
+  readonly requires: readonly string[];
+  readonly requiredBy: readonly string[];
+  /** Registered items (a block's item included), blocks among them, and TaCZ gun-pack guns, ammo and attachments. */
+  readonly items: number;
+  readonly blocks: number;
+  readonly guns: number;
+  readonly ammo: number;
+  readonly attachments: number;
+  /** Recipes whose output is one of its items. */
+  readonly recipes: number;
+  /** Recipe types it defines, most recipes first: its machines, altars and workbenches. */
+  readonly recipeTypes: readonly string[];
+  readonly biomes: number;
+  readonly structures: number;
+  readonly worldgen: number;
+  /** Its own advancement tabs: title, size, and the titles of the root's first children. */
+  readonly tabs: readonly { title: string; description: string; advancements: number; first: readonly string[] }[];
+  /** In-game guide books (Patchouli, Modonomicon, the IE manual) and how many indexed pages `guide` can search. */
+  readonly books: readonly { id: string; name: string; item: string | null; pages: number }[];
+  /**
+   * A first craft: of its items with a crafting or smelting recipe, the fewest steps from things found in the
+   * world (every mod's parts counted, a machine recipe also needing its machine), the mod's namesake item first,
+   * then the most used; `steps` is that count.
+   */
+  readonly firstCraft?: ModRecipeRef & { steps: number };
+  /**
+   * The first item in its own advancement tab that has a crafting or smelting recipe, that advancement's title,
+   * and the advancements it opens (with an item each names, when it names one of the mod's).
+   */
+  readonly tabStart?: ModRecipeRef & { advancement: string; leadsTo: readonly { title: string; item: string | null }[] };
+  /** Blocks whose names match its own recipe types: where its special recipes are made. */
+  readonly stations: readonly ModItemRef[];
+  /** A few items that stand for the mod: stations, items its advancements name, its most used ingredients. */
+  readonly signature: readonly ModItemRef[];
+  /** The commonest words in its item ids, for sorting mods into kinds. */
+  readonly words: readonly string[];
 }

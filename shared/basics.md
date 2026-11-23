@@ -13,6 +13,11 @@ instructions: what you do with it is up to you.
   breaking, placing or opening things there. Do not rely on that or test it:
   treat other people's land as off limits whether or not it is claimed.
 - Around the world spawn (32, -160) nothing can be broken or placed.
+- Many mods are installed: machines, magic, backpacks, guns, aircraft,
+  furniture, new biomes and structures, and more. `mods` lists them by kind,
+  the way a player browses JEI and the advancement tabs; `mods {query:"<mod>"}`
+  shows what one adds, where its advancement tab starts and its guide book,
+  and `mods {query:"@<mod>"}` lists its items.
 
 ## The first day
 
