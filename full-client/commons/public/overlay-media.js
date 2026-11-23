@@ -165,7 +165,6 @@ export function createPreviewMedia({ video, blank, watch, stop, audio, fullscree
       peer.onconnectionstatechange = () => {
         if (["failed", "disconnected", "closed"].includes(peer.connectionState)) lost(session, "The media connection ended. Press Watch to reconnect.");
       };
-      video.srcObject = session.stream;
       video.onplaying = () => {
         if (current !== session || video.paused || video.readyState < 2 || video.videoWidth === 0 || !session.stream.getVideoTracks().length) return;
         clearTimeout(session.deadline); session.playing = true; delete video.dataset.awaiting; video.removeAttribute("aria-hidden"); blank.hidden = true;
@@ -178,6 +177,9 @@ export function createPreviewMedia({ video, blank, watch, stop, audio, fullscree
         event.track.onended = () => lost(session, "A media track ended. Press Watch to reconnect.");
         if (event.track.kind === "video") {
           event.track.onmute = () => { if (session.playing) lost(session, "Video is no longer arriving. Press Watch to reconnect."); };
+          // Attach the stream only now that it holds the video track: an element given an empty stream that gains
+          // its video later plays in WebKit but never reports a picture size, so the check above never passed.
+          video.srcObject = session.stream;
           void video.play().catch(() => { if (current === session) end("The browser could not play the video. Press Watch to try again.", "error"); });
         }
         buttons();
