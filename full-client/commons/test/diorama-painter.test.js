@@ -100,6 +100,30 @@ describe("the slab", () => {
     expect(pick(grid, win, geometry, sx, sy)).toEqual({ x: 2, y: win.top, z: 3, id: "minecraft:diamond_ore" });
     expect(pick(grid, win, geometry, -500, -500)).toBeNull();
   });
+
+  test("cave air and void air are nothing: not named, not counted as cover, and they make no cut surface", () => {
+    // A cave_air pocket (x 2..5, y 68..69, z 3..6) in stone, and a void_air layer at the top of section 4.
+    const indices = new Uint16Array(4096);
+    for (let y = 4; y <= 5; y++) for (let z = 3; z <= 6; z++) for (let x = 2; x <= 5; x++) indices[(y * 16 + z) * 16 + x] = 1;
+    for (let i = 15 * 256; i < 4096; i++) indices[i] = 2;
+    const grid = buildGrid(view({ players: [{ name: "Gary", x: 3.5, y: 68, z: 4.5, self: true }] }),
+      new Map([["0,4,0", { palette: ["minecraft:stone", "minecraft:cave_air", "minecraft:void_air"], indices }],
+        ["0,5,0", { palette: ["minecraft:air"], indices: new Uint16Array(4096) }]]));
+    expect(grid.kinds.map(k => k.id)).toEqual(["minecraft:air", "minecraft:stone"]);
+    expect(grid.cells[(4 * 16 + 4) * 16 + 3]).toBe(0);
+    // The pocket's floor is a real surface, not a cut one, even under a cut at the pocket's top.
+    const win = { top: 5 }, floor = faces(grid, win).find(f => f[0] === 3 && f[1] === 3 && f[2] === 4 && f[3] === 0);
+    expect(floor[5]).toBe(false);
+    // Looking down into the pocket's north-west corner names its stone floor (the cave air above is skipped);
+    // with the resident standing in the pocket, the resident.
+    const geometry = layout(grid, 600, 500, win), [sx, sy] = geometry.project(2.5, 4, 3.5);
+    expect(pick(grid, win, geometry, sx, sy)).toEqual({ x: 2, y: 3, z: 3, id: "minecraft:stone" });
+    const v = view({ players: [{ name: "Gary", x: 3.5, y: 68, z: 4.5, self: true }] }), open = sliceWindow(grid, v, { cut: 69, cutaway: "off" });
+    expect(open.hidden).toBeLessThan(STEP_SHARE);
+    const painted = paint(blankContext(), grid, faces(grid, open), { width: 600, height: 500, win: open, players: v.players });
+    const [left, top, right, bottom] = figureBox(painted, 3.5, 4, 4.5);
+    expect(pick(grid, open, painted, (left + right) / 2, (top + bottom) / 2)).toEqual({ player: { name: "Gary", x: 3.5, y: 68, z: 4.5, self: true } });
+  });
 });
 
 /** A grid straight from a function of grid coordinates (world y = grid y + minY). */

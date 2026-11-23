@@ -111,7 +111,9 @@ export function buildGrid(view, decoded, table = {}) {
   for (const { x: cx, y: sy, z: cz } of view.sections) {
     const entry = decoded.get(`${cx},${sy},${cz}`);
     if (!entry) continue;
+    // Every air id (cave_air, void_air too) is cell 0, so nothing downstream can draw, name or count it.
     const map = entry.palette.map(id => {
+      if (blockKind(id) === "air") return 0;
       if (!byId.has(id)) { byId.set(id, kinds.length); kinds.push({ id, kind: blockKind(id), rgb: blockColour(id, table) }); }
       return byId.get(id);
     });
