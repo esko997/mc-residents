@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ConsoleLine } from "../src/console.ts";
 import type { ObserverReach } from "../src/observer.ts";
-import { createLibrary } from "../src/library.ts";
+import { applyShelf, createLibrary } from "../src/library.ts";
+import { bookContentHash } from "../src/resident-contracts-library.ts";
 import { createRecords } from "../src/records.ts";
 import { RecordsIngest } from "../src/records-ingest.ts";
 import { createSocietyStore } from "../src/resident-society.ts";
@@ -145,15 +146,26 @@ test("ingest keeps resident events from the bridge and records a restart as a ga
   expect(db.query("SELECT kind FROM server_ingest_gaps").all()).toEqual([{ kind: "server_events" }]);
 });
 
-test("books: each catalogue line gives the place at that time, not where the book is listed now", async () => {
+test("books: each line gives the place at that time and its source; the server's sightings are [server]", async () => {
   const db = database();
   let clock = T - hour;
   const library = createLibrary(db, "Tobin", { now: () => clock });
   const book = { kind: "written" as const, title: "Mill Notes", author: "Tobin", generation: 0, pages: ["The wheel turns."] };
-  await library.register({ book, read_from: "lectern", at: { x: 10, y: 64, z: 20, dimension: "minecraft:overworld" } });
+  library.register({ book, read_from: "lectern", at: { x: 10, y: 64, z: 20, dimension: "minecraft:overworld" } });
   clock += minute;
-  await library.report({ id: 1, kind: "found", at: { x: 12, y: 64, z: 20, dimension: "minecraft:overworld" } });
-  const books = createRecords(db, "Tobin", { now: () => T })({ kind: "books" });
-  expect(books).toContain('Tobin catalogued book #1 "Mill Notes" by Tobin at 10,64,20 [hub]');
-  expect(books).toContain('Tobin found elsewhere book #1 "Mill Notes" by Tobin at 12,64,20 [hub]');
+  library.report({ id: 1, kind: "found", at: { x: 12, y: 64, z: 20, dimension: "minecraft:overworld" } });
+  const slot = { slot: 0, kind: "written" as const, title: book.title, author: book.author, generation: 0, pageCount: 1, contentHash: bookContentHash(book) };
+  const shelf = { dimension: "minecraft:overworld", pos: [40, 64, 20] as [number, number, number], block: "minecraft:lectern" };
+  applyShelf(db, { ...shelf, slots: [slot] }, clock + minute, false);
+  applyShelf(db, { ...shelf, slots: [] }, clock + 2 * minute, true);
+  // A book by a player nobody perceives is left out, as chat naming them is.
+  const hidden = { ...book, title: "Up high", author: "Lantern_" };
+  applyShelf(db, { ...shelf, slots: [{ ...slot, title: hidden.title, author: hidden.author, contentHash: bookContentHash(hidden) }] }, clock + 3 * minute, false);
+  const books = createRecords(db, "Tobin", { now: () => T, unseen: ["Lantern_"] })({ kind: "books" });
+  expect(books).toContain('Tobin described book #1 "Mill Notes" by Tobin [hub]');
+  expect(books).toContain('Tobin reported book #1 "Mill Notes" by Tobin at 10,64,20 (catalogued there by Tobin) [hub]');
+  expect(books).toContain('Tobin reported book #1 "Mill Notes" by Tobin at 12,64,20 [hub]');
+  expect(books).toContain('the server saw book #1 "Mill Notes" by Tobin at 40,64,20 (on the lectern) [server]');
+  expect(books).toContain('the server saw that book #1 "Mill Notes" by Tobin is no longer at 40,64,20 (the lectern was read without it) [server]');
+  expect(books).not.toContain("Lantern_");
 });

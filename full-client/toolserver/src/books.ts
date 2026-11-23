@@ -1,14 +1,17 @@
 // Written books (write_book, read_book), the book catalogue in the hub (book_register, book_find, book_report,
-// book_update) and records for a historian (records). Books go through Synapse's /book endpoint, which does what
-// the book-and-quill editor does with its own font and limits; the catalogue stores the text the body read from
-// the real item, never text the model typed for it.
+// book_update) and records for a historian (records). A book in the body's hands goes through Synapse's /book
+// endpoint, which does what the book-and-quill editor does with its own font and limits; a book standing on a shelf
+// or lectern is read through the hub, which asks the server bridge where the body stands and what the shelf holds.
+// The catalogue stores text read from the real item, never text the model typed for it.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Body } from "./body.ts";
 import type { CommonsClient } from "./commons.ts";
 import { nonempty, type BookRead, type Stack, type State } from "./synapse.ts";
-import { bookContentHash, RECORD_KINDS, type BookContent, type Position } from "../../commons/src/resident-contracts-library.ts";
+import {
+  bookContentHash, READING_RADIUS, RECORD_KINDS, type BookContent, type Position, type ShelfReading,
+} from "../../commons/src/resident-contracts-library.ts";
 
 const coordinate = z.number().finite().transform(Math.floor);
 const line = (max: number) => z.string().trim().min(1).max(max).refine(value => !/[\r\n]/.test(value), "Use one line.");
@@ -30,25 +33,29 @@ export const bookDefinitions = {
       .refine(a => a.draft === true || a.title !== undefined, "A signed book needs a title; use draft: true to keep it unsigned."),
   },
   read_book: {
-    description: "Read a written book or a book and quill you can read now: in your hand (default), offhand, an inventory slot, or on a lectern whose screen is open (use the lectern first). A book in a chiseled bookshelf has to be taken out to be read: use the shelf where the book stands (its front is six slots, three across and two high) and it goes into your inventory; read it; use an empty slot holding it to put it back. Shows whole pages from page (default 1); a long book continues with page, and a page too long for one reply continues with at (a character offset); the reply gives the exact handle.",
-    schema: z.object({ from: from.optional(), page: z.number().int().min(1).max(100).optional(), at: z.number().int().min(0).max(32_767).optional() }).strict(),
+    description: `Read a book's pages. A book in your hand (default), offhand or an inventory slot, or on a lectern whose screen is open, is read through your body. A book standing on a chiseled bookshelf or lectern is read where it stands, without taking it out, while the server sees you within ${READING_RADIUS} blocks of it: by catalogue id (id, from book_find), or by shelf: "sights" (the shelf or lectern you look at) or {x, y, z}, with slot 0..5 (a chiseled bookshelf's front is six slots, three across and two high; leave slot out to hear what the shelf holds). With no book in hand and a shelf or lectern in your sights, plain read_book reads that. Shows whole pages from page (default 1); a long book continues with page, and a page too long for one reply continues with at (a character offset); the reply gives the exact handle.`,
+    schema: z.object({
+      from: from.optional(), id: z.number().int().positive().optional(), shelf: at.optional(), slot: z.number().int().min(0).max(5).optional(),
+      page: z.number().int().min(1).max(100).optional(), at: z.number().int().min(0).max(32_767).optional(),
+    }).strict().refine(a => [a.from, a.id, a.shelf].filter(value => value !== undefined).length <= 1, "Give at most one of from, id and shelf.")
+      .refine(a => a.slot === undefined || a.shelf !== undefined, "slot goes with shelf."),
   },
   book_register: {
-    description: "Put a written book in the shared book catalogue so neighbours can find it: your body reads its text from the book (in hand by default, or from: an inventory slot, offhand, or the open lectern), and at says where it is or will be (the block in your sights by default, such as the shelf or lectern, or x,y,z). Optional facility (a registered facility's name, such as your library), subjects and note. A book is for knowledge worth reading in full; a shared note (note_share) is a short tip. The same text in the same place twice is refused unless another_copy: true.",
-    schema: z.object({ from: from.optional(), at: at.optional(), facility: line(60).optional(), subjects: subjects.optional(), note: line(200).optional(), another_copy: z.boolean().optional() }).strict(),
+    description: "Describe a signed book in the shared catalogue: subjects and a note, so neighbours find it by them. Your body reads its text from the book (in hand by default, or from: an inventory slot, offhand, or the open lectern); at says where it is or will be (the block in your sights by default, or x,y,z). Every book on a chiseled bookshelf or lectern is in the catalogue by itself; register one to give it subjects or a note, or when it is kept where the server does not look (a chest, your inventory). The first to describe a book keeps its subjects and note (book_update). A book is for knowledge worth reading in full; a shared note (note_share) is a short tip.",
+    schema: z.object({ from: from.optional(), at: at.optional(), subjects: subjects.optional(), note: line(200).optional() }).strict(),
   },
   book_find: {
-    description: "Search the book catalogue by words in the title, author, subjects or text, by author or subject; or show one book by id with its place history and copies. Says where each copy is (nearest first, with distance), whether the server saw it on a registered shelf, and a short excerpt; the full text is in the book itself. limit: default 5, at most 10.",
+    description: `Search the book catalogue from anywhere: every book on a chiseled bookshelf or lectern the server has seen, by itself, and books residents described. Search by words in the title, author, subjects or text, by author or subject; or show one book by id with all its copies and their history. Says where each copy stands (nearest first, with distance), whether the server saw it there and when, and a short excerpt. To read a whole book, go and stand within ${READING_RADIUS} blocks of a copy and use read_book {id}. limit: default 5, at most 10.`,
     schema: z.object({ query: line(120).optional(), author: line(64).optional(), subject: line(40).optional(), id: z.number().int().positive().optional(), limit: z.number().int().min(1).max(10).optional(), page: z.number().int().min(1).max(1000).optional() }).strict(),
   },
   book_report: {
-    description: "Say where a catalogued book really is: found (at the block in your sights, or x,y,z; if that is somewhere else the catalogue now lists it there, with your name) or missing (not where it is listed). check reads the book you hold or the open lectern first, so the catalogue knows it is the same text. Anyone may report; this never moves a book.",
+    description: "Say where a catalogued book really is when it is kept where the server does not look (a chest, a room): found (at the block in your sights, or x,y,z; the catalogue then lists it there too, with your name) or missing (not at that block any more). check reads the book you hold or the open lectern first, so the catalogue knows it is the same text. Copies on chiseled bookshelves and lecterns are checked by the server itself; a missing report there is kept in the book's history. Anyone may report; this never moves a book.",
     schema: z.object({ id: z.number().int().positive(), found: z.boolean().optional(), missing: z.boolean().optional(), at: at.optional(), check: from.optional(), note: line(200).optional() }).strict()
       .refine(a => (a.found === true) !== (a.missing === true), "Give found: true or missing: true."),
   },
   book_update: {
-    description: "For a book you registered: replace its subjects or note, or withdraw it from the catalogue (withdraw: true; the book itself stays where it is).",
-    schema: z.object({ id: z.number().int().positive(), subjects: subjects.optional(), note: z.string().trim().max(200).optional(), withdraw: z.boolean().optional() }).strict(),
+    description: "For a book you described with book_register: replace its subjects or note.",
+    schema: z.object({ id: z.number().int().positive(), subjects: subjects.optional(), note: z.string().trim().max(200).optional() }).strict(),
   },
   records: {
     description: "What the shared records hold, dated, each line marked with its source: [server] the game server recorded it, [hub] the hub received it from a resident when it happened (their word), [chat] public game chat. kind: summary (counts), deaths, alarms, agreements (yours and public ones), facilities, places, books, sessions (who was online when), crossings (dimension changes), advancements (with when each criterion was met), stats, building (blocks placed and broken by area), flows (container counts at registered facilities), said (public chat residents could have seen), projects (your own finished plans). since/until: \"6h\", \"3d\" or a date/time (UTC), default the last 24 hours; resident narrows to one player; around: {radius, x?, z?} narrows to an area (default your position). Long replies continue with page.",
@@ -90,6 +97,50 @@ function heldStacks(state: State): Stack[] {
   return [...main.filter(nonempty), ...(offhand && nonempty(offhand) ? [{ ...offhand, slot: 40 }] : [])];
 }
 
+/**
+ * Whole pages from `page` that fit `budget`, with `handle(page, at)` naming the exact continuation right after the
+ * heading. A page written outside the editor (a command, an older item) can hold up to 32,767 characters: it is read in
+ * pieces, and the handle carries the character offset, so pieces join exactly whatever each reply's room was.
+ */
+function pagesReply(head: string, pages: string[], args: { page?: number; at?: number }, budget: number, handle: (page: number, at?: number) => string): string {
+  if (!pages.length || pages.every(page => !page)) return `${head}\nIt is empty.`;
+  const start = args.page ?? 1, offset = args.at ?? 0;
+  if (start > pages.length) return `${head}\nThere is no page ${start}.`;
+  // Room for the text: the budget less the heading, the longest handle and piece marker this book can need, line breaks
+  // and one character to spare.
+  const longest = Math.max(...pages.map(page => page.length));
+  const reserve = handle(pages.length, longest).length + `— page ${pages.length}, characters ${longest}-${longest} of ${longest} —`.length + 4;
+  const room = Math.max(100, budget - head.length - reserve);
+  const first = pages[start - 1]!;
+  if (first.length > room || offset > 0) {
+    if (offset >= first.length) return `${head}\nPage ${start} has ${first.length} characters.`;
+    const end = Math.min(first.length, offset + room);
+    // The handle goes first: if a reply is ever cut, it is the text that is cut, not the way on.
+    return [head, ...(end < first.length ? [handle(start, end)] : start < pages.length ? [handle(start + 1)] : []),
+      `— page ${start}, characters ${offset + 1}-${end} of ${first.length} —`, first.slice(offset, end)].join("\n");
+  }
+  const out = [head];
+  let size = head.length + handle(pages.length).length + 2, next = start;
+  for (let index = start; index <= pages.length; index++) {
+    const text = `— page ${index} —\n${pages[index - 1]}`;
+    if (index > start && size + text.length > budget) break;
+    out.push(text); size += text.length + 1; next = index + 1;
+  }
+  if (next <= pages.length) out.splice(1, 0, handle(next));
+  return out.join("\n");
+}
+
+const STANDS = ["minecraft:chiseled_bookshelf", "minecraft:lectern"];
+/** A book read through the body, and where it was read from. */
+interface Resolved { book: BookRead; label: string; readFrom: "inventory" | "lectern"; slot?: number }
+/** No book in hand, none open on a lectern, none carried: read_book then reads the shelf or lectern in the sights. */
+class NothingHeld extends Error {
+  constructor(readonly sights: State["lookingAt"]) {
+    super(`You carry no written book or book and quill, and no lectern is open.${STANDS.includes(sights.block ?? "")
+      ? " A book on the shelf or lectern in your sights is in the catalogue by itself: read_book reads it where it stands." : ""}`);
+  }
+}
+
 export class Books {
   /** How long write_book waits for the server to put the signed book in the slot. */
   writeWaitMs = 3000;
@@ -97,7 +148,7 @@ export class Books {
   constructor(private body: Body, private commons: CommonsClient) {}
 
   /** The book a resident means, read through Synapse, and where it was read from. */
-  private async resolve(choice: From | undefined): Promise<{ book: BookRead; label: string; readFrom: "inventory" | "lectern"; slot?: number }> {
+  private async resolve(choice: From | undefined): Promise<Resolved> {
     const api = this.body.api;
     if (choice === "lectern") return { book: await synapseBook(() => api.book("lectern")), label: "the lectern", readFrom: "lectern" };
     const state = await api.state(true);
@@ -113,12 +164,7 @@ export class Books {
         const books = heldStacks(state).filter(stack => isBook(stack.item));
         if (books.length === 1) slot = books[0]!.slot;
         else if (books.length > 1) throw new Error(`You carry ${books.length} books (${books.map(stack => `${slotName(stack.slot)}: ${stack.item === WRITTEN ? "written book" : "book and quill"}`).join(", ")}); say which with from.`);
-        else {
-          const shelf = state.lookingAt.block === "minecraft:chiseled_bookshelf";
-          throw new Error(shelf
-            ? "You carry no book. A book in a chiseled bookshelf cannot be read in place: use the shelf where the book stands to take it into your inventory, read it, then use an empty slot of the shelf holding it to put it back."
-            : "You carry no written book or book and quill, and no lectern is open (use a lectern first to read its book).");
-        }
+        else throw new NothingHeld(state.lookingAt);
       }
     }
     const book = await synapseBook(() => api.book(slot!));
@@ -214,36 +260,41 @@ export class Books {
 
   /** `budget`: characters the reply may use; the tool server gives what its event tail leaves (see Tools.call). */
   async read(args: Args<"read_book">, budget = REPLY_CHARS): Promise<string> {
-    const read = await this.resolve(args.from);
+    if (args.id !== undefined || args.shelf !== undefined) return this.readStanding(args, budget);
+    let read: Resolved;
+    try { read = await this.resolve(args.from); }
+    catch (error) {
+      // Nothing in hand to read, and a shelf or lectern in the sights: read what stands there.
+      if (error instanceof NothingHeld && STANDS.includes(error.sights.block ?? "")) return this.readStanding({ ...args, shelf: "sights" }, budget);
+      throw error;
+    }
     const { book } = read;
     const head = book.kind === "written"
       ? `"${book.title}" by ${book.author} (${generationName(book.generation)}), ${book.pageCount} page${book.pageCount === 1 ? "" : "s"}; from ${read.label}${book.source === "lectern" ? `, open at page ${(book.page ?? 0) + 1}` : ""}.`
       : `A book and quill (not signed), ${book.pageCount} page${book.pageCount === 1 ? "" : "s"}; from ${read.label}.`;
-    if (!book.pages.length || book.pages.every(page => !page)) return `${head}\nIt is empty.`;
-    const start = args.page ?? 1, offset = args.at ?? 0;
-    if (start > book.pages.length) return `${head}\nThere is no page ${start}.`;
     const fromArg = typeof args.from === "number" ? args.from : args.from ? `"${args.from}"` : read.slot === 40 ? `"offhand"` : read.slot !== undefined ? read.slot : `"lectern"`;
-    const handle = (page: number, at?: number) => `Continue: read_book {from: ${fromArg}, page: ${page}${at ? `, at: ${at}` : ""}}`;
-    // A page written outside the editor (a command, an older item) can hold up to 32,767 characters: read it in
-    // pieces. The handle carries the character offset, so pieces join exactly whatever each reply's room was.
-    const room = Math.max(100, budget - head.length - 120);
-    const first = book.pages[start - 1]!;
-    if (first.length > room || offset > 0) {
-      if (offset >= first.length) return `${head}\nPage ${start} has ${first.length} characters.`;
-      const end = Math.min(first.length, offset + room);
-      // The handle goes first: if a reply is ever cut, it is the text that is cut, not the way on.
-      return [head, ...(end < first.length ? [handle(start, end)] : start < book.pages.length ? [handle(start + 1)] : []),
-        `— page ${start}, characters ${offset + 1}-${end} of ${first.length} —`, first.slice(offset, end)].join("\n");
-    }
-    const out = [head];
-    let size = head.length + 60, next = start;
-    for (let index = start; index <= book.pages.length; index++) {
-      const text = `— page ${index} —\n${book.pages[index - 1]}`;
-      if (index > start && size + text.length > budget) break;
-      out.push(text); size += text.length + 1; next = index + 1;
-    }
-    if (next <= book.pages.length) out.splice(1, 0, handle(next));
-    return out.join("\n");
+    return pagesReply(head, book.pages, args, budget, (page, at) => `Continue: read_book {from: ${fromArg}, page: ${page}${at ? `, at: ${at}` : ""}}`);
+  }
+
+  /** A book standing on a chiseled bookshelf or lectern, read by the hub through the server bridge while the body is near it. */
+  private async readStanding(args: Args<"read_book">, budget: number): Promise<string> {
+    let shelf: { x: number; y: number; z: number } | undefined;
+    if (args.shelf === "sights") {
+      const sights = (await this.body.api.state()).lookingAt;
+      if (sights.type !== "block" || !sights.blockPos || !STANDS.includes(sights.block ?? "")) {
+        throw new Error(`No chiseled bookshelf or lectern in your sights${sights.type === "block" && sights.block ? ` (you look at ${sights.block})` : ""}: look at one, or give shelf: {x, y, z}, or read_book {id} near a copy.`);
+      }
+      const [x, y, z] = sights.blockPos as [number, number, number];
+      shelf = { x, y, z };
+    } else if (args.shelf) shelf = args.shelf;
+    const reading = await this.commons.call<ShelfReading>("library", "read",
+      shelf ? { shelf, ...(args.slot === undefined ? {} : { slot: args.slot }) } : { id: args.id });
+    if ("text" in reading) return reading.text;
+    const { book, pages } = reading;
+    const count = `${pages.length} page${pages.length === 1 ? "" : "s"}`;
+    const head = `${book.kind === "written" ? `"${book.title}" by ${book.author} (${generationName(book.generation ?? 0)})` : "A book and quill (not signed)"}, ${count}, catalogue #${book.id}; on ${reading.where}.`;
+    const { x, y, z } = reading.shelf;
+    return pagesReply(head, pages, args, budget, (page, at) => `Continue: read_book {shelf: {x: ${x}, y: ${y}, z: ${z}}, slot: ${reading.slot}, page: ${page}${at ? `, at: ${at}` : ""}}`);
   }
 
   async register(args: Args<"book_register">): Promise<string> {
@@ -252,15 +303,15 @@ export class Books {
     const where = await this.place(args.at);
     return this.commons.call<string>("library", "register", {
       book, read_from: read.readFrom, at: where.at, ...(where.holder ? { holder: where.holder } : {}),
-      ...(args.facility ? { facility: args.facility } : {}), ...(args.subjects ? { subjects: args.subjects } : {}),
-      ...(args.note ? { note: args.note } : {}), ...(args.another_copy ? { another_copy: true } : {}),
+      ...(args.subjects ? { subjects: args.subjects } : {}), ...(args.note ? { note: args.note } : {}),
     });
   }
 
   async find(args: Args<"book_find">): Promise<string> {
+    // Distances in a search are a guide, so the body's own position serves; reading at a shelf uses the server's.
     const state = await this.body.api.state().catch(() => undefined);
     const near = state ? { x: Math.floor(state.pos.x), y: Math.floor(state.pos.y), z: Math.floor(state.pos.z), dimension: state.dimension } : undefined;
-    return this.commons.call<string>("library", "find", { ...args, ...(near ? { near } : {}) });
+    return this.withoutUnseen(await this.commons.call<string>("library", "find", { ...args, ...(near ? { near } : {}) }));
   }
 
   async report(args: Args<"book_report">): Promise<string> {
@@ -269,16 +320,21 @@ export class Books {
       const read = await this.resolve(args.check);
       checked = { content_hash: bookContentHash(this.written(read)), read_from: read.readFrom };
     }
-    const where = args.found ? await this.place(args.at) : undefined;
+    const where = await this.place(args.at);
     return this.commons.call<string>("library", "report", {
-      id: args.id, kind: args.found ? "found" : "missing",
-      ...(where ? { at: where.at, ...(where.holder ? { holder: where.holder } : {}) } : {}),
+      id: args.id, kind: args.found ? "found" : "missing", at: where.at, ...(where.holder ? { holder: where.holder } : {}),
       ...(checked ? { checked } : {}), ...(args.note ? { note: args.note } : {}),
     });
   }
 
   update(args: Args<"book_update">): Promise<string> {
     return this.commons.call<string>("library", "update", args);
+  }
+
+  /** The hub leaves out players nobody perceives; so does the body, in case its list is longer. */
+  private withoutUnseen(text: string): string {
+    const unseen = (this.body.config.unseen ?? []).map(name => name.toLowerCase());
+    return text.split("\n").filter(lineText => !(lineText.toLowerCase().match(/\w+/g) ?? []).some(word => unseen.includes(word))).join("\n");
   }
 
   async records(args: Args<"records">): Promise<string> {
@@ -291,13 +347,10 @@ export class Books {
       area = { x: args.around.x ?? Math.floor(state.pos.x), z: args.around.z ?? Math.floor(state.pos.z), radius: args.around.radius, dimension: state.dimension };
     }
     if (args.kind === "projects") return this.projects(since ?? (until ?? now) - 86_400_000, until ?? now, args.page ?? 1);
-    const text = await this.commons.call<string>("records", "query", {
+    return this.withoutUnseen(await this.commons.call<string>("records", "query", {
       kind: args.kind, ...(args.resident ? { resident: args.resident } : {}), ...(since !== undefined ? { since } : {}),
       ...(until !== undefined ? { until } : {}), ...(area ? { area } : {}), ...(args.page ? { page: args.page } : {}),
-    });
-    // The hub leaves out players nobody perceives; so does the body, in case its list is longer.
-    const unseen = (this.body.config.unseen ?? []).map(name => name.toLowerCase());
-    return text.split("\n").filter(lineText => !(lineText.toLowerCase().match(/\w+/g) ?? []).some(word => unseen.includes(word))).join("\n");
+    }));
   }
 
   /** The resident's own finished plans, from plan.json: their word, as plan_finish recorded it. */

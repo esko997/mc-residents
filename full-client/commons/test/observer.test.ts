@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  choosePosition, normalizeObserverSnapshot, ObserverFeed, observerGet, observerSourceFromEnv,
-  observerSight, observerShelf, observerBook, observerEvents,
-  type BookInfo, type ClientSighting, type ObserverEventsArgs, type ObserverHealth, type ObserverSource,
+  choosePosition, normalizeObserverSnapshot, ObserverFeed, observerGet, observerPut, observerSourceFromEnv,
+  observerSight, observerShelf, observerShelves, observerBook, observerEvents, observerWatch, observerPutWatch,
+  type BookInfo, type ClientSighting, type ObserverEventsArgs, type ObserverHealth, type ObserverSource, type ShelfPlace,
 } from "../src/observer.ts";
 
 const TOKEN = "observer-test-token-0123456789";
@@ -148,43 +148,76 @@ test("sight consumers distinguish unknown from false and retain server health, g
   }
 });
 
-test("library helpers expose selected metadata and plain page text without losing nulls or encoding", async () => {
-  const seen: Seen[] = [], src = source(), facility = "Town library/&?雪#";
+const place: ShelfPlace = { dimension: "minecraft:overworld", pos: [100, 64, -200] };
+
+test("library helpers read by position: selected metadata and plain page text without losing nulls or encoding", async () => {
+  const seen: Seen[] = [], src = source(), dimension = "modpack:dim/雪&?#";
   const slots: BookInfo[] = [
     bookMetadata,
     { slot: 0, kind: "writable", title: null, author: null, generation: null, pageCount: 1, contentHash: "draft" },
     { slot: 1, kind: "enchanted", title: null, author: null, generation: null, pageCount: 0, contentHash: null },
+    { slot: 3, kind: "other", item: "patchouli:guide_book", title: null, author: null, generation: null, pageCount: 0, contentHash: "other" },
     { slot: 5, kind: "plain", title: null, author: null, generation: null, pageCount: 0, contentHash: null },
   ];
   const pages = ["Plant wheat.\nLeave seed for neighbours.", "雪 & <text>, not HTML"];
   const get = getWith(fakeFetch({
-    "/v1/library/shelf": json(endpointReply({ shelf: { facility, status: "observed", reason: null, slots } })),
-    "/v1/library/book": json(endpointReply({ book: { facility, status: "observed", reason: null, book: bookMetadata, pages } })),
+    "/v1/library/shelf": json(endpointReply({ shelf: { dimension, pos: [-3, 70, 12], block: "minecraft:chiseled_bookshelf", status: "observed", reason: null, slots } })),
+    "/v1/library/book": json(endpointReply({ book: { dimension, pos: [-3, 70, 12], status: "observed", reason: null, book: bookMetadata, pages } })),
   }, seen));
-  const shelf = await observerShelf(src, { facility }, get);
-  const book = await observerBook(src, { facility, slot: 2 }, get);
+  const shelf = await observerShelf(src, { dimension, pos: [-3, 70, 12] }, get);
+  const book = await observerBook(src, { dimension, pos: [-3, 70, 12], slot: 2 }, get);
   if (!shelf.ok || !book.ok) throw new Error("library read failed");
-  expect(shelf.data.shelf).toEqual({ facility, status: "observed", reason: null, slots });
-  expect(book.data.book).toEqual({ facility, status: "observed", reason: null, book: bookMetadata, pages });
-  expect(new URL(seen[0].url).searchParams.get("facility")).toBe(facility);
-  expect([...new URL(seen[1].url).searchParams]).toEqual([["facility", facility], ["slot", "2"]]);
+  expect(shelf.data.shelf).toEqual({ dimension, pos: [-3, 70, 12], block: "minecraft:chiseled_bookshelf", status: "observed", reason: null, slots });
+  expect(book.data.book).toEqual({ dimension, pos: [-3, 70, 12], status: "observed", reason: null, book: bookMetadata, pages });
+  expect([...new URL(seen[0].url).searchParams]).toEqual([["dimension", dimension], ["pos", "-3,70,12"]]);
+  expect([...new URL(seen[1].url).searchParams]).toEqual([["dimension", dimension], ["pos", "-3,70,12"], ["slot", "2"]]);
   expect(new URL(seen[1].url).hash).toBe("");
 });
 
 test("library non-observations remain explicit status/reason outcomes, not invented books or failures", async () => {
   const src = source();
-  for (const status of ["unloaded", "no_level", "no_block_entity", "unsupported", "empty", "not_readable", "too_large", "invalid", "error"] as const) {
-    const reason = `${status}: no readable text`;
+  for (const status of ["unloaded", "no_level", "no_shelf", "empty", "not_readable", "too_large", "invalid", "error"] as const) {
+    const reason = `${status}: no readable text`, block = status === "no_shelf" ? "minecraft:stone" : null;
     const get = getWith(fakeFetch({
-      "/v1/library/shelf": json(endpointReply({ shelf: { facility: "library", status, reason, slots: [] } })),
-      "/v1/library/book": json(endpointReply({ book: { facility: "library", status, reason, book: null, pages: [] } })),
+      "/v1/library/shelf": json(endpointReply({ shelf: { ...place, block, status, reason, slots: [] } })),
+      "/v1/library/book": json(endpointReply({ book: { ...place, status, reason, book: null, pages: [] } })),
     }));
-    const shelf = await observerShelf(src, { facility: "library" }, get);
-    const book = await observerBook(src, { facility: "library", slot: 0 }, get);
+    const shelf = await observerShelf(src, place, get);
+    const book = await observerBook(src, { ...place, slot: 0 }, get);
     if (!shelf.ok || !book.ok) throw new Error(`lost library outcome ${status}`);
-    expect(shelf.data.shelf).toEqual({ facility: "library", status, reason, slots: [] });
-    expect(book.data.book).toEqual({ facility: "library", status, reason, book: null, pages: [] });
+    expect(shelf.data.shelf).toEqual({ ...place, block, status, reason, slots: [] });
+    expect(book.data.book).toEqual({ ...place, status, reason, book: null, pages: [] });
   }
+});
+
+test("the shelf list pages with its cursor, moves its scan time onto this clock, and says when it was cut", async () => {
+  const seen: Seen[] = [], src = source();
+  const items = [{ ...place, block: "minecraft:lectern", status: "observed" as const, slots: [{ ...bookMetadata, slot: 0 }] }, { dimension: "minecraft:the_nether", pos: [1, 2, 3] as [number, number, number], block: "minecraft:chiseled_bookshelf", status: "invalid" as const, slots: [] }];
+  const get = getWith(fakeFetch({ "/v1/library/shelves": json(endpointReply({ shelves: { items, next: "c2", loadedOnly: true, scannedAtMs: SERVED - 20_000, truncated: true } })) }, seen));
+  const page = await observerShelves(src, { after: "c1", limit: 200 }, get);
+  if (!page.ok) throw new Error(page.detail);
+  expect(page.data.shelves).toEqual({ items, next: "c2", scannedAt: SERVED + 5000 - 20_000, truncated: true });
+  expect([...new URL(seen[0].url).searchParams]).toEqual([["after", "c1"], ["limit", "200"]]);
+  expect(await observerShelves(src, { limit: 200 }, getWith(fakeFetch({ "/v1/library/shelves": json(endpointReply({ shelves: { items: [{ ...items[0], pos: [1, 2] }], next: null, scannedAtMs: SERVED, truncated: false } })) }))))
+    .toMatchObject({ ok: false, status: "error" });
+});
+
+test("the watch list is read and replaced with a JSON PUT carrying only the bearer token", async () => {
+  const seen: (Seen & { method: string; body: string | null })[] = [], src = source();
+  const watch = { revision: "r1", residents: [{ name: "Gary", uuid: "u" }], facilities: [{ id: "facility-1", label: "Mill", dimension: "minecraft:overworld", pos: [1, 2, 3] as [number, number, number], side: null }], appliedAtMs: SERVED, bootId: "boot-a" };
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    seen.push({ url: String(input), authorization: new Headers(init?.headers).get("authorization"), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : null });
+    return json(endpointReply({ watch }))();
+  }) as unknown as typeof fetch;
+  const read = await observerWatch(src, getWith(fetchImpl));
+  const list = { revision: "r1", residents: watch.residents, facilities: watch.facilities };
+  const pushed = await observerPutWatch(src, list, (s, path, body, timeoutMs) => observerPut(s, path, body, timeoutMs, fetchImpl));
+  if (!read.ok || !pushed.ok) throw new Error("watch failed");
+  expect(read.data.watch).toEqual({ revision: "r1", residents: watch.residents, facilities: watch.facilities, bootId: "boot-a" });
+  expect(seen.map(request => request.method)).toEqual(["GET", "PUT"]);
+  expect(JSON.parse(seen[1]!.body!)).toEqual(list);
+  expect(seen[1]!.authorization).toBe(`Bearer ${TOKEN}`);
+  expect(seen[1]!.url).toBe("http://127.0.0.1:25640/v1/watch");
 });
 
 test("helper argument validation refuses invalid bounds before any request", async () => {
@@ -194,10 +227,12 @@ test("helper argument validation refuses invalid bounds before any request", asy
   const results: unknown[] = [
     await observerSight(src, { from: " ", to: "Margo" }, get),
     await observerSight(src, { from: "Gary", to: "" }, get),
-    await observerShelf(src, { facility: "" }, get),
-    await observerBook(src, { facility: " ", slot: 0 }, get),
+    await observerShelf(src, { dimension: "", pos: [0, 0, 0] }, get),
+    await observerShelf(src, { dimension: "minecraft:overworld", pos: [0, 0.5, 0] }, get),
+    await observerBook(src, { dimension: " ", pos: [0, 0, 0], slot: 0 }, get),
+    await observerShelves(src, { limit: 201 }, get),
   ];
-  for (const slot of [-1, 6, 0.5, NaN, Infinity]) results.push(await observerBook(src, { facility: "library", slot }, get));
+  for (const slot of [-1, 6, 0.5, NaN, Infinity]) results.push(await observerBook(src, { ...place, slot }, get));
   const badEvents: ObserverEventsArgs[] = [
     { after: -1 }, { after: 0.5 }, { after: Number.MAX_SAFE_INTEGER + 1 }, { after: NaN },
     { limit: 0 }, { limit: 501 }, { limit: 1.5 }, { limit: Infinity },
@@ -220,13 +255,13 @@ test("malformed endpoint data cannot manufacture negative sight, metadata or rea
     expect(await sight(value)).toMatchObject({ ok: false, status: "error" });
   }
   for (const slots of [[{ ...bookMetadata, kind: "unknown" }], [bookMetadata, bookMetadata], [{ ...bookMetadata, slot: 6 }]]) {
-    expect(await observerShelf(src, { facility: "library" }, getWith(fakeFetch({
-      "/v1/library/shelf": json(endpointReply({ shelf: { facility: "library", status: "observed", reason: "read", slots } })),
+    expect(await observerShelf(src, place, getWith(fakeFetch({
+      "/v1/library/shelf": json(endpointReply({ shelf: { ...place, block: null, status: "observed", reason: "read", slots } })),
     })))).toMatchObject({ ok: false, status: "error" });
   }
-  for (const patch of [{ pages: [{ text: "not plain text" }] }, { book: { ...bookMetadata, pageCount: -1 } }, { status: "surprise" }]) {
-    expect(await observerBook(src, { facility: "library", slot: 2 }, getWith(fakeFetch({
-      "/v1/library/book": json(endpointReply({ book: { facility: "library", status: "observed", reason: "read", book: bookMetadata, pages: ["text"], ...patch } })),
+  for (const patch of [{ pages: [{ text: "not plain text" }] }, { book: { ...bookMetadata, pageCount: -1 } }, { status: "surprise" }, { pos: [1, 2, "3"] }]) {
+    expect(await observerBook(src, { ...place, slot: 2 }, getWith(fakeFetch({
+      "/v1/library/book": json(endpointReply({ book: { ...place, status: "observed", reason: "read", book: bookMetadata, pages: ["text"], ...patch } })),
     })))).toMatchObject({ ok: false, status: "error" });
   }
 });
@@ -235,8 +270,10 @@ test("all helpers retain transport, token, scope, schema and tick-request failur
   const src = source();
   const readers = [
     (get: typeof observerGet) => observerSight(src, { from: "Gary", to: "Margo" }, get),
-    (get: typeof observerGet) => observerShelf(src, { facility: "library" }, get),
-    (get: typeof observerGet) => observerBook(src, { facility: "library", slot: 0 }, get),
+    (get: typeof observerGet) => observerShelf(src, place, get),
+    (get: typeof observerGet) => observerBook(src, { ...place, slot: 0 }, get),
+    (get: typeof observerGet) => observerShelves(src, { limit: 10 }, get),
+    (get: typeof observerGet) => observerWatch(src, get),
     (get: typeof observerGet) => observerEvents(src, {}, get),
   ];
   const failures = [

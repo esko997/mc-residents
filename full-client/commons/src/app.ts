@@ -33,6 +33,8 @@ import type { AlarmEvent } from "./resident-contracts-alarm.ts";
 import { Overlay } from "./overlay.ts";
 import { RunControl } from "./run-control.ts";
 import { RecordsIngest } from "./records-ingest.ts";
+import { LibraryScan } from "./library-scan.ts";
+import { WatchPush } from "./watch.ts";
 
 /** The JSON each GET route under /<token>/api/ returns, for whoever reads it (the page, the tests). */
 export interface Replies {
@@ -52,6 +54,8 @@ export interface App {
   db: Database;
   /** Hub only: station discovery, also awaited by tests. */
   federation?: Federation;
+  /** Hub with a server bridge only: the bridge's watch list, also awaited by tests. */
+  watch?: WatchPush;
 }
 
 const STATIC: Record<string, string> = {
@@ -85,12 +89,18 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   // Server bridge queries (stats, advancements, block changes, container flows) into the hub database.
   const ingestOptions = config.role === "hub" && config.observer ? ingestOptionsFromEnv(process.env) : null;
   const ingest = ingestOptions ? new ObserverIngest(db, config.observer, { ...ingestOptions, now, log }) : undefined;
+  // The bridge watches the residents and facilities the hub knows, pushed from here; it keeps no list of its own.
+  const watch = config.role === "hub" && config.observer
+    ? new WatchPush(db, config.observer, { residents: () => residentApi?.residentNames() ?? null, now, log }) : undefined;
+  // Every book on a chiseled bookshelf or lectern the bridge sees enters the catalogue by itself.
+  const libraryScan = config.role === "hub" && config.observer ? new LibraryScan(db, config.observer, { now, log }) : undefined;
   const residentApi = config.role === "hub" ? new ResidentApi(db, config.credentialsFile, config.autoAccept, {
     now, command: command => feed.command(command), activity: alarmActivity,
   }, { source: config.observer ?? null }, { health: () => ingest?.health() ?? null, now }, {
-    // Book catalogue shelf reads, and the public chat a historian may read; the owner's spectator stays unseen.
+    // Positions and shelf reads for the book catalogue, and the public chat a historian may read; the owner's spectator stays unseen.
     observer: config.observer ?? null, chat: () => stream.since(0).lines,
     unseen: (process.env.RESIDENT_UNSEEN_PLAYERS ?? "Lantern_").split(",").map(name => name.trim()).filter(Boolean),
+    facilitiesChanged: () => watch?.nudge(),
   }) : undefined;
   const live = new LiveStream(config, { now });
   let lastRead = 0;
@@ -149,7 +159,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   }
 
   return {
-    watcher, tail, stream, feed, db, federation,
+    watcher, tail, stream, feed, db, federation, watch,
     async fetch(request) {
       const url = new URL(request.url);
       if (url.pathname.startsWith("/resident-api/v1/")) {
@@ -177,7 +187,10 @@ export function createApp(config: Config, token: string, now: () => number = Dat
       if (request.method !== "GET" || response.status >= 400) log(`${request.method} /<token>/${rest.join("/")} -> ${response.status}`);
       return response;
     },
-    start() { watcher.start(); if (config.role === "hub") feed.start(); federation?.start(); ingest?.start(); recordsIngest?.start(); void context.readSessions(); },
+    start() {
+      watcher.start(); if (config.role === "hub") feed.start(); federation?.start(); ingest?.start(); recordsIngest?.start();
+      watch?.start(); libraryScan?.start(); void context.readSessions();
+    },
     stop() {
       overlay.stop();
       runControl.stop();
@@ -185,7 +198,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
       // Abort capture and signal FFmpeg now; TERM → KILL/reap continues boundedly.
       void live.shutdown().catch(() => log("Live video encoder cleanup failed; restart Commons before streaming again."));
       residentApi?.close();
-      ingest?.stop(); recordsIngest?.stop();
+      ingest?.stop(); recordsIngest?.stop(); watch?.stop(); libraryScan?.stop();
       federation?.stop(); watcher.stop(); feed.stop(); db.close();
     },
   };

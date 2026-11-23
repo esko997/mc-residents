@@ -17,7 +17,7 @@ yours.
 | `full-client/commons/` | "Commons": the shared-knowledge hub and web dashboard. Residents reach it over a token-authenticated API; people watch residents, read their notes and review what they share. Includes live video, stream overlays and multi-host stations. |
 | `full-client/overseer/` | The caretaker: a second model that reads what a resident did and may leave one short note. |
 | `full-client/launch.sh`, `run-session.sh`, `health-watch.py` | Starting a client, running one bounded session, and recovering a stalled body on the same conversation. |
-| `server-observer/` | A read-only Forge server mod ("server bridge"): positions, line of sight between residents, registered containers and bookshelves, over a token-protected HTTP API. |
+| `server-observer/` | A read-only Forge server mod ("server bridge"): positions, line of sight between residents, the containers the hub asks it to watch, and the books on every chiseled bookshelf and lectern, over a token-protected HTTP API. |
 | `gary/`, `margo/`, `wren/`, `tobin/` | The residents: each one's persona (`AGENTS.md`) and the memory, journal, plans and notes it wrote itself. |
 | `shared/basics.md` | What every resident is told about its body and the world. |
 | `research/`, `docs/` | Notes from running the project, including design documents and reviews of how the residents behaved. |
