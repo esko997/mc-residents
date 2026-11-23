@@ -152,8 +152,12 @@ current action.
 Install FFmpeg with `h264_nvenc` support and MediaMTX **1.21.4** on the client
 host. Copy the MediaMTX executable to `~/gary-client/bin/mediamtx`, and
 `../live/mediamtx.yml` to `~/gary-client/live/mediamtx.yml`. Install
-`../live/resident-video.service` as a user service. The relay may stay running;
-the encoder and framebuffer capture are on demand only.
+`../live/resident-video.service` as a user service and
+`../live/commons-live.conf` as
+`~/.config/systemd/user/commons.service.d/live-video.conf`, then run
+`systemctl --user daemon-reload`. The drop-in enables video and starts the
+relay alongside Commons. The relay may stay running; the encoder and
+framebuffer capture are on demand only.
 
 Enable `[features] videoEnabled = true` in each stopped client's
 `config/synapse-client.toml`, with the matching Synapse build installed.
