@@ -81,7 +81,6 @@ export function createLiveView(root, { now, stamp, colour }) {
     stage.style.removeProperty("--who");
     fullscreenNote.textContent = "";
     if (document.fullscreenElement === stage) void document.exitFullscreen().catch(() => {});
-    if (video.webkitDisplayingFullscreen) video.webkitExitFullscreen?.();
   }
 
   function release(lease, generation, expectedRevision) {
@@ -289,8 +288,8 @@ export function createLiveView(root, { now, stamp, colour }) {
     try {
       if (document.fullscreenElement === stage) await document.exitFullscreen();
       else if (stage.requestFullscreen) await stage.requestFullscreen();
-      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
-      else fullscreenNote.textContent = "Fullscreen is not supported in this browser.";
+      // Video-only fullscreen would hide the game chat.
+      else fullscreenNote.textContent = "This browser cannot show video and chat in fullscreen. Both remain visible here.";
     } catch {
       fullscreenNote.textContent = "Fullscreen was refused by the browser. Video is still playing here.";
     }

@@ -11,6 +11,15 @@
 #live-stage { border: 2px solid var(--seam); background: #0f1114; margin-bottom: 14px; }
 #live-stage > header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 8px 12px; background: var(--basalt); }
 #live-name { font-size: 1.0625rem; overflow-wrap: anywhere; color: var(--who, var(--parchment)); }
+/* Chat contributes no intrinsic height: the picture sizes the desktop row. */
+#live-stage .live-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(15rem, 30%); min-height: 0; }
+#live-chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; contain: size; overflow: hidden; border-left: 1px solid var(--seam); background: var(--deepslate); }
+#live-chat > header { padding: 8px 10px; background: var(--basalt); }
+#live-chat h3 { font-size: .9375rem; }
+#live-chat-status { padding: 6px 10px; max-height: 5em; overflow-y: auto; flex-shrink: 0; }
+#live-chat-view { flex: 1; min-height: 0; }
+#live-chat-view .console-box { flex: 1; min-height: 0; height: auto; }
+#p-live #live-chat-view .jump { position: static; flex-shrink: 0; border: 0; border-radius: 0; background: var(--glow); color: #2a2206; font-size: .8125rem; }
 #live-stage .live-picture { position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 70dvh; min-height: 160px; }
 #live-video { display: block; width: 100%; height: 100%; object-fit: contain; }
 #live-blank { position: absolute; inset: 0; display: grid; place-content: center; padding: 20px; text-align: center; color: var(--lichen); }
@@ -20,8 +29,14 @@
 #live-context > h3 { font-size: .9375rem; margin-bottom: 4px; }
 #live-context-time { margin-bottom: 8px; }
 #live-stage:fullscreen { display: flex; flex-direction: column; width: 100%; height: 100%; margin: 0; border: 0; }
-#live-stage:fullscreen .live-picture { flex: 1; aspect-ratio: auto; min-height: 0; max-height: none; }
+#live-stage:fullscreen .live-body { flex: 1; grid-template-rows: minmax(0, 1fr); }
+#live-stage:fullscreen .live-picture { height: 100%; aspect-ratio: auto; min-height: 0; max-height: none; }
 #live-stage:fullscreen > header, #live-stage:fullscreen > footer { flex: none; }
+@media (max-width: 760px) {
+  #live-stage .live-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 18rem); }
+  #live-chat { border-left: 0; border-top: 1px solid var(--seam); }
+  #live-stage:fullscreen .live-body { grid-template-rows: minmax(0, 1fr) minmax(0, min(18rem, 35dvh)); }
+}
 @media (max-width: 520px) {
   #p-live .live-picker { max-width: none; flex-basis: 100%; }
   #p-live .live-controls > button { flex: 1; }

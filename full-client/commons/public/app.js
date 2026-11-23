@@ -958,8 +958,8 @@ async function loadCommons() {
 }
 
 // ---------- Console ----------
-// One store of lines, fed by api/console, and two views of it: the Console panel and the
-// strip beside the residents. Each view has its own filter, scroll position and command box.
+// One store of lines, fed by api/console, shared by Console, Residents and Live.
+// Each view has its own filter and scroll position; Live is read-only.
 const consoleStore = { boot: "", rev: 0, byId: new Map(), sorted: [], server: null, commandsOff: null, loaded: false };
 const consoleViews = [];
 const CARETAKER = "<Caretaker>";
@@ -1003,6 +1003,7 @@ function drawConsole(view) {
   if (stick) view.box.scrollTop = view.box.scrollHeight;
   else if (newest !== view.newest) view.jump.hidden = false;
   view.newest = newest;
+  if (view.readOnly) return;
   const off = consoleStore.commandsOff;
   view.input.disabled = view.send.disabled = Boolean(off) || view.sending;
   view.off.hidden = !off;
@@ -1012,16 +1013,16 @@ const drawConsoles = () => { for (const view of consoleViews) drawConsole(view);
 
 function consoleView(root, options) {
   root.innerHTML = html`
-    <div class="console-box" tabindex="0" role="log" aria-label="Console lines, newest last">
+    <div class="console-box" tabindex="0" role="log" aria-label="${options.label ?? "Console lines, newest last"}">
       <p class="console-more" hidden><button type="button"></button></p><ol class="console-lines"></ol><p class="empty" hidden></p></div>
     <button type="button" class="jump" hidden>New lines below. Jump to newest</button>
-    <form class="command" autocomplete="off">
+    ${options.readOnly ? "" : html`<form class="command" autocomplete="off">
       <label class="check" title="Turns what you type into: say &lt;text&gt;"><input type="checkbox" class="as-server"> Say as Server</label>
       <div class="command-row"><span class="prompt" aria-hidden="true">&gt;</span>
         <input class="command-input data" enterkeyhint="send" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Server command">
         <button class="send">Send</button></div>
       <p class="problem" role="alert"></p><p class="fine command-off" hidden></p>
-    </form>`.text;
+    </form>`}`.text;
   const view = {
     ...options, text: "", stick: true, newest: 0, sending: false,
     box: $(".console-box", root), list: $("ol", root), more: $(".console-more", root), empty: $(".empty", root), jump: $(".jump", root),
@@ -1034,6 +1035,8 @@ function consoleView(root, options) {
   });
   view.jump.onclick = () => { view.stick = true; view.jump.hidden = true; view.box.scrollTop = view.box.scrollHeight; };
   view.more.firstChild.onclick = () => { view.limit += 1000; drawConsole(view); };
+  consoleViews.push(view);
+  if (view.readOnly) return view;
 
   const form = $("form", root), asServer = $(".as-server", root), problem = $(".problem", root);
   const placeholder = () => { view.input.placeholder = asServer.checked ? "Say to everyone as [Server]" : "Server command, such as: list"; };
@@ -1070,7 +1073,6 @@ function consoleView(root, options) {
     await loadConsole().catch(() => drawConsole(view));
     view.input.focus();
   });
-  consoleViews.push(view);
   return view;
 }
 
@@ -1078,6 +1080,7 @@ function consoleView(root, options) {
 const GLANCE_KINDS = ["chat", "players", "command"];
 const glanceView = consoleView($("#glance-view"), { kinds: new Set(GLANCE_KINDS), limit: 40, grows: false });
 const fullView = consoleView($("#console-view"), { kinds: null, limit: 1000, grows: true });
+consoleView($("#live-chat-view"), { kinds: new Set(["chat"]), limit: 5000, grows: false, readOnly: true, label: "Game chat, newest last" });
 $("#glance-all").onchange = event => { glanceView.kinds = event.target.checked ? null : new Set(GLANCE_KINDS); glanceView.stick = true; drawConsole(glanceView); };
 const CONSOLE_FILTERS = [["all", "All", null], ["chat", "Chat", ["chat"]], ["players", "Players", ["players"]], ["warn", "Warnings and errors", ["warn"]]];
 let consoleFilter = "all";
@@ -1125,6 +1128,9 @@ async function loadConsole() {
     unknown: "Asking the server machine for its log…",
     unreachable: `The server log cannot be read right now. ${server.detail ?? ""} Meanwhile this shows what the residents' clients were shown in game.`,
   }[server.state] ?? "";
+  const liveChatStatus = $("#live-chat-status");
+  liveChatStatus.hidden = status.hidden;
+  liveChatStatus.textContent = status.textContent;
   const noisy = store.sorted.filter(line => line.noise).length;
   $("#console-noise-n").textContent = noisy ? `(${count(noisy)} lines)` : "";
   drawConsoles();
@@ -1138,8 +1144,8 @@ const panels = [
   { id: "map", title: "Map", every: 10000, load: loadMap },
   { id: "notes", title: "Notes", every: 30000, load: loadNotes },
   { id: "commons", title: "Shared Knowledge", every: 15000, load: loadCommons },
-  // Also fed while the Residents panel is open: its strip shows the same lines.
-  { id: "console", title: "Console", every: 2000, load: loadConsole, also: "residents" },
+  // One poll also feeds the visible chat beside Residents or Live.
+  { id: "console", title: "Console", every: 2000, load: loadConsole, also: ["residents", "live"] },
   { id: "chat", title: "Chat", hidden: true },
 ];
 const badges = {};
@@ -1179,7 +1185,7 @@ function refresh(id) { panels.find(panel => panel.id === id).at = 0; tick(); }
 async function tick() {
   if (document.visibilityState === "hidden") return;
   for (const panel of panels) {
-    const wanted = panel.always || panel.id === state.active || panel.also === state.active;
+    const wanted = panel.always || panel.id === state.active || panel.also?.includes(state.active);
     if (!panel.load || panel.loading || !wanted || Date.now() - (panel.at ?? 0) < panel.every) continue;
     // Other panels need the residents' names (and their colours) first.
     if (!panel.always && !state.residents) continue;

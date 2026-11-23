@@ -52,9 +52,19 @@
     </div>
     <div id="live-stage">
       <header><h2 id="live-name">Resident view</h2><span class="fine">Video only · No audio · No recording</span></header>
-      <div class="live-picture">
-        <video id="live-video" autoplay playsinline muted aria-label="Selected resident's live game view" hidden></video>
-        <p id="live-blank">Choose a resident, then press Watch.</p>
+      <div class="live-body">
+        <div class="live-picture">
+          <video id="live-video" autoplay playsinline muted aria-label="Selected resident's live game view" hidden></video>
+          <p id="live-blank">Choose a resident, then press Watch.</p>
+        </div>
+        <aside id="live-chat" aria-labelledby="live-chat-heading">
+          <header>
+            <h3 id="live-chat-heading">Game chat</h3>
+            <p class="fine">Everyone's chat, not just the selected resident. Updates separately from video.</p>
+          </header>
+          <p id="live-chat-status" class="fine" role="status" hidden></p>
+          <div id="live-chat-view" class="console-view"></div>
+        </aside>
       </div>
       <footer>
         <button type="button" id="live-fullscreen" disabled>Fullscreen</button>
