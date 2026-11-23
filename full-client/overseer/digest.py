@@ -117,7 +117,24 @@ def library_digest(resident):
     return data
 
 
-def print_library(resident):
+PLACE_LIMIT = 25
+
+
+def nearest_places(places, here):
+    """The hub lists every shared place (hundreds): keep the nearest few so the record stays readable."""
+    if not here:
+        return places[-PLACE_LIMIT:]
+    x, z, dimension = here
+    def distance(row):
+        try:
+            same = row.get("dimension") in (None, dimension)
+            return (0 if same else 1, (float(row["x"]) - x) ** 2 + (float(row["z"]) - z) ** 2)
+        except (KeyError, TypeError, ValueError):
+            return (2, 0)
+    return sorted(places, key=distance)[:PLACE_LIMIT]
+
+
+def print_library(resident, here=None):
     try:
         data = library_digest(resident)
     except (OSError, URLError, ValueError) as error:
@@ -125,8 +142,11 @@ def print_library(resident):
         reason = f"HTTP {error.code}" if isinstance(error, HTTPError) else type(error).__name__
         print(f"\n## Shared library\nHub library unavailable ({reason}); do not infer none exist.")
         return
+    total = len(data["places"])
+    data["places"] = nearest_places(data["places"], here)
     for key, title in (
-        ("places", "Shared places (saved claims; check permissions and current state)"),
+        ("places", "Shared places (saved claims; check permissions and current state)"
+         + (f"; the {len(data['places'])} nearest of {total}" if total > len(data["places"]) else "")),
         ("collaborations", "Voluntary agreements (reported results and confirmations are not machine verification)"),
         ("facilities", "Shared facilities (claims with access terms; dated observations, not live counts)"),
         ("knowledge_requests", "This resident's knowledge requests (ref-N is a guide handle; references remain untested)"),
@@ -257,11 +277,13 @@ def main():
     section("Chat it heard", heard, 2500)
     section("Its own remarks to itself", thoughts, 2000)
 
+    here = None
     if args.synapse:
         try:
             raw = subprocess.run([os.path.join(args.base, "synapse.sh"), "GET", "/state?mode=full"], env={**os.environ, "SYNAPSE_BASE": args.synapse}, capture_output=True, text=True, timeout=10).stdout
             state = json.loads(raw)["data"]
             pos = state["pos"]
+            here = (pos["x"], pos["z"], state.get("dimension"))
             # The full state lists the hotbar inside the main inventory as well.
             carried = (state.get("inventory") or {}).get("main") or state.get("hotbar") or []
             stacks = [f"{s['count']} {s['item'].split(':')[-1]}" for s in carried if s.get("item") not in (None, "minecraft:air")]
@@ -274,7 +296,10 @@ def main():
     health_file = Path(args.base) / "sessions" / f"{args.name}-health.json"
     try:
         health = json.loads(health_file.read_text())
-        fields = {key: health.get(key) for key in ("status", "reason", "updated_at", "end_at", "last_healthy_at", "consecutive_failures", "client_stopped")}
+        fields = {key: health.get(key) for key in ("status", "reason", "updated_at", "end_at", "last_healthy_at", "consecutive_failures")}
+        # client_stopped describes the last cleanup; a later healthy observation supersedes it.
+        if health.get("status") != "healthy":
+            fields["client_stopped"] = health.get("client_stopped")
         print("\n## Session health (supervisor observations, timestamps in Unix seconds)")
         print(json.dumps(fields))
     except (OSError, ValueError, TypeError):
@@ -285,7 +310,7 @@ def main():
         if os.path.dirname(other) != resident_dir:
             print(f"\n## Neighbour projects: {os.path.basename(os.path.dirname(other))}")
             print(project_summary(other))
-    print_library(args.name)
+    print_library(args.name, here)
     for name, limit in (("memory.md", 6000), ("places.json", 1500)):
         path = os.path.join(resident_dir, name)
         if os.path.exists(path):

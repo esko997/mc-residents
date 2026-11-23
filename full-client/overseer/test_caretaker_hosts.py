@@ -172,7 +172,8 @@ class HostCaretaker(unittest.TestCase):
         binary.mkdir()
         executable(binary / "codex", f"""#!{sys.executable}
 import pathlib, sys
-pathlib.Path({str(work / 'prompt')!r}).write_text(sys.argv[-1])
+# Like codex exec: a final "-" means the prompt arrives on stdin.
+pathlib.Path({str(work / 'prompt')!r}).write_text(sys.stdin.read() if sys.argv[-1] == '-' else sys.argv[-1])
 pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_text('NOTE: none\\nMAINTAINERS: none\\n')
 """)
         config = self.home / ".config" / "commons"

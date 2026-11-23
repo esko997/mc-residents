@@ -72,9 +72,10 @@ Here is the record.
 $digest"
 
 out=$(mktemp)
-(cd "$work/empty" && CODEX_HOME=$base/codex-home timeout 300 "$base/bin/codex" exec \
+# The prompt goes on stdin: a long record exceeds the kernel's 128 KiB limit for one argument.
+(cd "$work/empty" && printf '%s' "$prompt" | CODEX_HOME=$base/codex-home timeout 300 "$base/bin/codex" exec \
   --skip-git-repo-check --ephemeral -s read-only -m "$model" \
-  -c 'mcp_servers.body.enabled=false' -o "$out" "$prompt" < /dev/null > "$work/last-$name.log" 2>&1)
+  -c 'mcp_servers.body.enabled=false' -o "$out" - > "$work/last-$name.log" 2>&1)
 status=$?
 mode=shadow
 [ -e "$work/speak" ] && mode=spoken

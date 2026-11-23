@@ -206,8 +206,9 @@ def supervise_once(command, end_at, state, reader, restart_count, interrupted):
     child = None
     pending = None
     status, reason, code = "failed", "supervisor_failure", 1
+    # A new attempt starts with no cleanup report: the previous attempt's client_stopped is history.
     state.put("starting", "startup_grace", restart_count=restart_count, next_retry_at=None,
-              consecutive_failures=0, cleanup_complete=False)
+              consecutive_failures=0, cleanup_complete=False, client_stopped=None)
     with tempfile.TemporaryDirectory(prefix="resident-health-") as runtime:
         ready = Path(runtime) / "ready"
         child_env = dict(os.environ, SESSION_HEALTH_CHILD="1", SESSION_READY_FILE=str(ready),
