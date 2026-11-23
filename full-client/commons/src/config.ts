@@ -75,6 +75,8 @@ export interface Config {
   overseerDir: string;
   sharedPlaces: string;
   publicDir: string;
+  /** The diorama's block colour table, built at deploy from the modpack jars (scripts/build-block-colours.ts). */
+  blockColours: string;
   /**
    * Every systemd user unit the app knows about, and the resident it belongs to, if any.
    * This and `residents` are the one place where names of residents and units are worked out.
@@ -227,6 +229,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     overseerDir: join(home, "overseer"),
     sharedPlaces: join(home, "resident", "shared", "places.json"),
     publicDir: join(packageRoot, "public"),
+    blockColours: expandHome(env.COMMONS_BLOCK_COLOURS ?? join(home, "commons-data", "block-colours.json")),
     units,
     systemctl: env.COMMONS_SYSTEMCTL ?? "systemctl",
     residents: found,

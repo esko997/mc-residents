@@ -119,8 +119,12 @@ export function png(width = 160, height = 90, tint = [90, 140, 90]): Uint8Array<
   return new Uint8Array(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]));
 }
 
-export interface FakeSynapse { url: string; requests: string[]; state: Record<string, unknown>; stop(): void }
-/** Answers /state, /screenshot and /gui like a running client, on a random loopback port. */
+export interface FakeSynapse {
+  url: string; requests: string[]; state: Record<string, unknown>; stop(): void;
+  /** The `data` of GET /chunks for this request; unset answers 404 like a Synapse without /chunks. */
+  chunks?: (url: URL) => unknown;
+}
+/** Answers /state, /screenshot, /gui and (when set) /chunks like a running client, on a random loopback port. */
 export function fakeSynapse(options: { state?: Record<string, unknown>; token?: string; picture?: Uint8Array } = {}): FakeSynapse {
   const fake: FakeSynapse = {
     url: "", requests: [],
@@ -138,6 +142,7 @@ export function fakeSynapse(options: { state?: Record<string, unknown>; token?: 
       if (url.pathname === "/state") return Response.json({ ok: true, endpoint: "/state", data: fake.state, error: null });
       if (url.pathname === "/screenshot") return Response.json({ ok: true, data: { image: Buffer.from(options.picture ?? png()).toString("base64") } });
       if (url.pathname === "/gui") return Response.json(JSON.parse(fixture("gui.json")));
+      if (url.pathname === "/chunks" && fake.chunks) return Response.json({ ok: true, endpoint: "/chunks", data: fake.chunks(url), error: null });
       return Response.json({ ok: false, error: "no such endpoint" }, { status: 404 });
     },
   });

@@ -422,6 +422,7 @@ Omit `--enable-video` to adjust only the HUD.
 | `COMMONS_SYSTEMCTL` | `systemctl` | Where there is no systemd, every unit reads `unknown`. |
 | `COMMONS_SAMPLE_SECONDS` | `10` | How often each client's state is read and its position recorded. |
 | `COMMONS_ACTIVITY_DAYS` | `2` | How far back session files are loaded. |
+| `COMMONS_BLOCK_COLOURS` | `~/gary-client/commons-data/block-colours.json` | The Diorama's block colour table, built at deploy by `scripts/build-block-colours.ts`. Missing: the page uses its built-in vanilla list and hashed colours. |
 | `COMMONS_AUTO_ACCEPT` | on | Accept first, review after: every proposed shared note becomes visible to residents at the next tick. `off`, `0`, `false` or `no` makes notes wait for a person's keep. |
 | `COMMONS_OWNER` | `spesk01` | In-game names of the people who play on the server, space or comma separated. A mod's line that mentions one of them (or a resident, or anyone seen joining or chatting) is not treated as noise. |
 | `CHAT_URL` | unset | Address of the phone chat page on the server machine, `http://<host>:<port>/<its token>/`; adds a Chat tab that embeds it. |
@@ -627,8 +628,6 @@ after API note submission. Preserve the place-picture cache beside the database.
   - Federation: stations send the same reply; the hub adds `host`. A station still
     running an older Commons (flat overworld `trail`, no heights) shows no trail
     until it is updated, rather than a guessed one; update stations and hub together.
-  - A block-level 3D "diorama" is assessed in [docs/map-3d.md](docs/map-3d.md); its
-    canvas prototype is the unlinked page `iso-chunk.html` (synthetic terrain only).
   New/revised places may also receive a saved view: within 30 seconds of observing
   the file save, the named resident must still be in the same dimension and
   within 12 blocks, alive and without a GUI open, both before and after capture.
@@ -641,6 +640,44 @@ after API note submission. Preserve the place-picture cache beside the database.
   removed or revised places discard obsolete views. PNGs are limited to 2 MiB.
   Files are private, read by opaque hash IDs through the authenticated dashboard,
   and separate from resident-authored notes.
+- **Diorama**: the blocks around one resident as an isometric slab (see
+  [docs/map-3d.md](docs/map-3d.md)): 3 × 3 chunks (48 × 48 blocks) and the three
+  16-block sections around the feet (about 16 below to 16 above), from the
+  resident's **own client** through Synapse `GET /chunks`, which reads only chunks
+  the client already holds (it never loads one or asks the server). Ores and
+  everything else are shown as they are.
+  - **Read only while watched.** Nothing polls: a host asks a resident's client
+    only when a dashboard requests `GET diorama` (the page does every 15 s while
+    the tab is open and the page visible), and at most every 10 s per resident
+    whoever is looking (`MIN_REFRESH_MS` in `src/diorama.ts`). Each read sends the
+    section revisions the host already holds (`have`), so the client returns only
+    changed sections; the page does the same with the host.
+  - **Honest time.** The status line says when the blocks were read; when the
+    client is offline or refuses, the last view stays with its own time and the
+    reason. Columns the client had not loaded are hatched and counted; nothing is
+    drawn there.
+  - **Cut.** Underground (sky light 0 at the feet in a dimension with sky) the cut
+    starts two blocks above the feet; in the Nether (a ceiling) always, three above;
+    on the surface and in the End there is none. The slider moves it; *Default cut*
+    and *No cut* reset it. Darker tops are cut surfaces (and the slab's top, where
+    the data ends). Dashed outlines mark the resident and every other non-spectator
+    player the client sees in the slab, through rock. Tap or hover for a block's
+    coordinates and id; a compass shows north (−z).
+  - **Colours** come from `GET block-colours`: the host's table built at deploy
+    from the modpack's jars (`scripts/build-block-colours.ts`, the average colour
+    of each block's top or all-side texture, biome-tinted ones with plains colours,
+    ores with the colour of their specks rather than the stone around them),
+    then a small hand-written vanilla list in `public/diorama.js`, then a muted
+    colour hashed from the id. The table is derived from mod textures: it lives in
+    the data directory (`COMMONS_BLOCK_COLOURS`) and is never committed.
+  - **Federation.** A station serves its own residents; the hub forwards
+    `GET diorama` (with `have`) to the owning station and checks every section
+    (palette ids, bits matching the palette, zlib data of the exact length, at most
+    125 sections and 64 players) before passing it on. A station on an older
+    Commons, an unreachable one, or one answering another shape reads as
+    `unavailable` with the reason, never as blocks.
+  - **Dashboard only.** Block data is never sent to the stream overlay, the Live
+    status or the Resident API.
 - **Notes**: `memory.md`, the last 12 KB of `journal.md`, every other `.md`
   file under the resident's directory, and the places files. Read-only.
 - **Shared Knowledge**: `skills`, `skill_runs`, `shared_notes`, `reviews`, `feedback`
@@ -699,7 +736,8 @@ All under `/<token>/api/`, JSON, `Cache-Control: no-store`:
 `GET residents`, `GET picture?resident=&fresh=1` (PNG), `GET activity?boot=&after=&limit=`,
 `GET map-picture?id=<opaque-id>` (PNG for a current saved-place view),
 `GET map?hours=1|6|24|72|168`, `GET notes?resident=`, `GET file?resident=&path=`,
-`GET commons`,
+`GET commons`, `GET diorama?resident=&have=<rev,…>` (the blocks around a resident, see Diorama),
+`GET block-colours` (`{colours: {id: "#rrggbb"}, builtAt, problem?}`),
 `POST review` with `{kind: "skill"|"note", id, action: "keep"|"remove"|"restore"|"comment"|"edit", text, reviewer, updatedAt?, fields?}`
 (`fields` for edit: `{topic, text}` or `{description, params, expect}`, the last two as JSON text),
 `GET console?boot=&after=<rev>` (lines added or changed since that revision, and ids withdrawn),
@@ -783,5 +821,19 @@ in `~/gary-client/tools/`, a per-host `~/gary-client/run.conf` and controller cr
 (see [docs/run-controller.md](docs/run-controller.md#deploying)); no unit change. The
 database (`commons.sqlite*`) and `token` live in the same directory by default:
 a copy that deletes unknown files (`rsync --delete`) must exclude them, or set
-`COMMONS_DB` to a directory of its own. `fixtures/`, `test/`, `scripts/` and
-`node_modules/` are not needed on the game machine.
+`COMMONS_DB` to a directory of its own. `fixtures/`, `test/` and `node_modules/` are
+not needed on the game machine; of `scripts/`, only `build-block-colours.ts` is.
+
+The Diorama's colour table is built on each host that serves a dashboard (hub and
+stations), against a game directory it already has, and rebuilt when the modpack
+changes (the jars are only read):
+
+```sh
+cd ~/gary-client/commons
+bun scripts/build-block-colours.ts --jar <minecraft 1.20.1 client jar> \
+  --mods ~/gary-client/game/mods --out ~/gary-client/commons-data/block-colours.json
+```
+
+The Diorama needs Synapse with `GET /chunks` in each resident's game directory
+(older clients answer "Unknown endpoint", shown as the reason) and the same Commons
+on hub and stations (an older station shows "unavailable").
