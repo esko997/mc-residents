@@ -34,7 +34,8 @@ export function observerSourceFromEnv(env: Record<string, string | undefined>): 
 
 export type ObserverReach =
   | { ok: true; data: Record<string, unknown>; receivedAt: number }
-  | { ok: false; status: "offline" | "unauthorized" | "forbidden" | "incompatible" | "error"; detail: string };
+  /** `httpStatus`/`code`: the observer's own HTTP status and error code when it answered (feature detection, rate limits). */
+  | { ok: false; status: "offline" | "unauthorized" | "forbidden" | "incompatible" | "error"; detail: string; httpStatus?: number; code?: string };
 
 const SCHEMA = 1;
 const SOURCE = "server-observer";
@@ -57,9 +58,10 @@ export async function observerGet(
   let body: Record<string, unknown> | undefined;
   try { body = record(await response.json()); } catch { /* not JSON */ }
   const message = body ? String(record(body.error).message ?? `HTTP ${response.status}`) : `HTTP ${response.status} without JSON`;
-  if (response.status === 401) return { ok: false, status: "unauthorized", detail: `The observer refused the token: ${message}` };
-  if (response.status === 403) return { ok: false, status: "forbidden", detail: `The observer refused this request: ${message}` };
-  if (!response.ok) return { ok: false, status: "error", detail: `Observer: ${message}` };
+  const answered = { httpStatus: response.status, ...(typeof record(body?.error).code === "string" ? { code: record(body?.error).code as string } : {}) };
+  if (response.status === 401) return { ok: false, status: "unauthorized", detail: `The observer refused the token: ${message}`, ...answered };
+  if (response.status === 403) return { ok: false, status: "forbidden", detail: `The observer refused this request: ${message}`, ...answered };
+  if (!response.ok) return { ok: false, status: "error", detail: `Observer: ${message}`, ...answered };
   if (!body) return { ok: false, status: "error", detail: `The observer answered ${message}.` };
   if (body.source !== SOURCE || body.schema !== SCHEMA) {
     return { ok: false, status: "incompatible", detail: `Expected ${SOURCE} schema ${SCHEMA}, got ${String(body.source)} schema ${String(body.schema)}.` };
@@ -134,7 +136,8 @@ function libraryHeader(value: unknown): Pick<ObserverShelf, "facility" | "status
   return { facility: raw.facility, status: raw.status as LibraryStatus, reason: raw.reason };
 }
 
-async function observerRead<T>(
+/** One typed GET: envelope checked, payload parsed by `parse` (null: invalid), failures passed through. */
+export async function observerRead<T>(
   source: ObserverSource, path: string, get: typeof observerGet,
   parse: (data: Record<string, unknown>, shift: number) => T | null, timeoutMs = 4000,
 ): Promise<ObserverResult<T>> {

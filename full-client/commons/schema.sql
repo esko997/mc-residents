@@ -278,3 +278,70 @@ CREATE TABLE IF NOT EXISTS resident_alarms (
 );
 CREATE INDEX IF NOT EXISTS resident_alarms_rate ON resident_alarms(sender,bucket,at DESC);
 CREATE INDEX IF NOT EXISTS resident_alarms_time ON resident_alarms(at);
+
+-- Server bridge queries (observer-ingest.ts writes, routes/server-data.ts reads; hub only). Times are the
+-- server's clock (epoch ms) as the bridge reported them; received_at is the hub's. `run` is the bridge's start
+-- time: its ring sequence numbers and in-memory counts restart with it.
+CREATE TABLE IF NOT EXISTS server_ingest_state (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
+-- What the hub knows it did not receive: ring overwritten before a read, cells evicted, bridge restarts.
+CREATE TABLE IF NOT EXISTS server_ingest_gaps (
+  id INTEGER PRIMARY KEY, kind TEXT NOT NULL, run INTEGER NOT NULL, detail TEXT NOT NULL, at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS server_ingest_gaps_at ON server_ingest_gaps(at);
+-- Statistics: one row per stored save of a resident's stats file; values only when they changed.
+CREATE TABLE IF NOT EXISTS server_stat_snapshots (
+  resident TEXT NOT NULL, saved_at INTEGER NOT NULL, received_at INTEGER NOT NULL, status TEXT NOT NULL,
+  entries INTEGER NOT NULL, changed INTEGER NOT NULL, complete INTEGER NOT NULL,
+  PRIMARY KEY(resident, saved_at)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS server_stat_values (
+  resident TEXT NOT NULL, type TEXT NOT NULL, key TEXT NOT NULL, saved_at INTEGER NOT NULL, value INTEGER NOT NULL,
+  PRIMARY KEY(resident, type, key, saved_at)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS server_stat_latest (
+  resident TEXT NOT NULL, type TEXT NOT NULL, key TEXT NOT NULL, value INTEGER NOT NULL, saved_at INTEGER NOT NULL,
+  PRIMARY KEY(resident, type, key)
+) WITHOUT ROWID;
+-- Advancements: loaded definitions with a display, each resident's progress, and every achieved criterion's time.
+CREATE TABLE IF NOT EXISTS server_advancement_catalog (
+  id TEXT PRIMARY KEY, title TEXT, frame TEXT, hidden INTEGER NOT NULL, criteria INTEGER NOT NULL,
+  requirements INTEGER NOT NULL, parent TEXT, built_at INTEGER NOT NULL
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS server_advancements (
+  resident TEXT NOT NULL, id TEXT NOT NULL, done INTEGER NOT NULL, criteria_done INTEGER NOT NULL, criteria_total INTEGER,
+  first_seen_at INTEGER NOT NULL, done_at INTEGER, saved_at INTEGER NOT NULL,
+  PRIMARY KEY(resident, id)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS server_advancement_criteria (
+  resident TEXT NOT NULL, id TEXT NOT NULL, criterion TEXT NOT NULL, achieved_at INTEGER,
+  PRIMARY KEY(resident, id, criterion)
+) WITHOUT ROWID;
+-- Block place/break by residents: recent detail (may skip under bursts) and complete per-chunk hourly counts.
+CREATE TABLE IF NOT EXISTS server_block_changes (
+  run INTEGER NOT NULL, seq INTEGER NOT NULL, resident TEXT NOT NULL, action TEXT NOT NULL CHECK(action IN ('place','break')),
+  dimension TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, z INTEGER NOT NULL, block TEXT NOT NULL, at INTEGER NOT NULL,
+  PRIMARY KEY(run, seq)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS server_block_changes_at ON server_block_changes(at);
+CREATE INDEX IF NOT EXISTS server_block_changes_resident ON server_block_changes(resident, at);
+CREATE TABLE IF NOT EXISTS server_block_hours (
+  run INTEGER NOT NULL, resident TEXT NOT NULL, dimension TEXT NOT NULL, chunk_x INTEGER NOT NULL, chunk_z INTEGER NOT NULL,
+  hour INTEGER NOT NULL, placed INTEGER NOT NULL, broken INTEGER NOT NULL, kinds_json TEXT NOT NULL,
+  other_placed INTEGER NOT NULL, other_broken INTEGER NOT NULL, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL,
+  PRIMARY KEY(run, resident, dimension, chunk_x, chunk_z, hour)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS server_block_hours_hour ON server_block_hours(hour);
+-- Changes counted without a position because the bridge's cell table was full.
+CREATE TABLE IF NOT EXISTS server_block_overflow (
+  run INTEGER NOT NULL, resident TEXT NOT NULL, hour INTEGER NOT NULL, placed INTEGER NOT NULL, broken INTEGER NOT NULL,
+  PRIMARY KEY(run, resident, hour)
+) WITHOUT ROWID;
+-- Item count changes in registered containers; `resident` is the nearest configured resident within reach (evidence, not proof).
+CREATE TABLE IF NOT EXISTS server_container_flows (
+  run INTEGER NOT NULL, seq INTEGER NOT NULL, facility TEXT NOT NULL, at INTEGER NOT NULL, since_at INTEGER NOT NULL,
+  continuous INTEGER NOT NULL, deltas_json TEXT NOT NULL, deltas_truncated INTEGER NOT NULL, uncertain_json TEXT NOT NULL,
+  attribution TEXT NOT NULL, resident TEXT, nearby_json TEXT NOT NULL,
+  PRIMARY KEY(run, seq)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS server_container_flows_at ON server_container_flows(at);
+CREATE INDEX IF NOT EXISTS server_container_flows_facility ON server_container_flows(facility, at);
