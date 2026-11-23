@@ -1,6 +1,7 @@
 "use strict";
 import { coverOf, dimensionName as dimensionLabel, equivalent, heightColour, heightDomain, mapDimensions, mergeMapTrail, nearestIndex, passedPlaces, profileSeries, SEA_LEVEL, splitByHeight } from "./map-trails.js";
 import { createLiveView } from "./live-view.js";
+import { createRunControls } from "./run-control.js";
 // The Shared Knowledge page. No framework and no build step: each panel fetches JSON from
 // api/<route> (relative, so the token in the address carries over) and patches
 // only the parts of the page whose content changed, so nothing flickers and
@@ -166,6 +167,10 @@ function residentInfo(resident, observer) {
     </dl>`;
 }
 
+// Run state and Start/Stop (public/run-control.js); a change redraws the cards' run lines.
+const runControls = createRunControls({ bar: $("#runs"), tokenForm: $("#run-token"), dialog: $("#run-dialog"), serverNow: () => serverNow() });
+document.addEventListener("runs-changed", () => { if (state.residents) renderResidents(state.residents); });
+
 const pictures = new Map(); // name -> { at, url, asked }
 const pictureAmbiguous = name => (state.residents?.residents.filter(resident => resident.name.toLowerCase() === name.toLowerCase()).length ?? 0) > 1;
 async function loadPicture(name, fresh = false) {
@@ -233,6 +238,7 @@ function renderResidents(data) {
       card.className = "card resident";
       card.style.setProperty("--who", colour(resident.name));
       card.innerHTML = html`<header></header>
+        <div class="run-slot"></div>
         <div class="musing-slot"></div>
         <div class="view" data-name="${resident.name}" data-host="${resident.host}"><img alt="What ${resident.name} sees" hidden><p class="blank"></p>
           <div class="bar"><span class="when"></span><button type="button">Refresh picture</button></div></div>
@@ -256,6 +262,7 @@ function renderResidents(data) {
         ${health.restart_count ? `Restarts: ${health.restart_count}.` : ""}
         ${health.next_retry_at ? `Retry ${stamp(health.next_retry_at * 1000)}.` : ""}
         Recorded ${ago(health.updated_at * 1000)}.</p>` : ""}`);
+    runControls.renderCard($(".run-slot", card), resident);
     setHtml($(".musing-slot", card), musing(resident));
     setHtml($(".info", card), residentInfo(resident, data.observer));
   }, "article");
@@ -282,6 +289,7 @@ async function loadResidents() {
   const online = data.residents.filter(resident => resident.status === "online" && !resident.hostUnreachable).length;
   $("#pulse").textContent = `${online} of ${data.residents.length} clients reachable, read ${clock(data.now)}`;
   renderResidents(data);
+  void runControls.refresh();
   setChat(data.chatUrl);
   setBadge("commons", data.pending);
   if (first) drawTabs();
@@ -297,7 +305,7 @@ function residentsTick() {
 // ---------- Activity ----------
 const activity = { boot: "", after: 0, entries: new Map(), who: "All", quiet: false, summary: [], first: true,
   view: "all", older: new Map() }; // older: name -> { at, thoughts } from api/thoughts
-const EVENT_WORDS = { died: "died", stopped_short: "stopped short", navigation_stopped: "nav stopped", reflex: "reflex", chat: "heard", player_near: "player near", player_gone: "player gone" };
+const EVENT_WORDS = { run_started: "run started", run_stopped: "run stopped", run_failed: "run failed", died: "died", stopped_short: "stopped short", navigation_stopped: "nav stopped", reflex: "reflex", chat: "heard", player_near: "player near", player_gone: "player gone" };
 
 function feedRow(entry) {
   let kind = entry.kind, what, cls = entry.kind;
@@ -312,7 +320,7 @@ function feedRow(entry) {
     const chat = entry.type === "chat" && /^from=(\S+) text=(.*)$/s.exec(entry.text);
     // "text=" is the event's only field for reflex and Baritone lines; the label already says what it is.
     what = chat ? html`<b>${chat[1]}</b>: ${chat[2]}` : html`<span class="data">${entry.text.replace(/^text=/, "")}</span>`;
-    cls += entry.type === "died" ? " alarm" : entry.type === "chat" ? " heard" : "";
+    cls += entry.type === "died" || entry.type === "run_failed" ? " alarm" : entry.type === "chat" ? " heard" : "";
   } else {
     kind = { remark: "remark", answer: "answered", thought: "thought", prompt: "told" }[entry.kind] ?? entry.kind;
     what = entry.kind === "thought" || entry.kind === "remark" ? html`${voiceInline(entry.text)}` : html`${entry.text}`;

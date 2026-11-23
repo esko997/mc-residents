@@ -333,6 +333,12 @@ export class Federation {
       liveAvailable: !owner.unreachable && resident?.liveAvailable === true };
   }
 
+  /** Server-side only, for run control: each station's secret URL and discovered resident names. */
+  controlStations(): { host: string; url: string; unreachable: boolean; names: string[] }[] {
+    this.reload();
+    return this.stations.map(s => ({ host: s.host, url: s.url, unreachable: s.unreachable, names: (s.residents ?? []).map(r => r.name) }));
+  }
+
   /** Every discovered remote resident (possibly from the saved roster), never awaiting a station. */
   remoteResidents(): { name: string; host: string; unreachable: boolean; liveAvailable: boolean; state: ResidentsReply["residents"][number]["state"] }[] {
     this.reload();

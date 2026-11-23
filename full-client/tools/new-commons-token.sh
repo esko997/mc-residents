@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Generate on the consumer; only the printed hash record goes to the hub.
+# Generate on the consumer; only the printed hash record goes to the hub
+# (controller records: to the controller-credentials.json of the hub or station it calls).
 set -euo pipefail
 if [[ $# != 3 ]]; then
-  echo 'usage: new-commons-token.sh <token-file> <name> <resident|caretaker>' >&2
+  echo 'usage: new-commons-token.sh <token-file> <name> <resident|caretaker|controller>' >&2
   exit 2
 fi
 python3 - "$@" <<'PY'
 import hashlib, json, os, re, secrets, sys
 path, name, role = sys.argv[1:]
-if not re.fullmatch(r'\w{1,40}', name, flags=re.ASCII) or role not in ('resident', 'caretaker'):
+if not re.fullmatch(r'\w{1,40}', name, flags=re.ASCII) or role not in ('resident', 'caretaker', 'controller'):
     raise SystemExit('Invalid name or role')
 if role == 'resident' and not re.fullmatch(r'\w{1,16}', name, flags=re.ASCII):
     raise SystemExit('Resident name must be a Minecraft player name')

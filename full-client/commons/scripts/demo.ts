@@ -4,7 +4,8 @@
 // offline) and a stand-in for the phone-chat service on the server machine
 // (set CONSOLE_URL to use a real one), and serves the app. Everything is
 // deleted on Ctrl-C.
-import { appendFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "../src/server.ts";
 import { clientLogLine, fakePhoneChat, fakeSynapse, fixture, png, rollout, serverLogLine, tempHome } from "../test/helpers.ts";
@@ -102,6 +103,23 @@ const garyLog = home.put("game/logs/latest.log", [
   clientLogLine(now - 35 * minute, "[System] [CHAT] <Caretaker> Gary: you tried the same path three times; what is in the way there?"),
 ].join("\n") + "\n");
 
+// Stand-in run launchers (canned replies; nothing is started): Gary running until the next
+// 01:00, Margo stopped. Start/Stop need the demo controller token printed below.
+const DEMO_CONTROLLER = "demo-controller-token-0123456789";
+const endAt = Math.floor(now / 1000) + 6 * 3600;
+const runStatus = { ok: true, code: "ok", host: "demo", end_at: endAt, residents: [
+  { name: "Gary", running: true, run_unit: "gary-run.service", run_state: "active", client_unit: "gary-client@Gary.service", client_state: "active", end_at: endAt,
+    model: "gpt-6.2-sol", mode: "resume", thread_id: "01a20685-ec8a-79f2-9bdc-22d2396153ae", started_by: "daily_window via switchyard" },
+  { name: "Margo", running: false, run_unit: "margo-run.service", run_state: "inactive", client_unit: "gary-client@Margo.service", client_state: "inactive" }],
+  caretaker: { unit: "overseer-run.service", state: "active", running: true, end_at: endAt, roster: ["Gary:gary"], interval: 25 } };
+const canned = (reply: object, exit = 0) => `#!/bin/sh\ncat <<'JSON'\n${JSON.stringify(reply)}\nJSON\nexit ${exit}\n`;
+for (const [script, body] of [["run-status.sh", canned(runStatus)],
+  ["start-run.sh", canned({ ok: false, code: "conflict", error: "Gary is already running until 01:00 (demo: nothing is started)" }, 4)],
+  ["stop-run.sh", canned({ ok: true, code: "ok", residents: [{ name: "Gary", result: "stopped" }], caretaker: { result: "stopped" } })]] as const) {
+  chmodSync(home.put(`tools/${script}`, body), 0o755);
+}
+chmodSync(home.put("commons-data/controller-credentials.json", JSON.stringify([{ name: "demo", role: "controller", sha256: createHash("sha256").update(DEMO_CONTROLLER).digest("hex") }])), 0o600);
+
 // The same start-up path as `bun src/server.ts`, on loopback only.
 const running = serve(home.config({
   GARY_SYNAPSE_URL: client.url, CODEX_HOME: join(home.dir, "codex-home"), COMMONS_SYSTEMCTL: "systemctl",
@@ -195,6 +213,7 @@ insertFeedback.run("skill", home_, "Margo", 0, "stopped short at the water again
 insertFeedback.run("note", bread, "Margo", 1, "", null, now - 200 * minute);
 
 console.log(`demo: http://127.0.0.1:${running.port}/${running.token}/   (home ${home.dir}; Ctrl-C removes it)`);
+console.log(`demo: run controls unlock with the controller token ${DEMO_CONTROLLER}`);
 const stop = () => { running.stop(); client.stop(); server.stop(); home.remove(); process.exit(0); };
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);

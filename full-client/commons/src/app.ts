@@ -21,11 +21,14 @@ import { mapRoutes, type MapReply } from "./routes/map.ts";
 import { notesRoutes, type NotesReply } from "./routes/notes.ts";
 import { residentRoutes, type ResidentsReply } from "./routes/residents.ts";
 import { Watcher } from "./watcher.ts";
+import { ingestOptionsFromEnv, ObserverIngest } from "./observer-ingest.ts";
+import { serverDataRoutes } from "./routes/server-data.ts";
 import { ResidentApi } from "./resident-api.ts";
 import { importSharedPlaces, sharedPlaces } from "./resident-places.ts";
 import { alarmActivityText, recentAlarms } from "./resident-alarms.ts";
 import type { AlarmEvent } from "./resident-contracts-alarm.ts";
 import { Overlay } from "./overlay.ts";
+import { RunControl } from "./run-control.ts";
 
 /** The JSON each GET route under /<token>/api/ returns, for whoever reads it (the page, the tests). */
 export interface Replies {
@@ -52,6 +55,7 @@ const STATIC: Record<string, string> = {
   "map-trails.js": "text/javascript; charset=utf-8",
   "watch-layout.js": "text/javascript; charset=utf-8", "watch-layout.css": "text/css; charset=utf-8",
   "live-view.js": "text/javascript; charset=utf-8", "live-view.css": "text/css; charset=utf-8",
+  "run-control.js": "text/javascript; charset=utf-8",
   "overlay": "text/html; charset=utf-8", "overlay/control": "text/html; charset=utf-8", "overlay/preview": "text/html; charset=utf-8",
   "overlay.js": "text/javascript; charset=utf-8", "overlay-control.js": "text/javascript; charset=utf-8",
   "overlay-preview.js": "text/javascript; charset=utf-8", "overlay-core.js": "text/javascript; charset=utf-8",
@@ -76,6 +80,9 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   const residentApi = config.role === "hub" ? new ResidentApi(db, config.credentialsFile, config.autoAccept, {
     now, command: command => feed.command(command), activity: alarmActivity,
   }, { source: config.observer ?? null }) : undefined;
+  // Server bridge queries (stats, advancements, block changes, container flows) into the hub database.
+  const ingestOptions = config.role === "hub" && config.observer ? ingestOptionsFromEnv(process.env) : null;
+  const ingest = ingestOptions ? new ObserverIngest(db, config.observer, { ...ingestOptions, now, log }) : undefined;
   const live = new LiveStream(config, { now });
   let lastRead = 0;
   const context: Context = {
@@ -83,6 +90,8 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     async readSessions() {
       if (now() - lastRead < 2000) return;
       lastRead = now();
+      // Run starts/stops recorded on this host, including ones made from a shell.
+      runControl.refreshActivity();
       await tail.refresh();
     },
     resident: name => config.residents.find(resident => resident.name.toLowerCase() === name?.toLowerCase()),
@@ -90,9 +99,10 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   const federation = config.role === "hub" ? new Federation(config, now, { sharedPlaces: () => sharedPlaces(db) }) : undefined;
   const overlay = new Overlay(context, token, log, federation);
   const liveRouter = new LiveRouter(live, config.hostName, federation);
+  const runControl = new RunControl(config, tail, federation, { log });
   const localRoutes: Routes = {
     ...residentRoutes(context), ...activityRoutes(context), ...mapRoutes(context), ...notesRoutes(context),
-    ...(config.role === "hub" ? { ...commonsRoutes(context), ...consoleRoutes(context) } : {}),
+    ...(config.role === "hub" ? { ...commonsRoutes(context), ...consoleRoutes(context), ...serverDataRoutes(context, ingest) } : {}),
   };
   const routes = federation ? federation.wrap(localRoutes) : localRoutes;
   const secret = Buffer.from(token);
@@ -111,6 +121,8 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     // stream-bounded SDP body limit and same-origin mutation checks; on a hub,
     // station residents' signaling is proxied to their own host.
     if (rest[0] === "api" && rest[1] === "live") return liveRouter.handle(request, rest.slice(2).join("/"));
+    // Run status only; starting and stopping need a controller credential (/controller/v1/).
+    if (request.method === "GET" && route === "api/runs") return runControl.statusReply();
     if (rest[0] === "api") {
       const key = `${request.method} ${rest.slice(1).join("/")}`;
       const handler = Object.hasOwn(routes, key) ? routes[key] : undefined;
@@ -134,6 +146,12 @@ export function createApp(config: Config, token: string, now: () => number = Dat
       if (url.pathname.startsWith("/resident-api/v1/")) {
         return residentApi ? residentApi.fetch(request) : Response.json({ error: { code: "not_found", message: "Resident API is available only on the hub." } }, { status: 404 });
       }
+      if (url.pathname.startsWith("/controller/v1/")) {
+        // Bearer-authenticated, before and independent of the dashboard URL token.
+        const response = await runControl.handleController(request, url.pathname.slice("/controller/v1/".length));
+        if (request.method !== "GET" || response.status >= 400) log(`${request.method} ${url.pathname} -> ${response.status}`);
+        return response;
+      }
       const [given = "", ...rest] = url.pathname.replace(/^\//, "").split("/");
       const offered = Buffer.from(given);
       if (offered.length !== secret.length || !timingSafeEqual(offered, secret)) {
@@ -150,13 +168,15 @@ export function createApp(config: Config, token: string, now: () => number = Dat
       if (request.method !== "GET" || response.status >= 400) log(`${request.method} /<token>/${rest.join("/")} -> ${response.status}`);
       return response;
     },
-    start() { watcher.start(); if (config.role === "hub") feed.start(); federation?.start(); void context.readSessions(); },
+    start() { watcher.start(); if (config.role === "hub") feed.start(); federation?.start(); ingest?.start(); void context.readSessions(); },
     stop() {
       overlay.stop();
+      runControl.stop();
       liveRouter.stop();
       // Abort capture and signal FFmpeg now; TERM → KILL/reap continues boundedly.
       void live.shutdown().catch(() => log("Live video encoder cleanup failed; restart Commons before streaming again."));
       residentApi?.close();
+      ingest?.stop();
       federation?.stop(); watcher.stop(); feed.stop(); db.close();
     },
   };

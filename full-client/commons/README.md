@@ -143,8 +143,12 @@ MCP-written plans worked. A real workspace-write `apply_patch` and readback
 succeeded after installation; do not disable the sandbox to fix this.
 
 Only `commons.service` is enabled persistently. Resident sessions and the
-caretaker are started explicitly with `run-session.sh` / `overseer-loop.sh`;
-the web app does not yet implement daily scheduling or pause/resume controls.
+caretaker are started explicitly, never at boot: by `tools/start-run.sh` on the
+resident host (which reproduces the old launcher: `<name>-run` per resident plus
+`overseer-run`, one shared deadline) or through Commons' run controller, which
+the Residents view's Start/Stop buttons and Switchyard use. Stop with
+`tools/stop-run.sh` or the controller. Commons does no scheduling itself;
+Switchyard keeps the daily window. See [docs/run-controller.md](docs/run-controller.md).
 
 For a continuous run with an exact wall-clock end, pass `SESSION_END_AT`
 (Unix seconds) to `run-session.sh`; it overrides minutes and includes startup.
@@ -211,6 +215,20 @@ Connect through a loopback SSH tunnel or equivalent protected transport.
 Configure both observer environment variables, or neither; keep the bearer
 token in a private file, never in the URL. Management needs the observer's
 `residents`, `facilities` and `status` scopes, not a resident `self` token.
+
+With a bridge of version 0.2.0 or later, the hub also ingests the bridge's declarative
+queries once a minute (`src/observer-ingest.ts`, tables `server_*` in `schema.sql`):
+each resident's server statistics (stored per save, only changed values) and advancement
+progress with criterion times, the advancement catalog, block place/break by residents (complete
+per-chunk hourly counts plus a recent detail window) and item flows in registered facilities
+(with the nearest resident within reach as evidence, not proof). Known losses (ring
+overwritten, cells evicted, bridge restart) are stored in `server_ingest_gaps`. An older bridge
+answers "unsupported" and is re-checked every 10 minutes, so the hub runs before and after the
+jar swap. Read API, hub only: `GET api/server-data` (summary and ingest health),
+`server-data/stats?resident=&type=&key=&since=`, `server-data/advancements?resident=`,
+`server-data/blocks?since=&until=&resident=&dimension=&limit=`,
+`server-data/block-changes?since=&resident=&limit=`, `server-data/flows?since=&facility=&limit=`,
+`server-data/gaps?since=`. Times there are the server's clock.
 
 Dashboard addresses are `http://<machine>:<PORT>/<token>/...`. A wrong or missing token
 gets 404. `/<token>` redirects to `/<token>/`. Keep the address private and off
@@ -393,6 +411,12 @@ Omit `--enable-video` to adjust only the HUD.
 | `GARY_SYNAPSE_URL` | `http://127.0.0.1:25599` | Gary's client. Other residents: `SYNAPSE_URL` in `instances/<Name>.env`. |
 | `COMMONS_OBSERVER_URL` | unset | Optional read-only observer base URL, normally a loopback tunnel. No userinfo, query or fragment. |
 | `COMMONS_OBSERVER_TOKEN_FILE` | unset | Private file containing its bearer token; required together with the URL. |
+| `COMMONS_OBSERVER_INGEST` | on | `off` stops the hub from ingesting the bridge's queries (stats, advancements, blocks, flows). |
+| `COMMONS_OBSERVER_INGEST_SECONDS` | `60` | Ring and hour-cell cadence, 15..3600; stats every 15 min, advancements every 30 min, catalog every 6 h. |
+| `COMMONS_RUN_TOOLS` | `$GARY_CLIENT_HOME/tools` | Where this host's run launcher (`start-run.sh`, `stop-run.sh`, `run-status.sh`) is installed. |
+| `COMMONS_CONTROLLER_CREDENTIALS_FILE` | `~/gary-client/commons-data/controller-credentials.json` | Mode-600 array of `{name,role:"controller",sha256}`: who may start/stop runs on this host (hub and stations). Missing: run control answers 401. |
+| `COMMONS_CONTROLLER_STATION_TOKENS` | `~/gary-client/commons-data/controller-station-tokens` | Hub only: `<host>.token` (mode 600), the hub's controller token at each station. |
+| `RESIDENTS_STATE_DIR` | `~/.local/state/residents` | The launcher's state; its `activations/` records become Activity events. |
 | `COMMONS_UNITS` | `<name>-run` per resident, `overseer-run` | Run units to show, space or comma separated. Client units are added by themselves. |
 | `COMMONS_CLIENT_UNIT` | `gary-client@%s` | Client unit name; `%s` is the resident's name. |
 | `COMMONS_SYSTEMCTL` | `systemctl` | Where there is no systemd, every unit reads `unknown`. |
@@ -679,8 +703,18 @@ All under `/<token>/api/`, JSON, `Cache-Control: no-store`:
 `POST review` with `{kind: "skill"|"note", id, action: "keep"|"remove"|"restore"|"comment"|"edit", text, reviewer, updatedAt?, fields?}`
 (`fields` for edit: `{topic, text}` or `{description, params, expect}`, the last two as JSON text),
 `GET console?boot=&after=<rev>` (lines added or changed since that revision, and ids withdrawn),
-`POST console/command` with `{command}`.
+`POST console/command` with `{command}`,
+`GET runs` (run state per host and resident; read-only).
 Errors are `{error: "..."}` with the sentence the page shows.
+
+Starting and stopping runs is **not** possible with the dashboard URL alone: it is the
+run controller at `/controller/v1/` (`GET runs`, `POST start`, `POST stop`), authenticated
+with a controller bearer token, on every host; the hub forwards to stations. Contract,
+credentials, threat model and Switchyard examples: [docs/run-controller.md](docs/run-controller.md).
+The Residents view shows each resident's run (until when, model, thread, who started it)
+and Start/Stop buttons that unlock with a controller token entered once in that browser.
+Every start and stop recorded on a host appears in Activity (`run started`, `run stopped`,
+`run failed`) with who asked, including ones made with `start-run.sh` in a shell.
 
 ## Resident alarms
 
@@ -743,7 +777,10 @@ routes; they get the same token gate and one journal line each.
 
 ## Deploying
 
-Copy this directory to `~/gary-client/commons/` next to `toolserver/`. The
+Copy this directory to `~/gary-client/commons/` next to `toolserver/`. Run control also
+needs `full-client/tools/{runctl.py,start-run.sh,stop-run.sh,run-status.sh,dry-run-session.sh}`
+in `~/gary-client/tools/`, a per-host `~/gary-client/run.conf` and controller credentials
+(see [docs/run-controller.md](docs/run-controller.md#deploying)); no unit change. The
 database (`commons.sqlite*`) and `token` live in the same directory by default:
 a copy that deletes unknown files (`rsync --delete`) must exclude them, or set
 `COMMONS_DB` to a directory of its own. `fixtures/`, `test/`, `scripts/` and

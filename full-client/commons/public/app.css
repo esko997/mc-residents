@@ -59,6 +59,29 @@ input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--glow); }
 .pill.unauthorized, .pill.error, .pill.failed, .pill.rejected { color: var(--redstone); }
 .pill.activating, .pill.deactivating, .pill.verified, .pill.proposed { color: var(--glow); }
 .meta { font-size: .8125rem; color: var(--lichen); }
+/* Runs: state per host and the Start/Stop controls (run-control.js). */
+.runs { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: .8125rem; color: var(--lichen); margin-bottom: 10px; }
+.runs-line { display: flex; flex-wrap: wrap; gap: 4px 12px; flex: 1 1 24em; }
+.runs-line b { color: var(--parchment); }
+.runs .warn { color: var(--glow); }
+.runs .error, .run-dialog .error, #run-dialog .error { color: var(--redstone); }
+.runs-buttons, .run-buttons { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.runs button, .run-slot button, #run-dialog button { background: var(--seam); border: 0; border-radius: 2px; padding: 5px 10px; font-size: .8125rem; font-weight: 700; cursor: pointer; }
+.runs button.quiet { background: none; color: var(--lichen); text-decoration: underline; }
+.runs button:disabled, .run-slot button:disabled { opacity: .45; cursor: default; }
+.runs-messages { flex-basis: 100%; display: grid; gap: 2px; }
+.runs-messages .ok { color: var(--moss); }
+.token-form input[type="password"] { width: 16em; background: var(--deepslate); border: 2px solid var(--seam); border-radius: 2px; padding: 3px 6px; }
+.run-slot { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin-bottom: 8px; font-size: .8125rem; color: var(--lichen); }
+.run-line { flex: 1 1 18em; }
+.run-line.running { color: var(--moss); }
+#run-dialog { background: var(--basalt); color: var(--parchment); border: 2px solid var(--seam); border-radius: 2px; max-width: 34em; }
+#run-dialog::backdrop { background: rgba(10, 12, 15, .7); }
+#run-dialog form { display: grid; gap: 10px; }
+#run-dialog h2 { font-size: 1.125rem; }
+#run-dialog fieldset { border: 2px solid var(--seam-soft); border-radius: 2px; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+#run-dialog input:not([type="radio"]), #run-dialog select { background: var(--deepslate); border: 2px solid var(--seam); border-radius: 2px; padding: 3px 6px; }
+#run-dialog input[type="number"] { width: 5em; }
 .strip { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .8125rem; color: var(--lichen); margin-bottom: 12px; }
 .warn { color: var(--glow); }
 .bad { color: var(--redstone); }

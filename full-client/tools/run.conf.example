@@ -1,0 +1,19 @@
+# Per-host run configuration for start-run.sh / stop-run.sh / run-status.sh.
+# Copy to $GARY_CLIENT_HOME/run.conf (default ~/gary-client/run.conf) on each resident
+# host. KEY=value lines; read, never sourced. Personas, game dirs and URLs stay in
+# instances/<Name>.env (PERSONA=, GAME_DIR=, SYNAPSE_URL=...).
+
+# Host label used in records and replies (default: short hostname).
+HOST=inspiron
+# This host's residents, the only ones these scripts will start or stop here.
+RESIDENTS="Gary Margo"          # chungus1: RESIDENTS="Wren Tobin"
+# Model when a start does not name one; MODEL_<Name> overrides per resident.
+DEFAULT_MODEL=gpt-6.2-sol
+#MODEL_Margo=gpt-6.2-sol
+# Caretaker defaults: on|off, minutes between passes, speak keep|on|off (overseer/speak flag).
+CARETAKER=on
+CARETAKER_INTERVAL=25
+CARETAKER_SPEAK=keep
+# Unit names (defaults shown); Commons' COMMONS_UNITS defaults assume these.
+#CARETAKER_UNIT=overseer-run
+#CLIENT_UNIT=gary-client@%s

@@ -28,6 +28,16 @@ export interface LiveConfig {
   rtspUrl: string;
   whepUrl: string;
 }
+export interface RunControlConfig {
+  /** Where start-run.sh, stop-run.sh and run-status.sh are installed. */
+  toolsDir: string;
+  /** Mode-600 JSON array of {name, role: "controller", sha256}: who may start and stop runs here. */
+  credentialsFile: string;
+  /** Hub only: `<host>.token` per station, the hub's own controller token at that station. */
+  stationTokensDir: string;
+  /** The launcher's state: activations/ records are read for Activity. */
+  stateDir: string;
+}
 export interface Config {
   role: "hub" | "station";
   hostName: string;
@@ -41,6 +51,8 @@ export interface Config {
   tokenFile: string;
   /** Bearer hashes for the hub Resident API, separate from the dashboard URL token. */
   credentialsFile: string;
+  /** Run control: this host's launcher and its controller credentials (docs/run-controller.md). */
+  runControl: RunControlConfig;
   /** Set when COMMONS_TOKEN is given; otherwise the token file decides. */
   token?: string;
   chatUrl?: string;
@@ -203,6 +215,12 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     schemaPath: expandHome(env.COMMONS_SCHEMA ?? join(packageRoot, "schema.sql")),
     tokenFile: expandHome(env.COMMONS_TOKEN_FILE ?? join(dirname(dbPath), "token")),
     credentialsFile: expandHome(env.COMMONS_CREDENTIALS_FILE ?? join(home, "commons-data", "credentials.json")),
+    runControl: {
+      toolsDir: expandHome(env.COMMONS_RUN_TOOLS ?? join(home, "tools")),
+      credentialsFile: expandHome(env.COMMONS_CONTROLLER_CREDENTIALS_FILE ?? join(home, "commons-data", "controller-credentials.json")),
+      stationTokensDir: expandHome(env.COMMONS_CONTROLLER_STATION_TOKENS ?? join(home, "commons-data", "controller-station-tokens")),
+      stateDir: expandHome(env.RESIDENTS_STATE_DIR ?? join(env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "residents")),
+    },
     token: env.COMMONS_TOKEN, chatUrl: env.CHAT_URL || undefined,
     sessionsDir: join(expandHome(env.CODEX_HOME ?? join(home, "codex-home")), "sessions"),
     callsDir: expandHome(env.CALLS_DIR ?? join(home, "calls")),

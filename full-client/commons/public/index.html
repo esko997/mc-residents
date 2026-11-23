@@ -19,6 +19,12 @@
   <section id="p-residents" class="panel" aria-labelledby="t-residents">
     <div class="watch">
       <div>
+        <section id="runs" class="runs" aria-label="Runs"></section>
+        <form id="run-token" class="runs token-form" hidden>
+          <label>Start and Stop need the controller token: <input type="password" name="token" autocomplete="off" required></label>
+          <label class="check"><input type="checkbox" name="remember" checked> remember on this browser</label>
+          <button type="submit">Unlock</button>
+        </form>
         <div id="residents" class="cards"></div>
         <div id="shared" class="strip"></div>
       </div>
@@ -31,6 +37,30 @@
         <div id="glance-view" class="console-view"></div>
       </aside>
     </div>
+    <dialog id="run-dialog" aria-labelledby="run-dialog-title">
+      <form method="dialog">
+        <h2 id="run-dialog-title">Start <span class="who"></span></h2>
+        <fieldset>
+          <legend>Ends (New York time)</legend>
+          <input type="date" name="date" required> <input type="time" name="time" required>
+          <p class="when fine"></p>
+        </fieldset>
+        <label>Model <input type="text" name="model" placeholder="each host's default (run.conf)" pattern="(claude:)?[A-Za-z0-9][A-Za-z0-9._-]{0,63}" autocomplete="off"></label>
+        <fieldset>
+          <legend>Thread</legend>
+          <label class="check"><input type="radio" name="thread" value="resume" checked> resume its thread (default)</label>
+          <label class="check"><input type="radio" name="thread" value="fresh"> fresh thread (needed after a persona change)</label>
+        </fieldset>
+        <fieldset>
+          <legend>Caretaker</legend>
+          <select name="caretaker"><option value="default">host default</option><option value="on">on</option><option value="off">off</option></select>
+          <label>every <input type="number" name="interval" min="1" max="240" placeholder="25"> min</label>
+          <label>speak <select name="speak"><option value="keep">unchanged</option><option value="on">on</option><option value="off">off (shadow notes)</option></select></label>
+        </fieldset>
+        <p class="problem error" role="alert"></p>
+        <div class="run-buttons"><button type="submit" value="start">Start</button> <button type="submit" value="cancel" formnovalidate>Cancel</button></div>
+      </form>
+    </dialog>
   </section>
 
   <section id="p-live" class="panel" aria-labelledby="t-live" hidden>
