@@ -27,7 +27,7 @@ export function linkPaths() {
 }
 export function boundedWidget(state, id, value) {
   const [width, height] = dimensions(state), size = WIDGETS[id];
-  const scale = Math.min(2, Math.max(0.5, Number(value.scale) || 1));
+  const scale = Math.min(2, Math.max(0.1, Number(value.scale) || 1));
   return { ...value, scale,
     x: Math.min(Math.max(0, Math.floor(width - size.width * scale)), Math.max(0, Math.round(Number(value.x) || 0))),
     y: Math.min(Math.max(0, Math.floor(height - size.height * scale)), Math.max(0, Math.round(Number(value.y) || 0))) };

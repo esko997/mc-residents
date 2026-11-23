@@ -12,7 +12,7 @@ export const WIDGET_SIZES: Record<WidgetId, [number, number]> = {
 };
 export const LAYOUTS = { "1920x1080": [1920, 1080], "1280x720": [1280, 720] } as const;
 export type OverlayLayout = keyof typeof LAYOUTS;
-const widget = z.object({ enabled: z.boolean(), x: z.number().finite().min(-10_000).max(10_000), y: z.number().finite().min(-10_000).max(10_000), scale: z.number().finite().min(0.5).max(2), theme: z.enum(["slate", "paper", "minimal"]) }).strict();
+const widget = z.object({ enabled: z.boolean(), x: z.number().finite().min(-10_000).max(10_000), y: z.number().finite().min(-10_000).max(10_000), scale: z.number().finite().min(0.1).max(2), theme: z.enum(["slate", "paper", "minimal"]) }).strict();
 const widgets = z.object({ vitals: widget, position: widget, plan: widget, chat: widget, alarms: widget, nearby: widget, map: widget, caretaker: widget, title: widget }).strict();
 const schema = z.object({
   version: z.literal(1), revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 1),

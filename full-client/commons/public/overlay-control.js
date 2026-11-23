@@ -131,7 +131,7 @@ find("layout").addEventListener("change", event => {
   const [oldWidth, oldHeight] = dimensions(draft); draft.layout = layout; const [width, height] = dimensions(draft);
   for (const id of Object.keys(WIDGETS)) {
     const widget = draft.widgets[id];
-    draft.widgets[id] = boundedWidget(draft, id, { ...widget, x: widget.x * width / oldWidth, y: widget.y * height / oldHeight, scale: Math.max(.5, Math.min(2, widget.scale * width / oldWidth)) });
+    draft.widgets[id] = boundedWidget(draft, id, { ...widget, x: widget.x * width / oldWidth, y: widget.y * height / oldHeight, scale: Math.max(.1, Math.min(2, widget.scale * width / oldWidth)) });
   }
   inspector(); changed();
 });

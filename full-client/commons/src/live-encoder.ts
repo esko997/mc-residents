@@ -7,6 +7,9 @@ export interface EncoderOptions { audioSink?: string; epochMs?: number }
 export function buildEncoderArgs(source: LiveConfig, frame: EncoderFrame, options: EncoderOptions = {}): string[] {
   if (![frame.width, frame.height].every(value => Number.isInteger(value) && value > 0)
     || frame.width > 1920 || frame.height > 1080) throw new Error("Unsupported encoder framebuffer dimensions.");
+  // The bit rate follows the picture size, so a client run at a larger resolution is not starved:
+  // 2 Mbit/s at 854×480, 4 at 1280×720, 9 at 1920×1080.
+  const megabits = Math.min(10, Math.max(2, Math.round(frame.width * frame.height / 230_000)));
   if (!["h264_nvenc", "h264_vaapi", "libx264"].includes(source.encoder)) throw new Error("Select an explicit supported live encoder.");
   const vaapi = source.encoder === "h264_vaapi";
   if (vaapi && !/^\/dev\/dri\/renderD[0-9]{3,4}$/.test(source.vaapiDevice ?? "")) throw new Error("h264_vaapi requires a configured DRM render node.");
@@ -35,7 +38,7 @@ export function buildEncoderArgs(source: LiveConfig, frame: EncoderFrame, option
       ? ["-preset", "p1", "-tune", "ull", "-rc-lookahead", "0", "-zerolatency", "1", "-surfaces", "4", "-delay", "0"]
       : vaapi ? ["-async_depth", "1"] : ["-preset", "ultrafast", "-tune", "zerolatency"]),
     "-profile:v", vaapi ? "constrained_baseline" : "baseline", ...(!vaapi ? ["-pix_fmt", "yuv420p"] : []),
-    "-bf", "0", "-g", "15", "-b:v", "2M", "-maxrate", "2M", "-bufsize", "1M",
+    "-bf", "0", "-g", "15", "-b:v", `${megabits}M`, "-maxrate", `${megabits}M`, "-bufsize", `${megabits * 500}k`,
     ...(audio ? ["-af", `asetpts=PTS-${epoch}/TB,aresample=async=1`, "-c:a", "libopus", "-b:a", "96k",
       "-application", "lowdelay", "-frame_duration", "20", "-ar", "48000", "-ac", "2", "-avoid_negative_ts", "disabled"] : []),
     "-max_muxing_queue_size", "32", "-max_interleave_delta", "100000", "-flush_packets", "1", "-muxdelay", "0.1",

@@ -28,6 +28,13 @@ test("explicit encoders have disjoint low-latency settings; VAAPI uploads NV12",
   }
 });
 
+test("the bit rate grows with the picture, from 2 Mbit/s at the default size", () => {
+  for (const [width, height, rate, buffer] of [[854, 480, "2M", "1000k"], [1280, 720, "4M", "2000k"], [1920, 1080, "9M", "4500k"]] as const) {
+    const args = buildEncoderArgs(source(), { width, height });
+    expect([option(args, "-b:v"), option(args, "-maxrate"), option(args, "-bufsize")]).toEqual([rate, rate, buffer]);
+  }
+});
+
 test("audio captures only the dedicated monitor with bounded queues, Opus and a shared epoch", () => {
   const args = buildEncoderArgs({ ...source("libx264"), audio: true }, { width: 854, height: 480 }, { audioSink: "resident_Gary", epochMs: 1_790_000_123_456 });
   expect(args).toContain("resident_Gary.monitor");

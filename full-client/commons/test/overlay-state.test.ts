@@ -48,7 +48,7 @@ test("optimistic conflicts and strict validation never change durable revision",
     { resident: "Remote" }, { title: "x".repeat(161) }, { host: "private-host" }, { version: 2 },
     { revision: 9 }, { hideNames: ["bad name"] },
   ]) expect(() => store.replace(1, { ...store.get(), ...change })).toThrow();
-  for (const scale of [0.49, 2.01, Infinity, NaN]) {
+  for (const scale of [0.09, 2.01, Infinity, NaN]) {
     const bad = store.get(); bad.widgets.vitals.scale = scale;
     expect(() => store.replace(1, bad)).toThrow("numeric bounds");
   }
