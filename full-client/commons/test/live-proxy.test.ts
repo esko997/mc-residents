@@ -93,7 +93,7 @@ function setup({ live = true, sources = {} }: Options = {}) {
   cleanups.push(() => server.stop(true));
   const hubHome = home();
   chmodSync(hubHome.put("commons-data/stations.json", JSON.stringify([{ host: "chungus1", url: `http://127.0.0.1:${server.port}/${STATION}/` }])), 0o600);
-  const hubConfig = hubHome.config({ COMMONS_HOST_NAME: "inspiron", COMMONS_LIVE_ENABLED: "true", COMMONS_LIVE_ENCODER: "h264_nvenc" });
+  const hubConfig = hubHome.config({ COMMONS_HOST_NAME: "inspiron", COMMONS_LIVE_ENABLED: "true", COMMONS_LIVE_ENCODER: "h264_nvenc", COMMONS_OWNER: "spesk01, Piper" });
   const hub: App = createApp(hubConfig, HUB, () => clock, () => {});
   cleanups.push(() => hub.stop());
   const get = (path: string) => hub.fetch(new Request(`http://hub.test/${HUB}/api/${path}`));
