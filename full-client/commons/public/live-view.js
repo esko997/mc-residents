@@ -105,8 +105,9 @@ export function createLiveView(root, { now, stamp, colour }) {
   }
 
   function clearMedia() {
-    // Hide first: even a retained decoder frame must never appear under a new name.
-    video.hidden = true;
+    // Conceal first: even a retained decoder frame must never appear under a new name. The element stays in the
+    // layout, only transparent: a video removed with `hidden` never starts decoding in WebKit, so `playing` never came.
+    video.dataset.awaiting = ""; video.setAttribute("aria-hidden", "true");
     blank.hidden = false;
     video.onplaying = null;
     video.pause();
@@ -397,7 +398,7 @@ export function createLiveView(root, { now, stamp, colour }) {
           if (current !== session || video.readyState < 2) return;
           clearTimeout(session.deadline);
           session.playing = true;
-          video.hidden = false;
+          delete video.dataset.awaiting; video.removeAttribute("aria-hidden");
           blank.hidden = true;
           find("#live-name").textContent = session.resident;
           stage.style.setProperty("--who", colour(session.resident));

@@ -22,7 +22,7 @@
     <p id="media-status" class="session-message preview-status" role="status">Choose Watch to start a viewing session. Opening this page does not start video.</p>
   </div>
   <div id="stage-viewport" class="stage-viewport">
-    <video id="preview-video" class="preview-video" autoplay muted playsinline hidden></video>
+    <video id="preview-video" class="preview-video" autoplay muted playsinline data-awaiting aria-hidden="true"></video>
     <div id="preview-blank" class="preview-blank"><h2>Video is stopped</h2><p>Press Watch to composite live video with the saved overlay. The overlay remains available without video.</p></div>
     <div id="overlay-stage" class="overlay-stage" aria-label="Broadcast overlay preview"></div>
   </div>

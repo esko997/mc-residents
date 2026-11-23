@@ -22,6 +22,7 @@
 #p-live #live-chat-view .jump { position: static; flex-shrink: 0; border: 0; border-radius: 0; background: var(--glow); color: #2a2206; font-size: .8125rem; }
 #live-stage .live-picture { position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 70dvh; min-height: 160px; }
 #live-video { display: block; width: 100%; height: 100%; object-fit: contain; }
+#live-video[data-awaiting] { opacity: 0; }
 #live-blank { position: absolute; inset: 0; display: grid; place-content: center; padding: 20px; text-align: center; color: var(--lichen); }
 #live-stage > footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 6px 10px; border-top: 1px solid var(--seam); }
 #live-fullscreen-note { flex: 1 1 12em; }

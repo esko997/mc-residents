@@ -42,7 +42,9 @@ export function createPreviewMedia({ video, blank, watch, stop, audio, fullscree
     } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
   }
   function clearMedia() {
-    video.hidden = true; blank.hidden = false; video.onplaying = null; video.pause(); video.muted = true;
+    // Transparent, not `hidden`: a video taken out of the layout never starts decoding in WebKit, so `playing` never came.
+    video.dataset.awaiting = ""; video.setAttribute("aria-hidden", "true");
+    blank.hidden = false; video.onplaying = null; video.pause(); video.muted = true;
     for (const track of video.srcObject?.getTracks() || []) { track.onended = null; track.onmute = null; track.stop(); }
     video.srcObject = null; video.removeAttribute("src"); video.load();
     if (document.fullscreenElement === stage) void document.exitFullscreen().catch(() => {});
@@ -166,7 +168,7 @@ export function createPreviewMedia({ video, blank, watch, stop, audio, fullscree
       video.srcObject = session.stream;
       video.onplaying = () => {
         if (current !== session || video.paused || video.readyState < 2 || video.videoWidth === 0 || !session.stream.getVideoTracks().length) return;
-        clearTimeout(session.deadline); session.playing = true; video.hidden = false; blank.hidden = true;
+        clearTimeout(session.deadline); session.playing = true; delete video.dataset.awaiting; video.removeAttribute("aria-hidden"); blank.hidden = true;
         message(liveMessage(session), "live"); buttons();
       };
       peer.ontrack = event => {

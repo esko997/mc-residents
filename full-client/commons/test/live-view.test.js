@@ -324,7 +324,7 @@ describe("Live recovery", () => {
       await rig.advance(10000);
       expect(status.textContent).toBe("Live");
       expect(detail.textContent).toBe(BETWEEN);
-      expect(find("#live-video").hidden).toBe(false);
+      expect("awaiting" in find("#live-video").dataset).toBe(false);
       expect(find("#live-stop").disabled).toBe(false);
       rig.service.resuming = false;
       await view.loadStatus();
