@@ -18,6 +18,9 @@ import { commonsRoutes, type CommonsReply } from "./routes/commons.ts";
 import { consoleRoutes, type ConsoleReply } from "./routes/console.ts";
 import { json, refuse, type Context, type Routes } from "./routes/context.ts";
 import { mapRoutes, type MapReply } from "./routes/map.ts";
+import { dioramaRoutes } from "./routes/diorama.ts";
+import type { DioramaReply } from "./diorama.ts";
+import type { BlockColours } from "./block-colours.ts";
 import { notesRoutes, type NotesReply } from "./routes/notes.ts";
 import { residentRoutes, type ResidentsReply } from "./routes/residents.ts";
 import { Watcher } from "./watcher.ts";
@@ -33,7 +36,7 @@ import { RunControl } from "./run-control.ts";
 /** The JSON each GET route under /<token>/api/ returns, for whoever reads it (the page, the tests). */
 export interface Replies {
   residents: ResidentsReply; activity: ActivityReply; map: MapReply; commons: CommonsReply; notes: NotesReply; file: TextFile; console: ConsoleReply;
-  thoughts: ThoughtsReply;
+  thoughts: ThoughtsReply; diorama: DioramaReply; "block-colours": BlockColours;
 }
 
 export interface App {
@@ -52,7 +55,7 @@ export interface App {
 
 const STATIC: Record<string, string> = {
   "": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "app.css": "text/css; charset=utf-8",
-  "map-trails.js": "text/javascript; charset=utf-8",
+  "map-trails.js": "text/javascript; charset=utf-8", "diorama.js": "text/javascript; charset=utf-8",
   "server-data.js": "text/javascript; charset=utf-8", "server-record.js": "text/javascript; charset=utf-8", "map-blocks.js": "text/javascript; charset=utf-8",
   "watch-layout.js": "text/javascript; charset=utf-8", "watch-layout.css": "text/css; charset=utf-8",
   "live-view.js": "text/javascript; charset=utf-8", "live-view.css": "text/css; charset=utf-8",
@@ -62,8 +65,6 @@ const STATIC: Record<string, string> = {
   "overlay-preview.js": "text/javascript; charset=utf-8", "overlay-core.js": "text/javascript; charset=utf-8",
   "overlay-media.js": "text/javascript; charset=utf-8", "overlay.css": "text/css; charset=utf-8",
   "overlay-font.ttf": "font/ttf", "overlay-font-LICENSE.txt": "text/plain; charset=utf-8",
-  // Unlinked prototype for docs/map-3d.md (synthetic terrain, reads no data).
-  "iso-chunk.html": "text/html; charset=utf-8", "iso-chunk.js": "text/javascript; charset=utf-8",
 };
 const MAX_BODY = 8192;
 
@@ -102,7 +103,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   const liveRouter = new LiveRouter(live, config.hostName, federation);
   const runControl = new RunControl(config, tail, federation, { log });
   const localRoutes: Routes = {
-    ...residentRoutes(context), ...activityRoutes(context), ...mapRoutes(context), ...notesRoutes(context),
+    ...residentRoutes(context), ...activityRoutes(context), ...mapRoutes(context), ...dioramaRoutes(context), ...notesRoutes(context),
     ...(config.role === "hub" ? { ...commonsRoutes(context), ...consoleRoutes(context), ...serverDataRoutes(context, ingest) } : {}),
   };
   const routes = federation ? federation.wrap(localRoutes) : localRoutes;

@@ -192,6 +192,18 @@
     </section>
   </section>
 
+  <section id="p-diorama" class="panel" aria-labelledby="t-diorama" hidden>
+    <div class="controls">
+      <div id="dio-who" class="seg" role="group" aria-label="Whose surroundings"></div>
+      <label class="dio-cut">Cut at <input type="range" id="dio-cut" step="1" aria-label="Highest height shown"> <output id="dio-cut-value" for="dio-cut" class="data"></output></label>
+      <span class="seg"><button type="button" id="dio-cut-reset">Default cut</button><button type="button" id="dio-cut-none">No cut</button></span>
+    </div>
+    <p id="dio-status" class="readout" aria-live="polite"></p>
+    <div id="dio-box"><canvas id="dio" aria-label="Isometric view of the blocks around the selected resident" aria-describedby="dio-status dio-readout dio-help"></canvas></div>
+    <p id="dio-readout" class="readout">Move over or tap the blocks for their coordinates and name.</p>
+    <p id="dio-help" class="fine">The blocks around the resident as their own game client holds them right now: 3 × 3 chunks (48 × 48 blocks) and whole 16-block layers from about 16 below the feet to 16 above, viewed from the south-east. It is read only while this tab is open, at most every ten seconds; nothing is loaded or asked of the server. Ores and everything else are shown as they are. The cut removes everything above the chosen height (darker tops are cut surfaces, and the top of the slab is where the data ends); underground and in the Nether it starts just above the resident. Dashed outlines show where the resident and other players in the slab stand, even inside rock. Hatched squares are chunks the client had not loaded. Colours come from the modpack's textures when the host has built its colour table, otherwise from a small built-in list or a colour made from the block's name.</p>
+  </section>
+
   <section id="p-notes" class="panel" aria-labelledby="t-notes" hidden>
     <div class="controls">
       <div id="notes-who" class="seg" role="group" aria-label="Whose notes"></div>

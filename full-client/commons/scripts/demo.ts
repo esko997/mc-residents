@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { serve } from "../src/server.ts";
 import { clientLogLine, fakePhoneChat, fakeSynapse, fixture, png, rollout, serverLogLine, tempHome } from "../test/helpers.ts";
 import { fakeServerBridge, seedServerData } from "./demo-server-data.ts";
+import { DEMO_CAVE, demoChunks, demoTop } from "./demo-diorama.ts";
 
 const now = Date.now(), minute = 60_000;
 const home = tempHome();
@@ -75,6 +76,14 @@ home.put(`${today}/rollout-gary.jsonl`, [
 
 const client = fakeSynapse({ picture: png(427, 240) });
 const base = client.state;
+// The Diorama tab gets synthetic blocks around Gary; DEMO_DIORAMA=underground puts him in a cave
+// chamber (no sky light) with one chunk column "not loaded".
+const underground = process.env.DEMO_DIORAMA === "underground";
+client.chunks = url => {
+  const pos = client.state.pos as { x: number; y: number; z: number };
+  const piper = underground ? { name: "Piper", x: DEMO_CAVE[0] - 3.5, y: 95, z: DEMO_CAVE[2] + 0.5 } : { name: "spesk01", x: 117.5, y: demoTop(117, -200) + 1, z: -199.5 };
+  return demoChunks(pos, new Set((url.searchParams.get("have") ?? "").split(",")), [piper], underground);
+};
 
 // The server's log as phone-chat would serve it, and Gary's client log with two things the server never logs.
 const server = fakePhoneChat();
@@ -131,6 +140,8 @@ const running = serve(home.config({
   COMMONS_OBSERVER_URL: bridge.url, COMMONS_OBSERVER_TOKEN_FILE: home.put("observer-token", "demo-observer-token\n"),
   ...(process.env.CHAT_URL ? { CHAT_URL: process.env.CHAT_URL } : {}),
   ...(process.env.COMMONS_AUTO_ACCEPT ? { COMMONS_AUTO_ACCEPT: process.env.COMMONS_AUTO_ACCEPT } : {}),
+  // A colour table built with scripts/build-block-colours.ts (kept outside the repo).
+  ...(process.env.COMMONS_BLOCK_COLOURS ? { COMMONS_BLOCK_COLOURS: process.env.COMMONS_BLOCK_COLOURS } : {}),
 }));
 const app = running.app;
 // A week of the server record (statistics, advancements, blocks, container flows) for the Server record panel and the Map's building layer.
@@ -149,10 +160,12 @@ setInterval(() => {
     appendFileSync(garyLog, `${clientLogLine(Date.now(), `[CHAT] <Gary> ${line}`)}\n`);
   } else appendFileSync(garyLog, `${clientLogLine(Date.now(), `[System] [CHAT] Announcement ${spoken / 3}: ${line}`)}\n`);
 }, 12_000);
-// Gary strolls around his cabin so the map has something to add while you watch.
+// Gary strolls around his cabin so the map has something to add while you watch (or waits in the cave).
 setInterval(() => {
-  const angle = Date.now() / 20_000;
-  client.state = { ...base, pos: { x: 110.5 + Math.cos(angle) * 9, y: 120, z: -207.6 + Math.sin(angle) * 6 } };
+  const angle = Date.now() / 20_000, x = 110.5 + Math.cos(angle) * 9, z = -207.6 + Math.sin(angle) * 6;
+  client.state = underground
+    ? { ...base, pos: { x: DEMO_CAVE[0] + .5, y: DEMO_CAVE[1] - 2, z: DEMO_CAVE[2] + .5 }, world: { ...base.world as object, lightLevel: { sky: 0, block: 7 } } }
+    : { ...base, pos: { x, y: demoTop(Math.floor(x), Math.floor(z)) + 1, z } };
 }, 1000);
 
 const position = app.db.query("INSERT OR REPLACE INTO positions (resident, at, x, y, z, dimension, health, food, sky) VALUES (?, ?, ?, ?, ?, ?, 20, 18, ?)");
