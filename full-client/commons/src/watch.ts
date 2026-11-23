@@ -127,13 +127,16 @@ export class WatchPush {
     if (!seen.ok) return this.fail(seen.httpStatus === 404 ? "the bridge has no /v1/watch (older than 0.3.0)" : `${seen.status}: ${seen.detail}`);
     const current = seen.data.watch;
     if (this.sent && current.bootId === this.sent.bootId && current.revision === list.revision) {
-      this.state = { ...this.state, status: "ok", detail: null, checkedAt: this.o.now() };
+      this.state = { ...this.state, status: "ok", detail: list.left.length ? `left out: ${list.left.join("; ")}` : null, checkedAt: this.o.now() };
       return;
     }
     const pushed = await observerPutWatch(source, { revision: list.revision, residents: list.residents, facilities: list.facilities },
       (s, path, body, timeoutMs) => this.o.put(s, path, body, timeoutMs));
     if (!pushed.ok) {
       return this.fail(pushed.status === "forbidden" ? `the bridge refused the push (the hub's token needs the watch scope): ${pushed.detail}` : `push refused: ${pushed.status}: ${pushed.detail}`);
+    }
+    if (pushed.data.watch.revision !== list.revision) {
+      return this.fail("the bridge accepted the watch list but has not applied this revision yet");
     }
     const at = this.o.now();
     this.sent = { revision: list.revision, bootId: pushed.data.watch.bootId };

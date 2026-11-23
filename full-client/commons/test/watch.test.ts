@@ -13,7 +13,7 @@ afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 
 /** A stand-in server bridge holding a watch list in memory, as 0.3 does: empty after each (re)start. */
 function bridge() {
-  const state = { bootId: "boot-1", watch: null as null | { revision: string; residents: { name: string; uuid: string }[]; facilities: { id: string; label: string; dimension: string; pos: number[]; side: string | null }[] }, puts: 0, gets: 0, refuse: false };
+  const state = { bootId: "boot-1", watch: null as null | { revision: string; residents: { name: string; uuid: string }[]; facilities: { id: string; label: string; dimension: string; pos: number[]; side: string | null }[] }, puts: 0, gets: 0, refuse: false, defer: false };
   const reply = (body: object, status = 200) => Response.json({ schema: 1, source: "server-observer", consumer: "commons", scopes: ["watch", "status"], state: "ok", stateDetail: null, servedAtMs: Date.now(), heartbeatAtMs: null, ...body }, { status });
   const current = () => ({ watch: { revision: state.watch?.revision ?? null, residents: state.watch?.residents ?? [], facilities: state.watch?.facilities ?? [], appliedAtMs: null, bootId: state.bootId } });
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
@@ -22,6 +22,7 @@ function bridge() {
     if (request.method === "PUT") {
       if (state.refuse) return reply({ error: { code: "forbidden", message: "scope watch required" } }, 403);
       state.puts++;
+      if (state.defer) return reply(current(), 202);
       state.watch = await request.json() as typeof state.watch;
       return reply(current());
     }
@@ -87,6 +88,19 @@ test("the watch list is pushed at start, on a change, and again when the bridge 
   await watch.pass();
   expect(watch.health().detail).toContain("the hub's token needs the watch scope");
   expect(logged.filter(line => line.includes("watch scope"))).toHaveLength(1);
+});
+
+test("an accepted but unapplied watch revision is not reported as installed", async () => {
+  const b = bridge(), db = database(), dir = tempHome(); cleanups.push(dir.remove);
+  const tokenFile = dir.put("bridge.token", "bridge-token");
+  const watch = new WatchPush(db, { url: b.url, tokenFile }, { residents: () => ["Gary"], log: () => {} });
+  b.state.defer = true;
+  await watch.pass();
+  expect(watch.health()).toMatchObject({ status: "error", revision: null, pushedAt: null });
+  expect(watch.health().detail).toContain("has not applied");
+  b.state.defer = false;
+  await watch.pass();
+  expect(watch.health()).toMatchObject({ status: "ok", revision: b.state.watch?.revision });
 });
 
 /** A hub on Inspiron with two local bodies (Gary, Margo), two station bodies (Wren, Tobin) on a station that does not answer. */
