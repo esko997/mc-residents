@@ -57,7 +57,14 @@ const MAX_PALETTE = 4096, MAX_PALETTE_TOTAL = 16_384, MAX_DATA = 8400, MAX_PLAYE
 const REVISION = /^[0-9a-f]{16}$/;
 const BLOCK_ID = /^[a-z0-9_.-]{1,64}:[a-z0-9_./-]{1,128}$/;
 const PLAYER = /^\w{1,16}$/;
-const RADIUS = 2, HALF_HEIGHT = 16;
+/**
+ * Read 3 x 3 columns and ±32 blocks around the feet (Synapse's own cap, widened to whole
+ * sections: always five, 45 sections, so the page's Levels control can show up to ±32). Bounds:
+ * at most 45 sections of at most MAX_DATA characters each per read, one read per resident per
+ * MIN_REFRESH_MS, and on the game's client thread one array copy per section in slices of about
+ * 1 ms with a client tick between them.
+ */
+const RADIUS = 2, READ_RADIUS = 1, HALF_HEIGHT = 32;
 
 const int = (value: unknown, low: number, high: number) => Number.isInteger(value) && (value as number) >= low && (value as number) <= high ? value as number : undefined;
 
@@ -214,7 +221,7 @@ export class DioramaCache {
     const at = this.now();
     // The client sends `same` for what this host already holds; the rest comes whole.
     const mine = new Map((held.view?.sections ?? []).map(entry => [entry.rev, entry]));
-    const query = new URLSearchParams({ radius: "1", below: String(HALF_HEIGHT), above: String(HALF_HEIGHT) });
+    const query = new URLSearchParams({ radius: String(READ_RADIUS), below: String(HALF_HEIGHT), above: String(HALF_HEIGHT) });
     if (mine.size) query.set("have", [...mine.keys()].join(","));
     const reach = await this.get(resident, `/chunks?${query}`);
     held.checkedAt = at;

@@ -160,7 +160,48 @@ As recommended in §5, with these choices and differences:
   are visible. On the residents' 125-mod pack: 6 659 blocks in 1.6 s, 283 without a readable
   texture (dynamic models), which get a hashed colour; the table is ~280 KB and never committed.
 - **Measured:** the Synapse unit tests, the Commons/page tests and a synthetic demo
-  (`DEMO_DIORAMA=underground bun scripts/demo.ts`; screenshots labelled synthetic). The real
-  payload sizes and client-thread times for 3 × 3 chunks on a live client are **not measured
-  yet**: the live check waits for an approved disposable client. The synthetic demo's
-  surface reply is 13.5 KB of JSON for 27 sections.
+  (`DEMO_DIORAMA=underground bun scripts/demo.ts`; screenshots labelled synthetic). The synthetic
+  demo's surface reply is 13.5 KB of JSON for 27 sections. Live numbers from the disposable client
+  are in §7.
+
+## 7. Levels and the cutaway (second round, 2026-11-23)
+
+The owner asked for "+/- a certain number of levels" and for the diorama to be "hollowed out" so
+the resident shows even with blocks between the viewer and them. Browser and hub only; Synapse
+is unchanged (its `below`/`above` already allow 32).
+
+- **The read** is now `below=32&above=32` (`HALF_HEIGHT` in `src/diorama.ts`): Synapse widens
+  that to whole sections, always five per column, 45 for 3 × 3. Bounds: at most 45 sections of at
+  most 8 400 base64 characters each per read (the existing validation), one read per resident per
+  10 s and only while a dashboard looks, and on the game's client thread one array copy per
+  section in slices of about 1 ms with a client tick between them. Measured on `gary_fc_test` at
+  spawn (34, 106, −150): radius 1 ±16 = 18.9 KB, 27 sections, client thread 100 µs, encode 6 ms;
+  radius 1 ±32 = 27.8 KB, 45 sections, client thread 93–162 µs (one slice), encode 6–14 ms,
+  23–48 ms in all; the hub's reply 27.5 KB (was 18 KB). Later reads send only changed sections.
+- **Levels** (±4, ±8, ±16, ±32, default ±16) is the vertical window around the feet, clamped to
+  what was read. The **cut** works inside it: the slider's range is the window, *No cut* is its
+  top. The underground default cut moved from feet + 2 to feet + 1 (head height): at feet + 2 the
+  ceiling of a 1 × 2 mine tunnel was drawn as cut surface and hid the tunnel.
+- **The cutaway** removes, from the feet's layer up to the window's top, everything with
+  x ≥ open.x and z ≥ open.z: the quarter of the slab on the viewer's side (south-east) of the
+  resident, like a dollhouse with two walls off. The corner is one block beyond
+  floor(position − 0.6) to the west and north, the least that keeps every block off the figure,
+  which is drawn 1.6 tiles tall (taller than a body, so it reads); a test walks every twentieth of
+  a block. One axis-aligned opening was chosen over a round x-ray hole: its walls and floor are
+  flat planes, drawn darker as cut surfaces, while real tunnel and room surfaces keep their
+  light, so the opening reads as one cut. Torches and other thin blocks on the opened floor stay.
+  *Auto* (default) opens it when blocks would cover half of the figure, measured by walking the
+  line of sight through 40 points of the figure, or a quarter when the cut is at most two blocks
+  over the feet (the opening is then only a step). Live, both a 1 × 2 tunnel under the
+  head-height cut and a two-block rise beside the test player on the spawn hillside covered 45 %;
+  opening the first gives a tidy step, opening the second carved a quarter of the hill (screenshot
+  `live-surface-auto-desktop`, taken with a single 25 % threshold), hence the two levels. *On* and
+  *Off* force it. It is recomputed on every refresh from the resident's latest position.
+- **Readout:** a screen point is now resolved by walking the same line of sight through the same
+  window (levels, cut, opening) and returning the first drawn cell (for a thin block, only where
+  its floor marker is); the resident's figure is named where it is painted over the blocks. A
+  test compares the readout with the last-painted face polygon at 8 000 random points on a random
+  slab of stone, glass, water and torches, with and without an opening. The first version read
+  only top faces and named the block below when pointing at a side.
+- **Not built:** a cut along x or z through the resident (cross-section), rotating the view so
+  the opening faces another way, trimming empty air above the slab on the surface.

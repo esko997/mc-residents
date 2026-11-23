@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { serve } from "../src/server.ts";
 import { clientLogLine, fakePhoneChat, fakeSynapse, fixture, png, rollout, serverLogLine, tempHome } from "../test/helpers.ts";
 import { fakeServerBridge, seedServerData } from "./demo-server-data.ts";
-import { DEMO_CAVE, demoChunks, demoTop } from "./demo-diorama.ts";
+import { DEMO_CAVE, DEMO_TUNNEL, demoChunks, demoTop } from "./demo-diorama.ts";
 
 const now = Date.now(), minute = 60_000;
 const home = tempHome();
@@ -77,12 +77,12 @@ home.put(`${today}/rollout-gary.jsonl`, [
 const client = fakeSynapse({ picture: png(427, 240) });
 const base = client.state;
 // The Diorama tab gets synthetic blocks around Gary; DEMO_DIORAMA=underground puts him in a cave
-// chamber (no sky light) with one chunk column "not loaded".
-const underground = process.env.DEMO_DIORAMA === "underground";
+// chamber (no sky light) with one chunk column "not loaded", DEMO_DIORAMA=tunnel in a 1 x 2 mine tunnel.
+const tunnel = process.env.DEMO_DIORAMA === "tunnel", underground = tunnel || process.env.DEMO_DIORAMA === "underground";
 client.chunks = url => {
-  const pos = client.state.pos as { x: number; y: number; z: number };
+  const pos = client.state.pos as { x: number; y: number; z: number }, levels = (name: string) => Number(url.searchParams.get(name) ?? 16);
   const piper = underground ? { name: "Piper", x: DEMO_CAVE[0] - 3.5, y: 95, z: DEMO_CAVE[2] + 0.5 } : { name: "spesk01", x: 117.5, y: demoTop(117, -200) + 1, z: -199.5 };
-  return demoChunks(pos, new Set((url.searchParams.get("have") ?? "").split(",")), [piper], underground);
+  return demoChunks(pos, new Set((url.searchParams.get("have") ?? "").split(",")), [piper], underground, levels("below"), levels("above"));
 };
 
 // The server's log as phone-chat would serve it, and Gary's client log with two things the server never logs.
@@ -163,8 +163,9 @@ setInterval(() => {
 // Gary strolls around his cabin so the map has something to add while you watch (or waits in the cave).
 setInterval(() => {
   const angle = Date.now() / 20_000, x = 110.5 + Math.cos(angle) * 9, z = -207.6 + Math.sin(angle) * 6;
+  const [x0, y0, z0] = tunnel ? DEMO_TUNNEL : [DEMO_CAVE[0], DEMO_CAVE[1] - 2, DEMO_CAVE[2]];
   client.state = underground
-    ? { ...base, pos: { x: DEMO_CAVE[0] + .5, y: DEMO_CAVE[1] - 2, z: DEMO_CAVE[2] + .5 }, world: { ...base.world as object, lightLevel: { sky: 0, block: 7 } } }
+    ? { ...base, pos: { x: x0 + .5, y: y0, z: z0 + .5 }, world: { ...base.world as object, lightLevel: { sky: 0, block: 7 } } }
     : { ...base, pos: { x, y: demoTop(Math.floor(x), Math.floor(z)) + 1, z } };
 }, 1000);
 
