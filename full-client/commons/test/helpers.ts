@@ -23,9 +23,10 @@ export function tempHome(): Home {
     dir, put,
     config: (env = {}) => loadConfig({
       GARY_CLIENT_HOME: dir, COMMONS_DB: join(dir, "commons", "commons.sqlite"),
-      // Nothing listens on port 9 and no token file exists here unless a test says otherwise.
+      // Nothing listens on port 9 and no token file exists here unless a test says otherwise. Run records stay in
+      // this home too: the host's own (~/.local/state/residents) must not reach a test's Activity.
       GARY_SYNAPSE_URL: "http://127.0.0.1:9", SYNAPSE_TOKEN_FILE: join(dir, "synapse-token"),
-      COMMONS_SYSTEMCTL: join(dir, "no-systemctl"), ...env,
+      COMMONS_SYSTEMCTL: join(dir, "no-systemctl"), RESIDENTS_STATE_DIR: join(dir, "resident-state"), ...env,
     }),
     remove: () => rmSync(dir, { recursive: true, force: true }),
   };

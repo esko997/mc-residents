@@ -465,6 +465,9 @@ are rejected. Every actor/author/consent comes from the authenticated resident.
 | `places/save` | `{name,note?,x,y,z,dimension,refuge?:{access?,hazards?,checked?}}` → `{place}` or `{foreign:author}` |
 | `places/remove` | `{name}` → `{removed,foreign?}` |
 
+`GET advancements/frontier?tab=&limit=` (resident only) returns the caller's own
+advancements one step away; see "Advancement frontier" below.
+
 `GET events?after=<seq>&wait=<0..25>` returns
 `{result:{events:[{seq,type,fields}],seq,gap}}`. Payloads are a 512-entry memory ring;
 the sequence watermark persists, so eviction/restart gaps are explicit. Feeds are
@@ -752,6 +755,46 @@ reports unknown (other dimension, offline, unloaded ray) the answer is
 it (`src/resident-sight.ts`). A resident body asks only for an alarm beyond its
 48-block earshot and within 96 blocks in the same dimension, and perceives it
 only when `visible` is `true`.
+
+## Advancement frontier (Resident API)
+
+Resident-only `GET /resident-api/v1/advancements/frontier?tab=<tab or mod>&limit=<1..10>`
+(`src/resident-advancements.ts`) answers the caller's own advancements one step away, as
+the advancements screen shows them: not done, and the parent done, or the root of a tab
+the resident has started (any progress in it). It is worked out from the ingested
+`server_advancement_catalog` and the caller's `server_advancements` rows (resident name
+matched case-insensitively). There is no parameter naming anyone else: any other parameter
+is 400, a caretaker gets 403, and another resident's progress is never read.
+
+Left out: hidden advancements (the game shows them only once done), recipe unlocks
+(`ns:recipes/...`), and anything under a parent the catalog
+lacks (a parent without a display, such as Occultism's root: the game shows nothing below
+it). A title that is empty or still a translation key (the server resolved no language
+entry) becomes a readable form of the id with `titleIsId: true`.
+
+`{result: {status: "unavailable", reason}}` when there is nothing trustworthy: no ingest on
+this hub, an older bridge, the bridge unreachable or not yet reached since the hub started,
+advancement kinds not offered, the last advancement read failed, no catalog yet, or no
+progress stored for the caller. Otherwise `{result: {status: "ok", savedAt, ageMs, readAt,
+catalogBuiltAt, scope, scopeMatched, total, turn, tabs, tabsTotal, entries}}`: `savedAt` is the
+server's save of the file the hub last read (server clock; the server saves at autosave about
+every 5 minutes and at logout, the hub reads every 30 minutes), `ageMs` the hub's clock minus
+it, `readAt` the hub's last good advancement read since it started. `entries[]` are
+`{id, mod, title, titleIsId, frame, tab, parent, criteria: {met, total, needs: all|any|groups,
+groups, metNames}}` (the files list met criteria only, at most 8 names here; the missing ones
+are never named). `tabs[]` (at most 40, those with something within reach) are `{id, title,
+titleIsId, mod, done, total, withinReach}`, `total` counting what the game shows (hidden ones
+only once done). `tab` narrows to entries whose own namespace, tab root, tab namespace or tab
+title equals it (case-insensitive); an unmatched one returns no entries and `scopeMatched:
+false`.
+
+Bounded and rotated: each call advances the caller's turn for that scope (a matched scope
+only; `resident_api_state` key `advancement_turn:<resident>:<scope>`). Page `turn` takes
+counter values `seed + turn*limit` onward; value c picks tab `c mod T` (tabs by id) and that
+tab's entry `floor(c / T)` (ones with progress first, then by id), wrapping. A page so draws
+from different tabs whenever there are enough, every entry comes round over successive calls,
+and the per-resident seed keeps residents from opening on the same tab. Each tab is treated
+alike, base game or mod; nothing is ranked.
 
 ## The phone-chat service on the server machine
 

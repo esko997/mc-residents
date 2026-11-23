@@ -77,12 +77,12 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     tail.recordEvent(event.sender, event.at, "alarm", alarmActivityText(event));
   // Stations have no shared tables; only the hub restores durable alarm history.
   if (config.role === "hub") for (const event of recentAlarms(db, now() - config.activityDays * 86_400_000)) alarmActivity(event);
-  const residentApi = config.role === "hub" ? new ResidentApi(db, config.credentialsFile, config.autoAccept, {
-    now, command: command => feed.command(command), activity: alarmActivity,
-  }, { source: config.observer ?? null }) : undefined;
   // Server bridge queries (stats, advancements, block changes, container flows) into the hub database.
   const ingestOptions = config.role === "hub" && config.observer ? ingestOptionsFromEnv(process.env) : null;
   const ingest = ingestOptions ? new ObserverIngest(db, config.observer, { ...ingestOptions, now, log }) : undefined;
+  const residentApi = config.role === "hub" ? new ResidentApi(db, config.credentialsFile, config.autoAccept, {
+    now, command: command => feed.command(command), activity: alarmActivity,
+  }, { source: config.observer ?? null }, { health: () => ingest?.health() ?? null, now }) : undefined;
   const live = new LiveStream(config, { now });
   let lastRead = 0;
   const context: Context = {
