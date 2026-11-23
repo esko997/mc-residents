@@ -214,6 +214,11 @@ export class RolloutTail {
   /** Changes when ids handed out before no longer name the same entries: at a restart, and when a file was dropped to be read again. */
   get boot() { return `${this.started}-${this.rereads}`; }
 
+  /** Hub records share the same ids and pagination as file-backed Activity. */
+  recordEvent(resident: string, t: number, type: string, text: string): void {
+    this.push(resident, "hub", { t, kind: "event", type, text, quiet: false });
+  }
+
   /** Read whatever was appended since the last call. Concurrent calls share one pass. */
   refresh(): Promise<void> {
     this.running ??= this.pass().finally(() => { this.running = undefined; });
@@ -459,7 +464,7 @@ export class RolloutTail {
 
   /** Newest first. `after` returns only entries recorded since that id (ids grow as lines are read). */
   recent(options: { resident?: string; after?: number; limit?: number } = {}): Entry[] {
-    const names = options.resident ? [options.resident] : this.residents.map(r => r.name);
+    const names = options.resident ? [options.resident] : [...this.entries.keys()];
     const limit = options.limit ?? 300;
     const picked: Entry[] = [];
     for (const name of names) {

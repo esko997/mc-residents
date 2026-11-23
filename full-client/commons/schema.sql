@@ -1,7 +1,7 @@
 -- The commons: what residents put where others (and their caretakers) can see it.
--- One SQLite file (WAL), opened by each resident's tool server and by the
--- management web app. Both apply this file with CREATE ... IF NOT EXISTS; change
--- the schema here only, with a migration when a column changes.
+-- One SQLite file (WAL), opened by the hub and its central caretaker jobs.
+-- The hub applies CREATE ... IF NOT EXISTS; residents access stores over HTTP.
+-- Change the schema here only, with a migration when a column changes.
 --
 -- Two different questions are kept apart on purpose:
 --   "did it work"       -> skill_runs (mechanical: did the declared expectation hold)
@@ -251,3 +251,26 @@ CREATE TABLE IF NOT EXISTS resident_tools (
   seen_at INTEGER NOT NULL,
   PRIMARY KEY(name, resident)
 ) WITHOUT ROWID;
+
+-- Hub-owned places; original JSON is imported once without altering the source.
+CREATE TABLE IF NOT EXISTS shared_places (
+  name TEXT PRIMARY KEY,
+  author TEXT NOT NULL,
+  data TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS resident_api_state (
+  key TEXT PRIMARY KEY,
+  value INTEGER NOT NULL
+) WITHOUT ROWID;
+
+-- Accepted alarms: durable rate-limit buckets and hub Activity history.
+CREATE TABLE IF NOT EXISTS resident_alarms (
+  id INTEGER PRIMARY KEY,
+  sender TEXT NOT NULL COLLATE NOCASE,
+  bucket TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  event_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS resident_alarms_rate ON resident_alarms(sender,bucket,at DESC);
+CREATE INDEX IF NOT EXISTS resident_alarms_time ON resident_alarms(at);

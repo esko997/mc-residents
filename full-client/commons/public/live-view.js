@@ -11,7 +11,7 @@ export function createLiveView(root, { now, stamp, colour }) {
   const fullscreen = find("#live-fullscreen"), fullscreenNote = find("#live-fullscreen-note");
   const supported = typeof RTCPeerConnection === "function";
   let active = false, enabled = null, current = null, pendingWatch = false, revision = 0;
-  let residents = [], sampleSeconds = 5, mode = "idle";
+  let residents = [], sampleSeconds = 5, mode = "idle", station = false;
 
   async function request(route, body, { signal, timeout = 8000, keepalive = false } = {}) {
     const controller = new AbortController();
@@ -47,9 +47,31 @@ export function createLiveView(root, { now, stamp, colour }) {
     }
   }
 
+  function unavailableMessage() {
+    if (station) return "Live video is disabled on stations. Use the Commons hub.";
+    if (!supported) return "This browser does not support WebRTC video.";
+    const resident = residents.find(entry => entry.name === select.value);
+    if (!resident) return "No residents are configured.";
+    if (resident.hostUnreachable) return `Host ${resident.host} is unreachable. ${resident.hostLastSeen === null
+      ? "Host not reached yet." : `Host last seen ${stamp(resident.hostLastSeen)}.`}`;
+    if (resident.liveAvailable !== true) return `Live video is unavailable for ${resident.name} on host ${resident.host}.`;
+    if (enabled === false) return "Live video is disabled on this host.";
+    return "";
+  }
+
+  function updateAvailability() {
+    const message = unavailableMessage();
+    if (message) {
+      if (current) end(message, "disabled");
+      else setState("disabled", message);
+    } else if (!current && mode === "disabled") setState("idle", "Choose a resident, then press Watch.");
+  }
+
   function buttons() {
-    watch.disabled = !active || document.hidden || !supported || enabled === false || !select.value || !!current || pendingWatch;
-    watch.title = pendingWatch && !current ? "Waiting for the cancelled start request to finish and release its lease." : "";
+    const unavailable = unavailableMessage();
+    watch.disabled = !active || document.hidden || !!unavailable || !!current || pendingWatch;
+    watch.textContent = unavailable ? "Unavailable" : "Watch";
+    watch.title = unavailable || (pendingWatch && !current ? "Waiting for the cancelled start request to finish and release its lease." : "");
     stop.disabled = !current;
     select.disabled = residents.length === 0;
     fullscreen.disabled = !current?.playing;
@@ -280,7 +302,10 @@ export function createLiveView(root, { now, stamp, colour }) {
     }
   }
 
-  select.addEventListener("change", () => end("Selection changed. Press Watch to tune the shared channel."));
+  select.addEventListener("change", () => {
+    end("Selection changed. Press Watch to tune the shared channel.");
+    updateAvailability();
+  });
   watch.addEventListener("click", () => { void start(); });
   stop.addEventListener("click", () => end());
   fullscreen.addEventListener("click", async () => {
@@ -310,40 +335,56 @@ export function createLiveView(root, { now, stamp, colour }) {
       if (active === value) return;
       active = value;
       if (!active) end("Stopped when leaving Live. Press Watch to resume.");
+      updateAvailability();
       buttons();
     },
     updateResidents(data) {
       residents = data.residents;
       sampleSeconds = data.sampleSeconds;
-      const names = residents.map(entry => entry.name);
-      if (names.length !== select.options.length || names.some((name, index) => select.options[index].value !== name)) {
+      station = data.role === "station";
+      const options = residents.map(entry => {
+        const label = `${entry.name} (${entry.host})${entry.hostUnreachable ? " — host unreachable"
+          : station || entry.liveAvailable !== true ? " — Live unavailable" : ""}`;
+        return new Option(label, entry.name);
+      });
+      if (options.length !== select.options.length || options.some((option, index) =>
+        select.options[index].value !== option.value || select.options[index].text !== option.text)) {
         const selected = select.value;
-        if (current && !names.includes(current.resident)) end("This resident is no longer configured.", "error");
-        select.replaceChildren(...names.map(name => new Option(name, name)));
-        if (names.includes(selected)) select.value = selected;
+        if (current && !residents.some(entry => entry.name === current.resident)) end("This resident is no longer configured.", "error");
+        select.replaceChildren(...options);
+        if (residents.some(entry => entry.name === selected)) select.value = selected;
       }
+      if (station) {
+        enabled = false;
+        channel.textContent = "Live video is disabled on stations.";
+      }
+      updateAvailability();
       buttons();
       renderContext();
     },
     async loadStatus() {
-      if (!active || document.hidden) return;
+      if (!active || document.hidden || station) return;
       const expectedRevision = revision;
       try {
         const data = await request("status");
-        if (!active || document.hidden || revision !== expectedRevision) return;
+        if (!active || document.hidden || station || revision !== expectedRevision) return;
         showChannel(data);
         if (current?.lease && (!matches(current, data) || Date.now() >= current.expiresAt)) {
           end("The shared channel changed, ended, or your lease expired. Press Watch to join again.", "error");
-        } else if (!current && !enabled) setState("disabled", "Live video is disabled on this host.");
-        else if (!current && mode === "disabled" && supported) setState("idle", "Choose a resident, then press Watch.");
+        }
+        updateAvailability();
         buttons();
         renderContext();
       } catch (error) {
-        if (!active || document.hidden || revision !== expectedRevision) return;
+        if (!active || document.hidden || station || revision !== expectedRevision) return;
         channel.textContent = "Live service status is unavailable.";
         enabled = null;
         if (current) end(error.message, "error");
-        else { detail.textContent = error.message; buttons(); }
+        else {
+          if (unavailableMessage()) updateAvailability();
+          else detail.textContent = error.message;
+          buttons();
+        }
       }
     },
   };

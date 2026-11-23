@@ -2,6 +2,7 @@
 import { join } from "node:path";
 import { isOverworld, trail } from "../db.ts";
 import { readPlaces, type Place } from "../notes.ts";
+import { sharedPlaces } from "../resident-places.ts";
 import type { PlacePicture } from "../place-pictures.ts";
 import { refuse } from "./context.ts";
 import type { Context, Routes } from "./context.ts";
@@ -35,9 +36,9 @@ export function mapRoutes({ config, db, watcher, tail, now, readSessions }: Cont
       const asked = Number(query.get("hours"));
       const hours = HOURS.includes(asked) ? asked : 6;
       const since = now() - hours * 3_600_000;
-      const shared = await readPlaces(config.sharedPlaces);
+      const shared = config.role === "hub" ? sharedPlaces(db) : [];
       const pictures = await watcher.placePictures.mapPictures();
-      const places = shared.places.filter(place => isOverworld(place.dimension)).map(place => ({
+      const places: MapReply["places"] = shared.filter(place => isOverworld(place.dimension)).map(place => ({
         ...place, owner: "shared", picture: watcher.placePictures.forPlace(pictures, "shared", place),
       }));
       const deaths: MapReply["deaths"] = [];

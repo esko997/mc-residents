@@ -1,4 +1,3 @@
-import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -13,12 +12,13 @@ import { Skills, skillDefinitions, type SkillRun, type ToolReply } from "./skill
 import { createPlans, planDefinitions, type Plans } from "./plan.ts";
 import { readPlaces, snapshotOf, whatNext } from "./ideas.ts";
 import { guideDefinition, lookupGuide } from "./guides.ts";
-import { openCommons } from "./commons.ts";
+import { CommonsClient } from "./commons.ts";
 import { createSociety, societyDefinitions, type Society } from "./society.ts";
 import { KnowledgeGaps, guideFeedbackDefinition, guideUpdatesDefinition, registerResidentTools } from "./knowledge-gaps.ts";
 import { machineDefinitions, machineToolNames, Machines } from "./machines.ts";
 import { executeNavigation, navigationDefinitions, navigationStatus } from "./navigation.ts";
 import { vehicleDefinitions, Vehicles, vehicleStatusLine } from "./vehicles.ts";
+import { alarmDefinition, alarmFromState } from "./alarms.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -28,7 +28,8 @@ const itemId = z.string().regex(/^(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+$/, "Use an ite
 const hold = { hold_ticks: z.number().int().min(1).max(200).optional() };
 const key = z.enum(["ENTER", "ESCAPE", "BACKSPACE", "TAB", "UP", "DOWN", "LEFT", "RIGHT", "DELETE"]);
 export const definitions = {
-  wait: { description: "Wait for chat, danger, rescue reflexes, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short", "navigation_stopped", "reflex"])).optional() }) },
+  wait: { description: "Wait for chat, danger, rescue reflexes, audible alarms, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short", "navigation_stopped", "reflex", "alarm"])).optional() }) },
+  alarm: alarmDefinition,
   ...navigationDefinitions,
   mine: { description: "Start Baritone mining of blocks near you: it walks to the nearest blocks of this kind within radius blocks (default 32, max 96) of where you stand now and breaks them to collect them. With count it stops when that many have come into your inventory (an arrived event says what was collected); without it, or when none is left that near, it stops with a navigation_stopped event that says what was collected and the nearest one Baritone knows farther off. To see where they are first, without moving: find_block (same radius). To look farther: a larger radius, or go there first. It breaks ANY matching block, including ones players placed (chests, doors, machines), so use it for natural blocks such as logs, stone and ores, never for things someone built. With the tree-chopping mod a log takes several chops; mining a log handles that. Bare block names mean minecraft:.", schema: z.object({ block: itemId, count: z.number().int().positive().optional(), radius: z.number().int().min(1).max(96).optional() }).strict() },
   find_block: { description: "Where the nearest blocks of a kind are, without moving, loading or breaking anything: up to limit (default 8, max 16) within radius blocks of you (default 32, max 96; a sphere around the block you stand in), nearest first, each with distance and direction. Any block can be asked for, natural ones too (ores, logs, crops, water), by its block id: diamond_ore, not the item diamond; an id that is no block is an error. Bare names mean minecraft:. It reads the chunks your client has loaded in this dimension as they are now, and says when part of the radius is not loaded: that part was not searched, so none found there means not looked at. It does not check that you can get to a block.", schema: z.object({ block: itemId, radius: z.number().int().min(1).max(96).optional(), limit: z.number().int().min(1).max(16).optional() }).strict() },
@@ -111,9 +112,9 @@ export class Tools {
   readonly skills: Skills;
   /** His jobs of several steps, written down so the current step survives a summarised context and a restart. */
   readonly plans: Plans;
-  private sharedDb?: Database;
-  private society?: Society;
-  private sharedError = "Shared Knowledge is not configured.";
+  private readonly commons: CommonsClient;
+  private readonly society: Society;
+  private stopPolling?: () => void;
   readonly gaps: KnowledgeGaps;
   private readonly machines: Machines;
   private readonly vehicles: Vehicles;
@@ -121,34 +122,29 @@ export class Tools {
     const { residentDir, name } = body.config;
     this.machines = new Machines(body.api);
     this.vehicles = new Vehicles(body.api);
+    this.commons = new CommonsClient(body.config.commonsUrl, body.config.commonsTokenFile);
     this.notes = createNotes({
-      residentDir, residentName: name,
+      residentDir, residentName: name, commons: this.commons,
       position: async () => { const state = await body.api.state(); return { ...state.pos, dimension: state.dimension }; },
     });
     body.onDeath = death => this.notes.recordDeath(death.pos, death.dimension);
-    this.skills = new Skills(body, body.config.commonsDb, (tool, args, signal, run) => this.run(tool, args, signal, run));
+    this.skills = new Skills(body, this.commons, (tool, args, signal, run) => this.run(tool, args, signal, run));
     this.plans = createPlans({ residentDir, now: () => this.now() });
-    if (body.config.commonsDb) {
-      try {
-        this.sharedDb = openCommons(body.config.commonsDb);
-        this.society = createSociety({ db: this.sharedDb, resident: name, now: () => this.now() });
-        registerResidentTools(this.sharedDb, name, this.registeredNames);
-      } catch (error) {
-        this.sharedError = `Shared Knowledge unavailable: ${error instanceof Error ? error.message : "database could not open"}`;
-      }
+    this.society = createSociety({ client: this.commons, resident: name });
+    if (body.config.commonsUrl && body.config.commonsTokenFile) {
+      void registerResidentTools(this.commons, name, this.registeredNames).catch(() => {});
+      body.onAlarm = alarm => this.commons.alarm(alarm);
+      this.stopPolling = this.commons.poll(body.events, alarm => body.hearAlarm(alarm));
     }
-    this.gaps = new KnowledgeGaps(this.sharedDb, name, () => {
+    this.gaps = new KnowledgeGaps(this.commons, name, () => {
       try {
         const focus = JSON.parse(readFileSync(join(residentDir, "plan.json"), "utf8")).focus;
         return typeof focus === "string" ? focus : "";
       } catch { return ""; }
     });
   }
-  close() { this.skills.close(); this.society?.close(); this.sharedDb?.close(); }
-  private social(): Society {
-    if (!this.society) throw new Error(this.sharedError);
-    return this.society;
-  }
+  close() { this.stopPolling?.(); this.body.onAlarm = undefined; }
+  private social(): Society { return this.society; }
   get registeredNames(): ToolName[] {
     return (Object.keys(definitions) as ToolName[]).filter(n => this.knowledge || !knowledgeNames.includes(n));
   }
@@ -179,8 +175,11 @@ export class Tools {
     } catch (error) {
       // A bare "Invalid input" (from a union such as look's three forms) tells
       // the model nothing; the description says which shapes are accepted.
-      const message = error instanceof z.ZodError
-        ? `${error.issues.map(i => `${i.path.join(".") || "input"}: ${i.message}`).join("; ")}. ${name}: ${definitions[name as ToolName]?.description ?? ""}`
+      // Shared contracts parse with Commons' own zod copy, so match by shape, not class.
+      const issues = error instanceof Error && error.name === "ZodError" && Array.isArray((error as z.ZodError).issues)
+        ? (error as z.ZodError).issues : undefined;
+      const message = issues
+        ? `${issues.map(i => `${i.path.join(".") || "input"}: ${i.message}`).join("; ")}. ${name}: ${definitions[name as ToolName]?.description ?? ""}`
         : error instanceof Error ? error.message : "Tool failed.";
       this.lastError = message.replace(/\s+/g, " ").slice(0, 400);
       text = `Error: ${this.lastError}`; isError = true;
@@ -191,6 +190,11 @@ export class Tools {
     const [tool, args] = command;
     const body = this.body, api = body.api;
     switch (tool) {
+      case "alarm": {
+        const state = await api.state();
+        if (state.health <= 0) throw new Error("You cannot raise an alarm while dead.");
+        return (await this.commons.alarm(alarmFromState("manual", args.reason, state))).message;
+      }
       case "wait": {
         if (!skill) return body.events.wait(args.seconds, args.for, signal);
         // Nothing shows events to skill code between its calls, so a wait there
@@ -464,10 +468,9 @@ export class Tools {
       case "plan_focus": return this.plans.focus(args);
       case "plan_finish": return this.plans.finish(args);
       case "what_next": {
-        const [state, saved, plan] = await Promise.all([api.state(true), readPlaces(body.config.residentDir), this.plans.focused().catch(() => undefined)]);
-        const society = this.society?.snapshot({ project: plan?.name, needs: [plan?.goal, plan?.needs].filter(Boolean).join(" "), dimension: state.dimension });
-        const reply = whatNext(snapshotOf(state, { now: this.now(), ...saved, plan, knowledge: this.knowledge, society }));
-        return !this.society && body.config.commonsDb ? `${reply}\n${this.sharedError}; shared facilities and agreements could not be checked.` : reply;
+        const [state, saved, plan] = await Promise.all([api.state(true), readPlaces(body.config.residentDir, this.commons), this.plans.focused().catch(() => undefined)]);
+        const society = await this.society.snapshot({ project: plan?.name, needs: [plan?.goal, plan?.needs].filter(Boolean).join(" "), dimension: state.dimension });
+        return whatNext(snapshotOf(state, { now: this.now(), ...saved, plan, knowledge: this.knowledge, society }));
       }
       case "set_reflexes":
         Object.assign(body.reflexes, args);

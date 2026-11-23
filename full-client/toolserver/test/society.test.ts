@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
-import { schemaFile } from "../src/commons.ts";
+import { schemaFile, sharedHttp } from "./shared-http.ts";
+import { createSocietyStore } from "../../commons/src/resident-society.ts";
 import { createSociety, observationFreshness, societyDefinitions } from "../src/society.ts";
 import { suggestions, whatNext, type Snapshot } from "../src/ideas.ts";
 
@@ -13,9 +14,9 @@ function household() {
   databases.push(db);
   db.exec(readFileSync(schemaFile, "utf8"));
   let clock = start;
-  const gary = createSociety({ db, resident: "Gary", now: () => clock });
-  const margo = createSociety({ db, resident: "Margo", now: () => clock });
-  const neighbour = createSociety({ db, resident: "Neighbour", now: () => clock });
+  const gary = createSocietyStore({ db, resident: "Gary", now: () => clock });
+  const margo = createSocietyStore({ db, resident: "Margo", now: () => clock });
+  const neighbour = createSocietyStore({ db, resident: "Neighbour", now: () => clock });
   return { db, gary, margo, neighbour, advance: (ms: number) => { clock += ms; }, current: () => clock };
 }
 const request = { kind: "request" as const, recipient: "Margo", project: "bread supply", terms: "Deliver 12 wheat to the marked pantry chest." };
@@ -205,4 +206,27 @@ test("ideas put focused action first, suggest relevant access/dependencies, and 
   expect(suggestions(snapshot).find(s => s.id === "collaboration")?.text).toContain("Inspect the result before confirming");
   snapshot.dimension = "minecraft:the_nether";
   expect(suggestions(snapshot).find(s => s.id === "facility")).toBeUndefined();
+});
+
+test("HTTP society proxies share hub records, preserve consent/conflicts, and never send identity", async () => {
+  const { db } = household();
+  const hub = sharedHttp(db);
+  try {
+    // Local labels cannot override the identity associated with the bearer credential.
+    const gary = createSociety({ client: hub.client("Gary"), resident: "Margo" });
+    const margo = createSociety({ client: hub.client("Margo"), resident: "Gary" });
+    await gary.collaborate(request);
+    expect((await margo.show({ id: 1 }))).toContain("Gary → Margo");
+    await expect(gary.update({ id: 1, revision: 1, action: "accept" })).rejects.toThrow("other party");
+    await margo.update({ id: 1, revision: 1, action: "accept" });
+    await expect(margo.update({ id: 1, revision: 1, action: "withdraw" })).rejects.toThrow("Revision conflict");
+    expect((await gary.snapshot()).collaborations[0]?.status).toBe("accepted");
+    await gary.register(pantry);
+    await margo.observe(observation);
+    await expect(margo.updateFacility({ id: 1, revision: 1, ...pantry })).rejects.toThrow("steward");
+    await gary.updateFacility({ id: 1, revision: 1, ...pantry, x: 30 });
+    expect(await margo.showFacility({ id: 1 })).toContain("steward: Gary");
+    expect((await margo.snapshot()).facilities[0]?.observation?.freshness).toBe("uncertain");
+    await expect(hub.client("Gary").call("society", "collaborate", { ...request, actor: "Margo" })).rejects.toThrow();
+  } finally { hub.close(); }
 });

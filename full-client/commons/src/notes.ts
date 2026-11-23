@@ -100,10 +100,10 @@ export interface NotesView {
   places: Places;
   shared: Places;
 }
-export async function residentNotes(dir: string, sharedPlaces: string): Promise<NotesView> {
+export async function residentNotes(dir: string, sharedPlaces?: string): Promise<NotesView> {
   const [memory, journal, files, places, shared] = await Promise.all([
     head(join(dir, "memory.md"), 200_000), tail(join(dir, "journal.md"), 12_000), markdownFiles(dir),
-    readPlaces(join(dir, "places.json")), readPlaces(sharedPlaces),
+    readPlaces(join(dir, "places.json")), sharedPlaces ? readPlaces(sharedPlaces) : { places: [], deaths: [] },
   ]);
   const rank = (file: FileInfo) => file.path.startsWith(`notes${sep}`) ? 0 : file.path.includes(sep) ? 2 : 1;
   return {

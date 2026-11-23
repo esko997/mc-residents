@@ -7,6 +7,7 @@ import type { Config, ResidentConfig } from "./config.ts";
 import { record } from "./json.ts";
 import type { Place } from "./notes.ts";
 import { synapseGet, type Reach } from "./synapse.ts";
+import type { Database } from "bun:sqlite";
 
 export interface PlacePicture { id: string; at: number; resident: string }
 interface Saved { key: string; revision: string; owner: string; place: Place }
@@ -77,9 +78,10 @@ export class PlacePictures {
   private readonly directory: string;
 
   constructor(private config: Config, private now: () => number = Date.now,
-    private get: (resident: ResidentConfig, path: string, timeout?: number) => Promise<Reach> = synapseGet) {
+    private get: (resident: ResidentConfig, path: string, timeout?: number) => Promise<Reach> = synapseGet,
+    private db?: Database) {
     this.directory = `${config.dbPath}.place-pictures`;
-    this.sources = [{ path: config.sharedPlaces, owner: "shared" }, ...config.residents.map(resident => ({
+    this.sources = [...(config.role === "station" ? [] : [{ path: "shared", owner: "shared" }]), ...config.residents.map(resident => ({
       path: join(resident.dir, "places.json"), owner: resident.name,
     }))];
   }
@@ -94,6 +96,18 @@ export class PlacePictures {
   }
 
   private async source(source: Source): Promise<Snapshot | null> {
+    if (source.owner === "shared") {
+      if (!this.db) return { saved: [], at: 0 };
+      const rows = this.db.query<{ data: string; updated_at: number }, []>("SELECT data,updated_at FROM shared_places").all();
+      return {
+        at: rows.reduce((latest, row) => Math.max(latest, row.updated_at), 0),
+        saved: rows.map(row => {
+          const place = JSON.parse(row.data) as Place & { refuge?: Record<string, unknown> };
+          const refuge = place.refuge ?? {};
+          return { key: keyOf("shared", place), revision: hash(JSON.stringify([...viewOf(place), refuge.access ?? null, refuge.hazards ?? null, refuge.checkedAt ?? null])), owner: "shared", place };
+        }),
+      };
+    }
     let file: FileHandle;
     try { file = await regular(source.path, MAX_FILE); }
     catch (error) { return record(error).code === "ENOENT" ? { saved: [], at: 0 } : null; }

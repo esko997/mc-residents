@@ -12,6 +12,7 @@ import { openKnowledge } from "../src/knowledge/index.ts";
 import { Synapse } from "../src/synapse.ts";
 import { Tools, definitions } from "../src/tools.ts";
 import { fixture, type Fixture } from "./fake-synapse.ts";
+import { residentHub } from "../../commons/test/resident-api-fixture.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
@@ -277,11 +278,11 @@ describe("reflexes and interactions", () => {
     expect(text(await offline.call("status"))).toContain("Synapse unreachable");
   });
   test("all tool text stays below 1500 characters with full inventory and event burst", async () => {
-    const commonsDir = await mkdtemp(join(tmpdir(), "resident-commons-"));
-    cleanups.push(() => rm(commonsDir, { recursive: true, force: true }));
+    const hub = residentHub();
+    cleanups.push(async () => hub.close());
     // Twenty far positions: with limit 16, the longest list find_block can give.
     const flax = Array.from({ length: 20 }, (_, i): [number, number, number] => [-40 - i, 44, -40 - i]);
-    const f = await fixture({ commonsDb: join(commonsDir, "commons.sqlite"), blocks: { "supplementaries:wild_flax": flax } }); f.state.inventory!.main = Array.from({ length: 36 }, (_, slot) => ({ slot, count: 64, item: `mekanism:very_long_modded_material_stack_${slot}` }));
+    const f = await fixture({ ...hub.identity(), blocks: { "supplementaries:wild_flax": flax } }); f.state.inventory!.main = Array.from({ length: 36 }, (_, slot) => ({ slot, count: 64, item: `mekanism:very_long_modded_material_stack_${slot}` }));
     await writeFile(join(f.dir, "memory.md"), Array.from({ length: 60 }, (_, i) => `- bread note ${i} ${"n".repeat(200)}`).join("\n"));
     const facility = { name: "n".repeat(60), purpose: "p".repeat(160), capabilities: Array.from({ length: 8 }, (_, i) => `${i}${"c".repeat(47)}`), x: 100, y: 64, z: -200, dimension: "minecraft:overworld", access_terms: "a".repeat(200) };
     const argumentsByTool: Record<string, unknown> = {
@@ -331,9 +332,11 @@ describe("reflexes and interactions", () => {
 
 test("stdio MCP registration, union-schema tool calls and clean shutdown", async () => {
   const f = await fixture(); const tokenFile = join(f.dir, "token"); await writeFile(tokenFile, "test-token");
+  const hub = residentHub(), identity = hub.identity();
+  cleanups.push(async () => hub.close());
   const transport = new StdioClientTransport({
     command: process.execPath, args: [join(import.meta.dir, "../src/main.ts")], stderr: "pipe",
-    env: { CLIENT_LOG: f.log, RESIDENT_NAME: "Gary", RESIDENT_DIR: f.dir, SYNAPSE_TOKEN_FILE: tokenFile, SYNAPSE_URL: f.body.config.url, KNOWLEDGE_DB: join(f.dir, "missing.sqlite"), COMMONS_DB: join(f.dir, "commons", "commons.sqlite") },
+    env: { CLIENT_LOG: f.log, RESIDENT_NAME: "Gary", RESIDENT_DIR: f.dir, SYNAPSE_TOKEN_FILE: tokenFile, SYNAPSE_URL: f.body.config.url, KNOWLEDGE_DB: join(f.dir, "missing.sqlite"), COMMONS_URL: identity.commonsUrl, COMMONS_TOKEN_FILE: identity.commonsTokenFile },
   });
   const client = new Client({ name: "integration-test", version: "1" });
   try {

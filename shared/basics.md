@@ -143,6 +143,7 @@ shared farm or home counts; coordinate rather than duplicating every facility.
   label is not proof that the route or room is still safe.
 - While coming up for air or escaping lava, your body keeps the controls.
   `stop` deliberately overrides that rescue; ordinary `look` or use actions do not.
+- Use `alarm` with a short reason to shout for help; your body also alarms on danger, and you only hear others within earshot.
 
 ## Crafting with your body
 

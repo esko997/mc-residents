@@ -1,5 +1,5 @@
-// The commons database: skills, their runs, shared notes, reviews and position
-// samples. Each resident's tool server writes here too, hence WAL and a busy timeout.
+// Hub-owned shared database; central caretaker jobs also use it locally.
+// Residents use HTTP rather than opening this file.
 import { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -12,10 +12,13 @@ export function openCommons(path: string, schemaPath: string): Database {
   catch { throw new Error(`Cannot read the commons schema at ${schemaPath}. It ships next to this app as schema.sql.`); }
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
-  // Before the schema, whose first statement switches to WAL: another process may hold the file right now.
-  db.exec("PRAGMA busy_timeout = 3000;");
-  db.exec(schema);
-  return db;
+  try {
+    // Before the schema: central caretaker jobs may hold the write lock.
+    db.exec("PRAGMA busy_timeout = 3000;");
+    db.exec(schema);
+    db.exec("PRAGMA foreign_keys = ON;");
+    return db;
+  } catch (error) { db.close(); throw error; }
 }
 
 export interface RunCounts {

@@ -721,6 +721,12 @@ def main():
     parser.add_argument("--resolution", choices=("provided", "declined"))
     parser.add_argument("--note", default="", help="short public note recorded with the resolution")
     args = parser.parse_args()
+    role = os.environ.get("COMMONS_ROLE", "hub")
+    if role not in ("hub", "station"):
+        parser.error("COMMONS_ROLE must be hub or station")
+    if role == "station":
+        print("knowledge research: skipped on station (hub-only job)")
+        return 0
     if not (1 <= args.max_items <= 4 and 30 <= args.timeout <= 300 and 1 <= args.attempt_cap <= 5 and 60 <= args.backoff <= 86400):
         parser.error("bounds: items 1..4, timeout 30..300s, attempts 1..5, backoff 60..86400s")
     if args.resolve_capability is not None and not args.resolution:

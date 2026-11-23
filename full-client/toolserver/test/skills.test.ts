@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { fixture, type FakeOptions, type Fixture } from "./fake-synapse.ts";
+import { skillsHub, type SkillsHub } from "../../commons/test/resident-skills-fixture.ts";
 
 const cleanups: (() => Promise<void> | void)[] = [];
+const hubs = new Map<string, SkillsHub>();
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 
 /** The tool's own text, without the event tail every result carries. */
@@ -29,11 +31,14 @@ const sticks = { name: "make_sticks", description: "Crafts 4 sticks from 2 oak p
 
 async function commons() {
   const dir = await mkdtemp(join(tmpdir(), "resident-commons-"));
-  cleanups.push(() => rm(dir, { recursive: true, force: true }));
-  return join(dir, "commons.sqlite");
+  const path = join(dir, "commons.sqlite"), hub = skillsHub(path);
+  hubs.set(path, hub);
+  cleanups.push(async () => { hubs.delete(path); hub.close(); await rm(dir, { recursive: true, force: true }); });
+  return path;
 }
-async function resident(commonsDb: string, name = "Gary", options: FakeOptions = {}) {
-  const f = await fixture({ recipes: [stickRecipe], ...options, name, commonsDb });
+async function resident(path: string, name = "Gary", options: FakeOptions = {}) {
+  const hub = hubs.get(path)!;
+  const f = await fixture({ recipes: [stickRecipe], ...options, name, commonsUrl: hub.url, commonsTokenFile: await hub.tokenFile(name) });
   give(f, mc("oak_planks"), 6);
   return f;
 }
@@ -74,18 +79,31 @@ async function until(condition: () => boolean, what: string) {
 }
 
 describe("commons", () => {
+  test("the hub refuses author overrides in the request envelope or operation args", async () => {
+    const path = await commons(), hub = hubs.get(path)!;
+    const token = await Bun.file(await hub.tokenFile("Gary")).text();
+    for (const body of [{ args: sticks, author: "Margo" }, { args: { ...sticks, author: "Margo" } }]) {
+      const response = await fetch(new URL("/resident-api/v1/skills/save", hub.url), {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(rows(path, "SELECT * FROM skills")).toEqual([]);
+  });
+
   test("without a reachable commons the skill and note tools say so in one line and the body still answers", async () => {
     const unset = await fixture();
     for (const [tool, args] of [["skill_find", {}], ["skill_show", { name: "make_sticks" }], ["skill_run", { name: "make_sticks" }], ["skill_save", sticks], ["note_share", { topic: "furnace", text: "Eight cobblestone make a furnace." }], ["notes_shared", {}], ["feedback", { skill: "make_sticks", worked: true }]] as const) {
       const result = await unset.tools.call(tool, args);
       expect(result.isError).toBe(true);
-      expect(text(result)).toBe("Error: Skills and shared notes are unavailable: the commons database could not be opened (COMMONS_DB is not set). Your other tools work as before.");
+      expect(text(result)).toBe("Error: Shared Knowledge unavailable: set COMMONS_URL and COMMONS_TOKEN_FILE. Your body tools still work.");
     }
     expect(text(await unset.tools.call("status"))).toContain("Health 20/20");
 
-    const blocked = await fixture({ commonsDb: "/dev/null/commons.sqlite" });
+    const path = await commons();
+    const blocked = await fixture({ commonsUrl: "http://127.0.0.1:1", commonsTokenFile: await hubs.get(path)!.tokenFile("Gary") });
     const reply = text(await blocked.tools.call("skill_find", {}));
-    expect(reply).toStartWith("Error: Skills and shared notes are unavailable: the commons database could not be opened (/dev/null/commons.sqlite: ");
+    expect(reply).toBe("Error: Shared Knowledge hub unreachable (connection failed or timed out). Your body tools still work; no shared change was confirmed.");
     expect(reply).not.toContain("\n");
     expect(text(await blocked.tools.call("inventory"))).toBe("Inventory empty.");
   });
@@ -472,6 +490,23 @@ describe("what skill code can reach", () => {
 });
 
 describe("drafts, edits and reviews", () => {
+  test("an in-flight run keeps its captured code and version, and excludes a second top-level run", async () => {
+    const path = await commons(), f = await resident(path);
+    const old = { name: "revision_probe", description: "Looks up, waits for food to change, then returns one.", code: "await body.look({ pitch: -90 }); while ((await state()).food === 20) await sleep(50); return 1;", expect: { screen: "none" } };
+    await f.tools.call("skill_save", old);
+    const running = f.tools.call("skill_run", { name: old.name });
+    await until(() => f.state.rotation.pitch === -90, "the captured routine to start");
+    expect(text(await f.tools.call("skill_run", { name: old.name }))).toBe("Error: Skill revision_probe is still running; wait for it to finish.");
+    await f.tools.call("skill_save", { ...old, code: "return 2;" });
+    f.state.food = 19;
+    const reply = text(await running);
+    expect(reply).toContain("Skill revision_probe v1 finished");
+    expect(reply).toContain("Returned: 1");
+    expect(reply).not.toContain("is now verified");
+    expect(rows(path, "SELECT version, status FROM skills")).toEqual([{ version: 2, status: "draft" }]);
+    expect(rows(path, "SELECT version, resident, check_ok FROM skill_runs")).toEqual([{ version: 1, resident: "Gary", check_ok: 1 }]);
+  });
+
   test("changing the code returns a verified skill to draft and hides it again; a new description alone does not", async () => {
     const path = await commons();
     const gary = await resident(path), margo = await resident(path, "Margo");

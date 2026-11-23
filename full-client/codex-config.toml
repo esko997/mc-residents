@@ -24,5 +24,6 @@ CLIENT_LOG = "/home/swatson/gary-client/game/logs/latest.log"
 RESIDENT_NAME = "Gary"
 RESIDENT_DIR = "/home/swatson/gary-client/resident/gary"
 KNOWLEDGE_DB = "/home/swatson/gary-client/knowledge.sqlite"
-# Shared with the Commons web app: skills, shared notes, feedback, reviews.
-COMMONS_DB = "/home/swatson/gary-client/commons-data/commons.sqlite"
+# Shared Knowledge goes through the hub; run-session.sh overrides these per resident.
+COMMONS_URL = "http://127.0.0.1:8770/"
+COMMONS_TOKEN_FILE = "/home/swatson/gary-client/commons-tokens/Gary"

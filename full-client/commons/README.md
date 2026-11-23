@@ -7,15 +7,95 @@ the project, laid out so that panels and actions can be added. What it changes:
 shared knowledge (reviews, edits, automatic acceptance of notes), and the server
 through the commands typed into its console.
 
-The core dashboard is one Bun process, with no build step or runtime dependencies.
-Optional live video adds FFmpeg and MediaMTX. The dashboard reads the game
-machine's files and each client's Synapse API on loopback, and shares one SQLite
-file, the commons, with the residents' tool servers (`schema.sql` here is the
-authoritative schema; both sides apply it with `CREATE ... IF NOT EXISTS`).
+The dashboard is one Bun process, with no build step. Optional live video adds
+FFmpeg and MediaMTX. Each host reads its own files and clients' Synapse APIs on
+loopback. The hub owns the shared SQLite (`schema.sql`); residents use its
+authenticated resident API rather than opening that database.
 
 The header and browser title follow the active panel. The library tab is
 **Shared Knowledge**; internal `commons` paths, API routes, service name,
 database and existing bookmarks are unchanged.
+
+## Hub and stations
+
+`COMMONS_ROLE=hub` (default) is the shared-knowledge authority. Set
+`COMMONS_HOST_NAME=inspiron` on the hub; the default is the operating-system hostname.
+The hub retains the existing dashboard token, console bridge and local Live service.
+It alone serves shared knowledge, reviews, commands and the resident API.
+
+`COMMONS_ROLE=station` runs the same package for another host's residents. Set
+`COMMONS_HOST_NAME=chungus1` there. A station serves only authenticated dashboard
+GETs for `residents`, `activity`, `map`, `notes`, `file`, `picture` and `map-picture`,
+plus the dashboard static assets. It samples local positions into its own SQLite
+and keeps its local place-picture cache; it never initializes or accesses shared
+tables. Shared Knowledge, review, console, server observer and Live are disabled,
+even if their old environment settings are present. Do not copy the hub DB to a station.
+
+The hub reads `COMMONS_STATIONS_FILE`, default
+`~/gary-client/commons-data/stations.json` (under `GARY_CLIENT_HOME` when set):
+
+```json
+[{"host":"chungus1","url":"http://192.168.1.120:8770/<station-token>/"}]
+```
+
+Replace the placeholder with the station's own dashboard token; keep this file
+**mode 600**, regular and not symlinked. Up to 16 unique hosts are supported.
+Each URL must be an HTTP(S) origin plus its single secret path and trailing slash,
+without a query, fragment or embedded username/password. The file is optional
+(missing means no stations); mtime/inode changes reload it without a restart.
+Invalid edits show a configuration error and retain the last valid configuration.
+Never put these URLs in public JavaScript or copy them into resident credentials.
+Use trusted LAN routing or an SSH tunnel/TLS for transport; a secret URL is not encryption.
+
+Station discovery refreshes every five seconds, with a 2.5-second request/body
+deadline and single-flight caching. Aggregate replies return immediately with
+cached station data: a slow station cannot delay the local residents. Until first
+successful discovery, a failed host is shown as an error without invented resident
+names. After discovery, its roster stays listed as **host unreachable**, with
+`hostLastSeen` (Unix milliseconds), while its last good trails/activity are retained
+in memory. The hub persists names and last-seen times in a mode-600
+`<COMMONS_DB>.station-roster.json` (no station URL), so an unreachable station's
+roster survives a hub restart; preserve that file alongside the DB. Duplicate names,
+ignoring case, are visible configuration errors, and ambiguous resident-scoped reads
+return 409.
+
+Merged dashboard shapes preserve existing fields:
+
+- `residents`: adds `role`, `federationErrors`; each resident has `host`,
+  `hostUnreachable`, `hostLastSeen`, `liveAvailable`. Remote Live is unavailable.
+- `activity`: merges host-tagged entries and summaries, remapping IDs into a hub
+  cursor. A source restart/discovery changes `boot`, resetting browser cursors.
+- `map`: merges local/shared places with station-private places, deaths and trails
+  for the requested hours. Remote picture IDs are `station:<host>:<image-id>`;
+  `map-picture` forwards them without exposing the station URL.
+- `notes?resident=Name`, `file`, and `picture` resolve the owning host. Notes include
+  that host's caretaker entries and the hub's current shared places. `commons`
+  includes remote caretaker notes but never fetches a station's shared knowledge.
+- Scoped remote reads have the same five-second cache and bounded deadline;
+  unavailable data returns 502 instead of pretending an old picture/file is current.
+  Console remains hub-local: phone-chat server lines plus the hub's client logs.
+
+### Install a station
+
+1. Install Bun and this Commons package under `~/gary-client/commons`, then
+   `bun install --frozen-lockfile`. Use the same service unit on the station.
+2. Install only that host's resident directories and `instances/Name.env` files,
+   local Synapse token files, rollout/call logs and `overseer/`. Gary is inferred
+   on stations only when `resident/gary` actually exists; Wren/Tobin each need
+   their own instance file and lowercase note directory.
+3. In private `~/.config/commons/env`, set `COMMONS_ROLE=station`,
+   `COMMONS_HOST_NAME`, `GARY_CLIENT_HOME`, `PORT=8770`, and a **local**
+   `COMMONS_DB=~/gary-client/commons-data/station.sqlite`. Let Commons create its
+   own dashboard token or set a separate token file. Do not reuse the hub token.
+4. Permit the hub to reach the station port (or configure a tunnel), start Commons,
+   then add its host/secret URL to the hub's mode-600 stations file. Preserve the
+   hub's original dashboard secret URL.
+5. Configure residents and the per-host caretaker to call the **hub**
+   `COMMONS_URL`, with individual resident tokens and a distinct caretaker token.
+   Register their hash-only credential records on the hub. See
+   [the caretaker README](../overseer/README.md) for `caretaker.env` and role gates.
+   Only the hub runs central review/research jobs. Never use the dashboard token
+   as a bearer token or overwrite it with the caretaker token.
 
 ## Run
 
@@ -80,7 +160,7 @@ log, and the Residents panel displays recovery progress. An operator stop or the
 absolute deadline interrupts backoff; neither starts another attempt. Shutdown
 and note cleanup remain bounded.
 
-The caretaker loop accepts the same `SESSION_END_AT`, and runs
+The caretaker loop accepts the same `SESSION_END_AT`. On the **hub only**, it runs
 `knowledge-research.py` once per cycle: at most two requests, 180 seconds each,
 three attempts per revision with exponential backoff starting at thirty minutes.
 Publication needs version-scoped structured guidance and completed web-source
@@ -126,10 +206,10 @@ Configure both observer environment variables, or neither; keep the bearer
 token in a private file, never in the URL. Management needs the observer's
 `residents`, `facilities` and `status` scopes, not a resident `self` token.
 
-Every address is `http://<machine>:<PORT>/<token>/...`. A wrong or missing token
-gets 404. `/<token>` redirects to `/<token>/`. The token is the only access
-control, as with the phone chat page: keep the address to yourself and off
-public networks. When `COMMONS_TOKEN` is not set, a token is made at the first
+Dashboard addresses are `http://<machine>:<PORT>/<token>/...`. A wrong or missing token
+gets 404. `/<token>` redirects to `/<token>/`. Keep the address private and off
+public networks. The separate Resident API uses bearer credentials, not this URL token.
+When `COMMONS_TOKEN` is not set, a token is made at the first
 start, saved (mode 600) next to the database, and the full address is printed
 once; later starts print only where the token file is.
 
@@ -195,7 +275,8 @@ Omit `--enable-video` to adjust only the HUD.
 | `COMMONS_BIND` | `0.0.0.0` | Listen address. |
 | `COMMONS_TOKEN` | generated | Secret first path segment: 8 to 128 of `A-Z a-z 0-9 - _`. |
 | `COMMONS_TOKEN_FILE` | `token` beside the database | Where a generated token is kept. |
-| `COMMONS_DB` | `~/gary-client/commons/commons.sqlite` | The commons database (WAL, shared with the tool servers). |
+| `COMMONS_DB` | `~/gary-client/commons/commons.sqlite` | Hub-owned commons database (WAL). Toolservers use HTTP, never this path. Keep the deployed path pointing to the existing database. |
+| `COMMONS_CREDENTIALS_FILE` | `~/gary-client/commons-data/credentials.json` | Hub-only mode-600 array of `{name,role,sha256}` bearer hashes; reloads when mtime changes. |
 | `GARY_CLIENT_HOME` | `~/gary-client` | Home of the residents: `resident/`, `instances/`, `overseer/`, `codex-home/`. |
 | `CODEX_HOME` | `$GARY_CLIENT_HOME/codex-home` | Where Codex writes `sessions/YYYY/MM/DD/*.jsonl`. |
 | `CALLS_DIR` | `$GARY_CLIENT_HOME/calls` | Where each resident's tool server logs its body calls, `<Name>.jsonl` (`CALL_LOG` in `run-session.sh`). |
@@ -218,6 +299,79 @@ Residents are Gary plus every `instances/<Name>.env` whose notes directory
 no notes, and is left out). The list is read at start: restart after adding a
 resident. `src/config.ts` is the one place where residents and unit names are
 worked out.
+
+## Resident API (hub)
+
+Base `/resident-api/v1/`, before dashboard URL-token authentication. Every request needs
+`Authorization: Bearer <exact token>`. Unknown/unreadable credentials return 401; wrong
+role returns 403. Requests with `Origin` or `Sec-Fetch-Site` are refused. JSON bodies
+are stream-bounded to 65,536 bytes. Errors are `{error:{code,message}}`; revision
+conflicts return 409. Tokens and hashes are never returned or logged by the service.
+Stations never initialize these stores or expose the API.
+
+POST endpoints take `{args: {...}}` and return `{result: ...}`. The argument objects
+are the existing MCP tool arguments unless specified below; unknown identity fields
+are rejected. Every actor/author/consent comes from the authenticated resident.
+
+| Endpoint suffix | Args → result |
+| --- | --- |
+| `skills/save`, `find`, `show` | `skill_save`, `skill_find`, `skill_show` args → existing tool text |
+| `skills/start_run` | `skill_run` args → `{skill,ticket}`; code executes only in the consumer's QuickJS worker |
+| `skills/record_run` | `{ticket,ms,ok,checkOk:boolean or null,error?}` → `{promoted}`; one-use ticket binds resident and captured skill/version |
+| `skills/note_share`, `notes_shared`, `feedback` | corresponding tool args → existing tool text |
+| `society/collaborate`, `update`, `show` | `collaborate`, `collaboration_update`, `collaboration_show` args → existing tool text |
+| `society/register`, `updateFacility`, `observe`, `showFacility` | corresponding `facility_*` args → existing tool text |
+| `society/snapshot` | `{project?,needs?,dimension?}` → `{resident,collaborations,facilities}` |
+| `knowledge/recordMiss` | `{query,project?}` → gap id |
+| `knowledge/feedback` | `guide_feedback` args plus optional `project` → text |
+| `knowledge/get`, `list`, `exact`, `search` | `{id}`, `{page?}`, `{query}`, `{query}` → reference/null, reference[], reference/null, reference[] |
+| `knowledge/updates` | `guide_updates` args → text; marks displayed final results seen |
+| `knowledge/registerResidentTools` | `{names:string[]}` → number stored |
+| `knowledge/overview`, `capabilityOverview` | `{limit?,offset?}` → overview row arrays |
+| `places/list` | `{}` → shared-place objects |
+| `places/save` | `{name,note?,x,y,z,dimension,refuge?:{access?,hazards?,checked?}}` → `{place}` or `{foreign:author}` |
+| `places/remove` | `{name}` → `{removed,foreign?}` |
+
+`GET events?after=<seq>&wait=<0..25>` returns
+`{result:{events:[{seq,type,fields}],seq,gap}}`. Payloads are a 512-entry memory ring;
+the sequence watermark persists, so eviction/restart gaps are explicit. Feeds are
+addressed by caller identity. Collaboration changes notify the other named party
+without becoming a waking type. Cancellation stops polling at toolserver shutdown.
+
+`GET caretaker/digest?resident=Name` is caretaker-only and returns the unwrapped
+object `{skills,collaborations,facilities,knowledge_requests,places}`. The first four
+arrays contain up to eight recent rows; facility observations retain their dates and
+metadata-match labels. Caretakers can also call read-only skill library, reference
+library/overview and place-list endpoints; no writes, consent or resident event feeds.
+
+### Cutover and data checks
+
+1. In an approved cutover window, stop old toolservers before enabling the hub as the
+   shared writer. Back up the existing SQLite with SQLite's backup API. Keep its
+   existing `COMMONS_DB` path and the dashboard token; do not create a replacement DB.
+2. Install both sibling packages and dependencies. On each consumer run
+   `full-client/tools/new-commons-token.sh <token-file> <Name> resident` (or caretaker).
+   It refuses to overwrite a file, writes exact token bytes mode 600, and prints only
+   the hash record. Merge records into the hub credentials JSON array, mode 600.
+   Never copy plaintext consumer tokens into that array.
+3. Start the hub with `COMMONS_CREDENTIALS_FILE`. The existing schema is extended only
+   with `shared_places` and `resident_api_state`. On the first import, an empty table
+   imports `resident/shared/places.json` transactionally; missing file means empty,
+   malformed data fails startup without modifying source/rows. An import marker
+   prevents later deletions from being resurrected. The source file stays untouched.
+4. Check pre/post counts for skills/runs/notes/reviews/feedback, agreements/facilities,
+   knowledge/capabilities and tool registrations; compare shared places and authors
+   with the import source. Verify dashboard map and notes show the table data.
+5. Gary/Margo use `COMMONS_URL=http://127.0.0.1:8770/` and distinct
+   `COMMONS_TOKEN_FILE=~/gary-client/commons-tokens/<Name>`. `run-session.sh` provides
+   these defaults before sourcing `instances/<Name>.env` and passes them to both
+   harnesses; remote hosts override the URL with the hub/tunnel address. Remove old
+   toolserver database settings from deployed MCP config. Shared tools must succeed
+   before resuming residents; body tools must still work during a hub outage.
+
+Central `commons-review.py` and `knowledge-research.py` retain hub-local direct
+database access. Auto-accept remains on by default, now also applied immediately
+after API note submission. Preserve the place-picture cache beside the database.
 
 ## Panels and what each reads
 
@@ -343,6 +497,29 @@ All under `/<token>/api/`, JSON, `Cache-Control: no-store`:
 `GET console?boot=&after=<rev>` (lines added or changed since that revision, and ids withdrawn),
 `POST console/command` with `{command}`.
 Errors are `{error: "..."}` with the sentence the page shows.
+
+## Resident alarms
+
+The hub accepts resident-only `POST /resident-api/v1/alarm` with bearer auth and
+raw JSON (not an `args` wrapper): `{kind: "auto"|"manual", reason, x, y, z,
+dimension, health?, maxHealth?}`. Reasons are nonempty and at most 120 characters;
+identity and receipt time come from the hub. Caretakers and browser requests are
+refused. Success is `{result: {message}}`; throttling returns HTTP 429 with
+`{error: {code: "rate_limited", message}}`.
+
+Automatic alarms have a 30-second limit per sender/reason class (`attacked`,
+`low health`, `creeper close`, `in lava`; other reasons share one generic class).
+Manual alarms have a 10-second sender limit. Accepted alarms and limits survive
+restart in the hub-only `resident_alarms` table. History enters the usual Activity
+pipeline, sharing its ids and cursor, including alarms from remote residents.
+Stations never read this table.
+
+Every other credentialed resident receives an `alarm` event; the receiving body,
+not the hub, applies distance/dimension/line-of-sight perception. A single
+best-effort console `tellraw` displays `<Name shouts for help: reason>` for humans.
+The console bridge is never awaited or retried: missing chat cannot delay event
+fanout. Resident log readers suppress this reserved relay line so it cannot
+bypass spatial perception.
 
 ## The phone-chat service on the server machine
 

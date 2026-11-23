@@ -33,8 +33,11 @@ export SESSION_END_AT=${SESSION_END_AT:-$(( $(date +%s) + 10#$minutes * 60 ))}
 base=${GARY_CLIENT_HOME:-$HOME/gary-client}
 GAME_DIR=$base/game
 SYNAPSE_URL=http://127.0.0.1:25599
+COMMONS_URL=${COMMONS_URL:-http://127.0.0.1:8770/}
+COMMONS_TOKEN_FILE=${COMMONS_TOKEN_FILE:-$base/commons-tokens/$name}
 # shellcheck source=/dev/null
 [ -f "$base/instances/$name.env" ] && . "$base/instances/$name.env"
+export COMMONS_URL COMMONS_TOKEN_FILE
 home=$base/resident/$persona
 # Each harness reads its own persona file. Started with the wrong model, a
 # resident would play with no persona at all (Margo moved from Claude Code to
@@ -96,8 +99,8 @@ end=$(date -d "@$end_at" '+%F %H:%M %Z')
 cd "$home" || exit 1
 
 body_env() {
-  printf '{"CLIENT_LOG":"%s","SYNAPSE_URL":"%s","RESIDENT_NAME":"%s","RESIDENT_DIR":"%s","KNOWLEDGE_DB":"%s","CALL_LOG":"%s"}' \
-    "$log" "$SYNAPSE_URL" "$name" "$home" "$base/knowledge.sqlite" "$call_log"
+  printf '{"CLIENT_LOG":"%s","SYNAPSE_URL":"%s","RESIDENT_NAME":"%s","RESIDENT_DIR":"%s","KNOWLEDGE_DB":"%s","CALL_LOG":"%s","COMMONS_URL":"%s","COMMONS_TOKEN_FILE":"%s"}' \
+    "$log" "$SYNAPSE_URL" "$name" "$home" "$base/knowledge.sqlite" "$call_log" "$COMMONS_URL" "$COMMONS_TOKEN_FILE"
 }
 
 run_mind() { # <prompt> [Codex thread to resume]
@@ -127,6 +130,8 @@ run_mind() { # <prompt> [Codex thread to resume]
         -c "mcp_servers.body.env.CLIENT_LOG=\"$log\""
         -c "mcp_servers.body.env.SYNAPSE_URL=\"$SYNAPSE_URL\""
         -c "mcp_servers.body.env.CALL_LOG=\"$call_log\""
+        -c "mcp_servers.body.env.COMMONS_URL=\"$COMMONS_URL\""
+        -c "mcp_servers.body.env.COMMONS_TOKEN_FILE=\"$COMMONS_TOKEN_FILE\""
       )
       if [ -n "${2:-}" ]; then
         CODEX_HOME=$base/codex-home "$base/bin/codex" exec resume \

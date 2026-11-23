@@ -38,6 +38,12 @@ def main():
     parser.add_argument("--model", default=os.environ.get("OVERSEER_MODEL", "gpt-6.2-astra"))
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    role = os.environ.get("COMMONS_ROLE", "hub")
+    if role not in ("hub", "station"):
+        parser.error("COMMONS_ROLE must be hub or station")
+    if role == "station":
+        print("commons review: skipped on station (hub-only job)")
+        return 0
     if not os.path.exists(args.db):
         return 0
     # Autocommit: each verdict is applied in its own explicit transaction below.

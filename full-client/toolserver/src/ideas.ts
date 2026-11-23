@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { nonempty, type Position, type Stack, type State } from "./synapse.ts";
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 import { span, type PlanFocus } from "./plan.ts";
 import { beneficiaryOf, performerOf, type SocietySnapshot } from "./society.ts";
 import { z } from "zod";
+import type { CommonsClient } from "./commons.ts";
 
 /**
  * `what_next`: suggestions worked out from what the body can see, for a
@@ -411,20 +412,19 @@ const savedDeath: z.ZodType<SavedDeath> = z.object({ ...located, at: z.number().
 const placesFile = z.object({ places: z.array(z.unknown()).default([]), deaths: z.array(z.unknown()).default([]) });
 
 /**
- * Saved places and deaths as the place tools keep them (RESIDENT_DIR/places.json
- * and ../shared/places.json). Read-only and forgiving: a missing or broken file
- * counts as empty, because a suggestion must never fail over a notes file.
+ * Private places/deaths stay in RESIDENT_DIR; shared places come only from the hub.
+ * Corrupt private files are treated as empty. Hub errors remain explicit.
  */
-export async function readPlaces(residentDir: string, sharedDir = join(dirname(residentDir), "shared")): Promise<{ places: SavedPlace[]; deaths: SavedDeath[] }> {
+export async function readPlaces(residentDir: string, commons?: CommonsClient): Promise<{ places: SavedPlace[]; deaths: SavedDeath[] }> {
   const read = async (path: string) => {
     try { return placesFile.parse(JSON.parse(await readFile(path, "utf8"))); }
     catch { return { places: [], deaths: [] }; }
   };
-  const [own, shared] = await Promise.all([read(join(residentDir, "places.json")), read(join(sharedDir, "places.json"))]);
+  const [own, shared] = await Promise.all([read(join(residentDir, "places.json")), commons ? commons.call<SavedPlace[]>("places", "list", {}) : Promise.resolve([])]);
   // One entry the place tools would not have written does not hide the others.
   const valid = <T>(schema: z.ZodType<T>, entries: unknown[]) => entries.flatMap(entry => {
     const parsed = schema.safeParse(entry);
     return parsed.success ? [parsed.data] : [];
   });
-  return { places: valid(savedPlace, [...own.places, ...shared.places]), deaths: valid(savedDeath, own.deaths) };
+  return { places: valid(savedPlace, [...own.places, ...shared]), deaths: valid(savedDeath, own.deaths) };
 }

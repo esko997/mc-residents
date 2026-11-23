@@ -67,6 +67,166 @@ export async function observerGet(
   return { ok: true, data: body, receivedAt: now() };
 }
 
+/** Typed replies retain the observer's health and grant, not just the requested value. */
+export interface ObserverEnvelope {
+  schema: 1;
+  source: "server-observer";
+  consumer: string;
+  scopes: string[];
+  state: string;
+  stateDetail: string | null;
+  servedAtMs: number;
+  heartbeatAtMs: number | null;
+}
+export type ObserverResult<T> =
+  | { ok: true; data: ObserverEnvelope & T; receivedAt: number }
+  | Extract<ObserverReach, { ok: false }>;
+export interface ObserverSight { visible: boolean | null; distance: number | null; reason: string }
+export type LibraryStatus = "observed" | "unloaded" | "no_level" | "no_block_entity" | "unsupported"
+  | "empty" | "not_readable" | "too_large" | "invalid" | "error";
+export interface BookInfo {
+  slot: number;
+  kind: "written" | "writable" | "enchanted" | "plain";
+  title: string | null;
+  author: string | null;
+  generation: number | null;
+  pageCount: number;
+  contentHash: string | null;
+}
+export interface ObserverShelf { facility: string; status: LibraryStatus; reason: string | null; slots: BookInfo[] }
+export interface ObserverBook { facility: string; status: LibraryStatus; reason: string | null; book: BookInfo | null; pages: string[] }
+export interface ObserverEventPage { events: ObservedEvent[]; oldestSeq: number; latestSeq: number; gap: boolean }
+export interface ObserverEventsArgs {
+  after?: number;
+  limit?: number;
+  /** Long-poll seconds, 0..25. Zero omits `wait`, preserving the original request URL. */
+  wait?: number;
+  /** Timeout margin beyond the requested wait. Default 4000 ms. */
+  timeoutMs?: number;
+}
+
+const integerIn = (value: unknown, min: number, max = Number.MAX_SAFE_INTEGER): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
+const identifier = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+const nullableText = (value: unknown): value is string | null => value === null || typeof value === "string";
+const LIBRARY_STATUSES: Record<LibraryStatus, true> = {
+  observed: true, unloaded: true, no_level: true, no_block_entity: true, unsupported: true,
+  empty: true, not_readable: true, too_large: true, invalid: true, error: true,
+};
+const BOOK_KINDS: Record<BookInfo["kind"], true> = { written: true, writable: true, enchanted: true, plain: true };
+const observerError = (detail: string): Extract<ObserverReach, { ok: false }> => ({ ok: false, status: "error", detail });
+
+function bookInfo(value: unknown): BookInfo | null {
+  const raw = record(value);
+  if (!integerIn(raw.slot, 0, 5) || typeof raw.kind !== "string" || !Object.hasOwn(BOOK_KINDS, raw.kind)
+    || !nullableText(raw.title) || !nullableText(raw.author) || !nullableText(raw.contentHash)
+    || !(raw.generation === null || integerIn(raw.generation, 0)) || !integerIn(raw.pageCount, 0)) return null;
+  return {
+    slot: raw.slot, kind: raw.kind as BookInfo["kind"], title: raw.title, author: raw.author,
+    generation: raw.generation, pageCount: raw.pageCount, contentHash: raw.contentHash,
+  };
+}
+
+function libraryHeader(value: unknown): Pick<ObserverShelf, "facility" | "status" | "reason"> | null {
+  const raw = record(value);
+  if (typeof raw.facility !== "string" || !nullableText(raw.reason)
+    || typeof raw.status !== "string" || !Object.hasOwn(LIBRARY_STATUSES, raw.status)) return null;
+  return { facility: raw.facility, status: raw.status as LibraryStatus, reason: raw.reason };
+}
+
+async function observerRead<T>(
+  source: ObserverSource, path: string, get: typeof observerGet,
+  parse: (data: Record<string, unknown>, shift: number) => T | null, timeoutMs = 4000,
+): Promise<ObserverResult<T>> {
+  const reach = await get(source, path, timeoutMs);
+  if (!reach.ok) return reach;
+  const raw = reach.data, servedAtMs = finite(raw.servedAtMs);
+  if (raw.schema !== SCHEMA || raw.source !== SOURCE) {
+    return { ok: false, status: "incompatible", detail: `Expected ${SOURCE} schema ${SCHEMA}.` };
+  }
+  if (servedAtMs === undefined || typeof raw.state !== "string") return observerError("The observer answered without a valid time or health state.");
+  const value = parse(raw, reach.receivedAt - servedAtMs);
+  if (value === null) return observerError("The observer answered with an invalid payload.");
+  return {
+    ok: true, receivedAt: reach.receivedAt,
+    data: {
+      schema: SCHEMA, source: SOURCE, consumer: text(raw.consumer) ?? "",
+      scopes: (Array.isArray(raw.scopes) ? raw.scopes : []).filter((scope): scope is string => typeof scope === "string"),
+      state: raw.state, stateDetail: text(raw.stateDetail), servedAtMs, heartbeatAtMs: finite(raw.heartbeatAtMs) ?? null,
+      ...value,
+    },
+  };
+}
+
+/** Unknown sight stays null; an observed obstruction is false, never an outage fallback. */
+export async function observerSight(
+  source: ObserverSource, args: { from: string; to: string }, get: typeof observerGet = observerGet,
+): Promise<ObserverResult<{ sight: ObserverSight }>> {
+  if (!identifier(args.from) || !identifier(args.to)) return observerError("Sight requires from and to resident names.");
+  const query = new URLSearchParams({ from: args.from, to: args.to });
+  return observerRead(source, `/v1/sight?${query}`, get, raw => {
+    const sight = record(raw.sight);
+    if (!(sight.visible === null || typeof sight.visible === "boolean") || typeof sight.reason !== "string"
+      || !(sight.distance === null || (typeof sight.distance === "number" && Number.isFinite(sight.distance) && sight.distance >= 0))) return null;
+    return { sight: { visible: sight.visible, distance: sight.distance, reason: sight.reason } };
+  });
+}
+
+/** Only selected book metadata from a registered library; no arbitrary inventory or NBT. */
+export async function observerShelf(
+  source: ObserverSource, args: { facility: string }, get: typeof observerGet = observerGet,
+): Promise<ObserverResult<{ shelf: ObserverShelf }>> {
+  if (!identifier(args.facility)) return observerError("Shelf requires a facility id.");
+  return observerRead(source, `/v1/library/shelf?${new URLSearchParams({ facility: args.facility })}`, get, raw => {
+    const shelf = record(raw.shelf), header = libraryHeader(shelf);
+    if (!header || !Array.isArray(shelf.slots) || shelf.slots.length > 6) return null;
+    const slots: BookInfo[] = [];
+    for (const value of shelf.slots) {
+      const book = bookInfo(value);
+      if (!book || slots.some(existing => existing.slot === book.slot)) return null;
+      slots.push(book);
+    }
+    return { shelf: { ...header, slots } };
+  });
+}
+
+/** Read one library slot, retaining empty/unloaded/not-readable outcomes as observations. */
+export async function observerBook(
+  source: ObserverSource, args: { facility: string; slot: number }, get: typeof observerGet = observerGet,
+): Promise<ObserverResult<{ book: ObserverBook }>> {
+  if (!identifier(args.facility) || !integerIn(args.slot, 0, 5)) return observerError("Book requires a facility id and an integer slot from 0 to 5.");
+  const query = new URLSearchParams({ facility: args.facility, slot: String(args.slot) });
+  return observerRead(source, `/v1/library/book?${query}`, get, raw => {
+    const reply = record(raw.book), header = libraryHeader(reply);
+    const book = reply.book === null ? null : bookInfo(reply.book);
+    if (!header || (reply.book !== null && book === null) || !Array.isArray(reply.pages)
+      || !reply.pages.every((page): page is string => typeof page === "string")) return null;
+    return { book: { ...header, book, pages: reply.pages } };
+  });
+}
+
+/** One bounded event read, not a new polling loop. Times use this reply's clock offset. */
+export async function observerEvents(
+  source: ObserverSource, args: ObserverEventsArgs = {}, get: typeof observerGet = observerGet,
+): Promise<ObserverResult<ObserverEventPage>> {
+  const after = args.after ?? 0, limit = args.limit ?? 500, wait = args.wait ?? 0, timeoutMs = args.timeoutMs ?? 4000;
+  if (!integerIn(after, 0) || !integerIn(limit, 1, 500) || !integerIn(wait, 0, 25)
+    || !integerIn(timeoutMs, 1, Number.MAX_SAFE_INTEGER - 25_000)) {
+    return observerError("Events require a nonnegative integer after, limit 1..500, wait 0..25, and a positive integer timeout margin.");
+  }
+  const query = new URLSearchParams({ after: String(after), limit: String(limit) });
+  if (wait > 0) query.set("wait", String(wait));
+  return observerRead(source, `/v1/events?${query}`, get, (raw, shift) => {
+    if (!Array.isArray(raw.events) || !integerIn(raw.oldestSeq, 0) || !integerIn(raw.latestSeq, 0) || typeof raw.gap !== "boolean") return null;
+    const events = raw.events.flatMap((entry): ObservedEvent[] => {
+      const e = record(entry), seq = finite(e.seq), at = finite(e.atMs);
+      if (seq === undefined || at === undefined || typeof e.type !== "string") return [];
+      return [{ seq, type: e.type, at: at + shift, gameTime: finite(e.gameTime) ?? 0, resident: text(e.resident), facility: text(e.facility), detail: text(e.detail) }];
+    });
+    return { events, oldestSeq: raw.oldestSeq, latestSeq: raw.latestSeq, gap: raw.gap };
+  }, wait * 1000 + timeoutMs);
+}
+
 // === normalized shapes (what the UI renders) ===
 
 /** Every `*At` below is on THIS machine's clock: server times shifted by (receivedAt - servedAt). */
@@ -265,6 +425,8 @@ export interface ObserverFeedOptions {
   /** Events kept here, newest last. Default 200. */
   maxEvents?: number;
   timeoutMs?: number;
+  /** Optional bounded event long poll, integer 0..25 seconds. Default 0 (ordinary polling). */
+  eventWaitSeconds?: number;
   now?: () => number;
   fetchImpl?: typeof fetch;
 }
@@ -283,6 +445,7 @@ export class ObserverFeed {
   private readonly staleMs: number;
   private readonly maxEvents: number;
   private readonly timeoutMs: number;
+  private readonly eventWaitSeconds: number;
   private readonly now: () => number;
   private readonly fetchImpl: typeof fetch;
 
@@ -290,6 +453,8 @@ export class ObserverFeed {
     this.staleMs = options.staleMs ?? 30_000;
     this.maxEvents = options.maxEvents ?? 200;
     this.timeoutMs = options.timeoutMs ?? 4000;
+    this.eventWaitSeconds = options.eventWaitSeconds ?? 0;
+    if (!integerIn(this.eventWaitSeconds, 0, 25)) throw new RangeError("eventWaitSeconds must be an integer from 0 to 25.");
     this.now = options.now ?? Date.now;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.state = {
@@ -335,22 +500,19 @@ export class ObserverFeed {
       detail = `The newest snapshot is ${Math.round(world.ageMs / 1000)} s old.${reportedDetail ? ` ${reportedDetail}` : ""}`;
     }
     this.state = { ...this.state, status, detail, checkedAt, okAt: checkedAt, snapshotAgeMs: world.ageMs };
-    await this.pollEvents(source, world.clockOffsetMs);
+    await this.pollEvents(source);
   }
 
-  private async pollEvents(source: ObserverSource, shift: number) {
+  private async pollEvents(source: ObserverSource) {
     const after = this.cursor ?? 0;
-    const reach = await observerGet(source, `/v1/events?after=${after}&limit=500`, this.timeoutMs, this.fetchImpl, this.now);
+    const reach = await observerEvents(source, { after, limit: 500, wait: this.eventWaitSeconds, timeoutMs: this.timeoutMs },
+      (source, path, timeoutMs) => observerGet(source, path, timeoutMs, this.fetchImpl, this.now));
     if (!reach.ok) return; // the snapshot answered; a failed event page is retried from the same cursor next poll
     const raw = reach.data;
     // The first page after start has nothing to have missed; later gaps are real losses.
     if (this.cursor !== null && raw.gap === true) this.state = { ...this.state, missedEvents: true };
-    const fresh = (Array.isArray(raw.events) ? raw.events : []).flatMap((entry): ObservedEvent[] => {
-      const e = record(entry), seq = finite(e.seq), at = finite(e.atMs);
-      if (seq === undefined || at === undefined || typeof e.type !== "string") return [];
-      return [{ seq, type: e.type, at: at + shift, gameTime: finite(e.gameTime) ?? 0, resident: text(e.resident), facility: text(e.facility), detail: text(e.detail) }];
-    });
-    const latest = finite(raw.latestSeq);
+    const fresh = raw.events;
+    const latest = raw.latestSeq;
     const lastFresh = fresh.at(-1)?.seq;
     // Events this consumer may not see still advance the cursor (via latestSeq when the page was not full).
     this.cursor = fresh.length >= 500 && lastFresh !== undefined ? lastFresh : latest ?? lastFresh ?? this.cursor;

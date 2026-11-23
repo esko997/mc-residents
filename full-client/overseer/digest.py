@@ -9,8 +9,11 @@ working directory) for its own words, its notes and, when the client is up,
 its current state. Rollouts from before the call log existed are read for
 calls too. Prints plain text.
 """
-import argparse, collections, datetime, glob, json, os, re, sqlite3, subprocess, sys
+import argparse, collections, datetime, glob, json, os, re, subprocess, sys
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 EVENT = re.compile(r"^(\d+) (chat|hurt|died|arrived|stopped_short|navigation_stopped|reflex|player_near|player_gone|system|hungry)\b ?(.*)$", re.M)
 CALL = re.compile(r"mcp__body__(\w+)\(\s*(\{.*?\})?\s*\)", re.S)
@@ -75,6 +78,69 @@ def project_summary(path):
         return "No project file."
     except (ValueError, TypeError, OSError):
         return "Project file unreadable; no progress inferred."
+
+
+class NoLibraryRedirect(HTTPRedirectHandler):
+    """Never forward the caretaker credential to a redirect target."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def library_digest(resident):
+    """Read the hub's shared-library snapshot; never consult a local database."""
+    url = os.environ.get("COMMONS_URL", "").rstrip("/")
+    token_file = os.environ.get("COMMONS_TOKEN_FILE", "")
+    parsed = urlsplit(url)
+    if (parsed.scheme not in ("http", "https") or not parsed.hostname
+            or parsed.username or parsed.password or parsed.query or parsed.fragment
+            or parsed.path not in ("", "/") or not token_file):
+        raise ValueError("COMMONS_URL and COMMONS_TOKEN_FILE must configure the hub")
+    token = Path(token_file).expanduser().read_text().strip()
+    if not token or any(character.isspace() for character in token):
+        raise ValueError("invalid caretaker token file")
+    request = Request(url + "/resident-api/v1/caretaker/digest?" + urlencode({"resident": resident}),
+                      headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+    with build_opener(NoLibraryRedirect()).open(request, timeout=10) as response:
+        raw = response.read(512 * 1024 + 1)
+    if len(raw) > 512 * 1024:
+        raise ValueError("library digest too large")
+    data = json.loads(raw)
+    fields = ("skills", "collaborations", "facilities", "knowledge_requests", "places")
+    if not isinstance(data, dict) or any(
+            not isinstance(data.get(field), list) or any(not isinstance(row, dict) for row in data[field])
+            for field in fields):
+        raise ValueError("invalid library digest shape")
+    for skill in data["skills"]:
+        if any(not isinstance(skill.get(field), str) for field in ("name", "author", "description", "status")):
+            raise ValueError("invalid library skill")
+    return data
+
+
+def print_library(resident):
+    try:
+        data = library_digest(resident)
+    except (OSError, URLError, ValueError) as error:
+        # Never print exception text: URLs, paths and credentials may be in it.
+        reason = f"HTTP {error.code}" if isinstance(error, HTTPError) else type(error).__name__
+        print(f"\n## Shared library\nHub library unavailable ({reason}); do not infer none exist.")
+        return
+    for key, title in (
+        ("places", "Shared places (saved claims; check permissions and current state)"),
+        ("collaborations", "Voluntary agreements (reported results and confirmations are not machine verification)"),
+        ("facilities", "Shared facilities (claims with access terms; dated observations, not live counts)"),
+        ("knowledge_requests", "This resident's knowledge requests (ref-N is a guide handle; references remain untested)"),
+    ):
+        print(f"\n## {title}")
+        for row in data[key]:
+            print(json.dumps(row, ensure_ascii=False))
+        if not data[key]:
+            print("None.")
+    print("\n## Available reusable skills (passed declared checks or curated; not universal guarantees)")
+    for skill in data["skills"]:
+        print(f"{skill['name']} by {skill['author']} [{skill['status']}]: {skill['description'][:200]}")
+    if not data["skills"]:
+        print("None.")
 
 
 def main():
@@ -219,48 +285,7 @@ def main():
         if os.path.dirname(other) != resident_dir:
             print(f"\n## Neighbour projects: {os.path.basename(os.path.dirname(other))}")
             print(project_summary(other))
-    shared = os.path.join(os.path.dirname(resident_dir), "shared", "places.json")
-    if os.path.isfile(shared):
-        print("\n## Shared places (saved claims; check permissions and current state)")
-        print(Path(shared).read_text(errors="replace")[:2000])
-    library = os.path.join(args.base, "commons-data", "commons.sqlite")
-    if os.path.isfile(library):
-        try:
-            with sqlite3.connect(Path(library).as_uri() + "?mode=ro", uri=True, timeout=1) as db:
-                skills = db.execute("SELECT name, author, description, status FROM skills WHERE status IN ('verified', 'curated') ORDER BY updated_at DESC LIMIT 8").fetchall()
-                tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-                if "collaborations" in tables:
-                    print("\n## Voluntary agreements (reported results and confirmations are not machine verification)")
-                    rows = db.execute("""SELECT id,kind,sender,recipient,project,terms,status,evidence,confirmation
-                        FROM collaborations WHERE sender=? COLLATE NOCASE OR recipient=? COLLATE NOCASE OR recipient IS NULL
-                        ORDER BY updated_at DESC LIMIT 8""", (args.name, args.name)).fetchall()
-                    for row in rows:
-                        print(json.dumps(row, ensure_ascii=False))
-                    print("\n## Shared facilities (claims with access terms; dated observations, not live counts)")
-                    rows = db.execute("""SELECT f.id,f.name,f.purpose,f.x,f.y,f.z,f.dimension,f.steward,f.access_terms,
-                        o.condition,o.certainty,o.observer,o.observed_at,o.source,o.stock_json,
-                        CASE WHEN o.facility_revision=f.revision THEN 'matching metadata' ELSE 'metadata changed: uncertain' END
-                        FROM facilities f LEFT JOIN facility_observations o ON o.id=(SELECT id FROM facility_observations
-                        WHERE facility_id=f.id ORDER BY observed_at DESC,id DESC LIMIT 1)
-                        ORDER BY f.updated_at DESC LIMIT 8""").fetchall()
-                    for row in rows:
-                        print(json.dumps(row, ensure_ascii=False))
-                if "knowledge_gaps" in tables:
-                    print("\n## This resident's knowledge requests (ref-N is a guide handle; references remain untested)")
-                    rows = db.execute("""SELECT g.id,g.question,q.project,g.status,g.occurrences,g.reason,
-                        g.revision,g.published_revision,r.title
-                        FROM knowledge_gaps g JOIN knowledge_requests q ON q.gap_id=g.id
-                        LEFT JOIN knowledge_references r ON r.gap_id=g.id AND r.revision=g.published_revision
-                        WHERE q.resident=? COLLATE NOCASE ORDER BY g.updated_at DESC LIMIT 8""", (args.name,)).fetchall()
-                    for row in rows:
-                        print(json.dumps(row, ensure_ascii=False))
-            print("\n## Available reusable skills (passed declared checks or curated; not universal guarantees)")
-            for name, author, description, status in skills:
-                print(f"{name} by {author} [{status}]: {description[:200]}")
-            if not skills:
-                print("None.")
-        except sqlite3.Error:
-            print("\n## Shared skills\nLibrary unavailable; do not infer none exist.")
+    print_library(args.name)
     for name, limit in (("memory.md", 6000), ("places.json", 1500)):
         path = os.path.join(resident_dir, name)
         if os.path.exists(path):

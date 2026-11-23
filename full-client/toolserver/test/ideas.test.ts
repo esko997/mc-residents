@@ -12,9 +12,15 @@ import { createNotes } from "../src/notes.ts";
 import type { Stack } from "../src/synapse.ts";
 import { Tools } from "../src/tools.ts";
 import { fixture } from "./fake-synapse.ts";
+import { residentHub } from "../../commons/test/resident-api-fixture.ts";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
+function hub() {
+  const value = residentHub();
+  cleanups.push(() => value.close());
+  return value;
+}
 
 const mc = (name: string) => `minecraft:${name}`;
 const minute = 60_000, hour = 60 * minute;
@@ -301,7 +307,7 @@ describe("what_next through the body", () => {
   const reply = (result: CallToolResult) => result.content.filter(c => c.type === "text").map(c => c.text).join("\n").split("\n\nSince last time:")[0]!;
 
   test("reads inventory, armour, saved places, recorded deaths and the plan in focus", async () => {
-    const f = await fixture();
+    const f = await fixture(hub().identity());
     f.state.health = 20; f.state.food = 20;
     f.state.inventory!.main = stacks({ [mc("wheat_seeds")]: 27, [mc("stone_hoe")]: 1, [mc("bread")]: 2 });
     f.state.inventory!.armor = [{ slot: 2, item: mc("iron_chestplate"), count: 1, equip: "chest" }];
@@ -322,7 +328,7 @@ describe("what_next through the body", () => {
   });
 
   test("the knowledge the tool server was given is used", async () => {
-    const f = await fixture();
+    const f = await fixture(hub().identity());
     const tools = new Tools(f.body, await knowledge());
     cleanups.push(() => tools.close());
     f.state.inventory!.main = stacks({ [mc("cobblestone")]: 5, [mc("andesite")]: 3, [mc("bread")]: 2, [mc("iron_pickaxe")]: 1 });
@@ -335,24 +341,25 @@ describe("what_next through the body", () => {
     ].join("\n"));
   });
 
-  test("own and shared places and deaths are read as the place tools wrote them; a missing or broken file is empty", async () => {
+  test("own and hub places and deaths are read as saved; a broken private file is empty", async () => {
     const dir = await mkdtemp(join(tmpdir(), "resident-ideas-"));
     cleanups.push(() => rm(dir, { recursive: true, force: true }));
-    const notes = (name: string) => createNotes({ residentDir: join(dir, name), residentName: name, sharedDir: join(dir, "shared"), position: async () => ({ x: 1.5, y: 64, z: -2.5, dimension: overworld }), now: () => now });
+    const shared = hub();
+    const notes = (name: string) => createNotes({ residentDir: join(dir, name), residentName: name, commons: shared.identity(name).client, position: async () => ({ x: 1.5, y: 64, z: -2.5, dimension: overworld }), now: () => now });
     await notes("Gary").place_save({ name: "furnace", note: "by the door" });
     await notes("Margo").place_save({ name: "village bed", x: 40, y: 70, z: 9, shared: true });
     await notes("Gary").recordDeath({ x: 5.2, y: 60, z: 5.9 }, overworld);
-    expect(await readPlaces(join(dir, "Gary"), join(dir, "shared"))).toEqual({
+    expect(await readPlaces(join(dir, "Gary"), shared.identity().client)).toEqual({
       places: [{ name: "furnace", note: "by the door", x: 1, y: 64, z: -3, dimension: overworld }, { name: "village bed", x: 40, y: 70, z: 9, dimension: overworld }],
       deaths: [{ x: 5, y: 60, z: 5, dimension: overworld, at: now }],
     });
-    expect(await readPlaces(join(dir, "Margo"), join(dir, "shared"))).toEqual({ places: [{ name: "village bed", x: 40, y: 70, z: 9, dimension: overworld }], deaths: [] });
-    await writeFile(join(dir, "shared", "places.json"), "{ broken");
-    expect((await readPlaces(join(dir, "Gary"), join(dir, "shared"))).places.map(place => place.name)).toEqual(["furnace"]);
+    expect(await readPlaces(join(dir, "Margo"), shared.identity("Margo").client)).toEqual({ places: [{ name: "village bed", x: 40, y: 70, z: 9, dimension: overworld }], deaths: [] });
+    await writeFile(join(dir, "Gary", "places.json"), "{ broken");
+    expect((await readPlaces(join(dir, "Gary"), shared.identity().client)).places.map(place => place.name)).toEqual(["village bed"]);
   });
 
   test("without an inventory from the client it says so instead of guessing", async () => {
-    const f = await fixture();
+    const f = await fixture(hub().identity());
     f.state.inventory = undefined;
     const result = await f.tools.call("what_next");
     expect(result.isError).toBe(true);

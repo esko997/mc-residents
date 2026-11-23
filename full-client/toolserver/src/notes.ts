@@ -3,12 +3,13 @@ import { mkdir, open, readFile, readdir, rename, rm, stat, writeFile, type FileH
 import { dirname, join, relative } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
+import { CommonsClient } from "./commons.ts";
 
 export interface NotesPosition { x: number; y: number; z: number; dimension: string }
 export interface NotesOptions {
   residentDir: string;
   residentName: string;
-  sharedDir?: string;
+  commons?: CommonsClient;
   position: () => Promise<NotesPosition>;
   now?: () => number;
 }
@@ -267,9 +268,8 @@ function appendNotices(reply: string, notices: string[]): string {
 }
 
 export function createNotes(options: NotesOptions): Notes {
-  const sharedDir = options.sharedDir ?? join(dirname(options.residentDir), "shared");
   const privatePath = join(options.residentDir, "places.json");
-  const sharedPath = join(sharedDir, "places.json");
+  const commons = options.commons ?? new CommonsClient();
   const now = options.now ?? Date.now;
 
   const recall = async (args: RecallArgs): Promise<string> => {
@@ -306,14 +306,18 @@ export function createNotes(options: NotesOptions): Notes {
       if (args.refuge.hazards !== undefined) entry.refuge.hazards = args.refuge.hazards;
       if (args.refuge.checked) entry.refuge.checkedAt = now();
     }
-    const path = args.shared ? sharedPath : privatePath;
-    const label = args.shared ? "shared" : "private";
+    if (args.shared) {
+      const result = await commons.call<{ foreign?: string; place?: Place }>("places", "save", {
+        name: entry.name, note: entry.note, x: entry.x, y: entry.y, z: entry.z, dimension: entry.dimension, refuge: args.refuge,
+      });
+      if (result.foreign) return `Shared place "${args.name}" belongs to ${result.foreign}; not overwritten.`;
+      const saved = result.place!;
+      const refuge = saved.refuge ? ` with refuge notes (${args.refuge?.checked ? "checked now" : saved.refuge.checkedAt === undefined ? "never checked" : `last checked ${ago(now() - saved.refuge.checkedAt)}`})` : "";
+      return `Saved shared place "${args.name}" at ${coordinates(saved)} in ${saved.dimension}${refuge}.`;
+    }
+    const path = privatePath;
     return withStoreLock(path, async () => {
-      const loaded = await readStore(path, label);
-      const existing = loaded.store.places.find(place => place.name === args.name);
-      if (args.shared && existing && existing.author !== options.residentName) {
-        return appendNotices(`Shared place "${args.name}" belongs to ${existing.author}; not overwritten.`, loaded.notice ? [loaded.notice] : []);
-      }
+      const loaded = await readStore(path, "private");
       const previous = loaded.store.places.find(place => place.name === args.name && place.author === options.residentName);
       // A report saved again without a fresh check keeps the time of the last one.
       if (entry.refuge && entry.refuge.checkedAt === undefined && previous?.refuge?.checkedAt !== undefined) entry.refuge.checkedAt = previous.refuge.checkedAt;
@@ -329,7 +333,7 @@ export function createNotes(options: NotesOptions): Notes {
     const position = await options.position();
     const [privateStore, sharedStore] = await Promise.all([
       readStore(privatePath, "private"),
-      readStore(sharedPath, "shared"),
+      commons.call<Place[]>("places", "list", {}).then(places => ({ store: { places, deaths: [] } } as LoadedStore)),
     ]);
     const words = args.query?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
     const matchesQuery = (text: string) => words.every(word => text.toLowerCase().includes(word));
@@ -372,26 +376,20 @@ export function createNotes(options: NotesOptions): Notes {
   };
 
   const place_remove = async (args: PlaceRemoveArgs): Promise<string> => {
-    return withStoreLock(sharedPath, async () => withStoreLock(privatePath, async () => {
-      const [privateStore, sharedStore] = await Promise.all([
-        readStore(privatePath, "private"),
-        readStore(sharedPath, "shared"),
-      ]);
+    return withStoreLock(privatePath, async () => {
+      const privateStore = await readStore(privatePath, "private");
       const privateOwn = privateStore.store.places.filter(place => place.name === args.name && place.author === options.residentName);
-      const sharedOwn = sharedStore.store.places.filter(place => place.name === args.name && place.author === options.residentName);
-      const foreign = sharedStore.store.places.find(place => place.name === args.name && place.author !== options.residentName);
-      const notices = [privateStore.notice, sharedStore.notice].filter((notice): notice is string => !!notice);
-      if (!privateOwn.length && !sharedOwn.length) {
-        return appendNotices(foreign ? `Shared place "${args.name}" belongs to ${foreign.author}; not removed.` : `No own place named "${args.name}".`, notices);
+      const shared = await commons.call<{ removed: number; foreign?: string }>("places", "remove", { name: args.name });
+      const notices = privateStore.notice ? [privateStore.notice] : [];
+      if (!privateOwn.length && !shared.removed) {
+        return appendNotices(shared.foreign ? `Shared place "${args.name}" belongs to ${shared.foreign}; not removed.` : `No own place named "${args.name}".`, notices);
       }
       privateStore.store.places = privateStore.store.places.filter(place => !(place.name === args.name && place.author === options.residentName));
-      sharedStore.store.places = sharedStore.store.places.filter(place => !(place.name === args.name && place.author === options.residentName));
       if (privateOwn.length) await writeStore(privatePath, privateStore.store);
-      if (sharedOwn.length) await writeStore(sharedPath, sharedStore.store);
-      const removed = privateOwn.length + sharedOwn.length;
-      const left = foreign ? ` Shared place "${args.name}" belongs to ${foreign.author}; left unchanged.` : "";
+      const removed = privateOwn.length + shared.removed;
+      const left = shared.foreign ? ` Shared place "${args.name}" belongs to ${shared.foreign}; left unchanged.` : "";
       return appendNotices(`Removed ${removed} own place${removed === 1 ? "" : "s"} named "${args.name}".${left}`, notices);
-    }));
+    });
   };
 
   const recordDeath = async (pos: { x: number; y: number; z: number }, dimension: string): Promise<void> => {

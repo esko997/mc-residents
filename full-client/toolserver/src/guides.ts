@@ -179,7 +179,7 @@ function referenceText(reference: Reference, section: string | undefined): strin
 }
 
 /** Internal outcome metadata is authoritative; never infer a queue-worthy miss from prose. */
-export function lookupGuideResult(args: GuideArgs, knowledge?: Pick<Knowledge, "searchGuides">, gaps?: KnowledgeGaps): { text: string; kind: LookupState["kind"]; queuedId?: number } {
+export async function lookupGuideResult(args: GuideArgs, knowledge?: Pick<Knowledge, "searchGuides">, gaps?: KnowledgeGaps): Promise<{ text: string; kind: LookupState["kind"]; queuedId?: number }> {
   const state: LookupState = { kind: "navigation" };
   const parsed = guideDefinition.schema.safeParse(args);
   if (parsed.success && gaps) {
@@ -187,18 +187,18 @@ export function lookupGuideResult(args: GuideArgs, knowledge?: Pick<Knowledge, "
     const ref = query.match(/^ref-([1-9][0-9]*)$/i);
     try {
       if (ref) {
-        const found = gaps.get(Number(ref[1]));
+        const found = await gaps.get(Number(ref[1]));
         return { text: found ? referenceText(found, parsed.data.section?.toLowerCase()) : `No published reference at ${query}. Check guide_updates for its request status.`, kind: found ? "match" : "navigation" };
       }
       const referencePage = parsed.data.section?.match(/^references(?::([1-9][0-9]{0,5}))?$/);
       if (normal(query) === "references" || referencePage) {
         const page = Number(referencePage?.[1] ?? 1);
         const browsing = normal(query) === "references";
-        const found = browsing ? gaps.list(page) : gaps.search(query);
+        const found = browsing ? await gaps.list(page) : await gaps.search(query);
         return { text: found.length ? `Untested researched references; choose a stable handle as query:\n${found.slice(0, 6).map(row => `ref-${row.gap_id} r${row.revision}: ${row.title}${row.stale ? " [correction pending]" : ""}`).join("\n")}\n${browsing && found.length > 6 ? `More: query=references, section=references:${page + 1}` : "Narrow your query with section=references for other matches."}` : "No matching researched references on this page. Other queries still search curated guides and installed books.", kind: "navigation" };
       }
       if (!parsed.data.section && !["topics", "list", "help", "guides"].includes(normal(query))) {
-        const exact = gaps.exact(query);
+        const exact = await gaps.exact(query);
         if (exact) return { text: referenceText(exact, undefined), kind: "match" };
       }
     } catch { /* A queue/library outage must not suppress otherwise valid offline output. */ }
@@ -206,17 +206,17 @@ export function lookupGuideResult(args: GuideArgs, knowledge?: Pick<Knowledge, "
   const text = lookupCuratedGuide(args, knowledge, state);
   if ((state.kind === "miss" || state.kind === "unavailable") && gaps && parsed.success && !parsed.data.section) {
     try {
-      const found = gaps.search(parsed.data.query);
+      const found = await gaps.search(parsed.data.query);
       if (found.length === 1) return { text: referenceText(found[0]!, undefined), kind: "match" };
       if (found.length > 1) return { text: `Matching untested references; choose a handle as query:\n${found.map(row => `ref-${row.gap_id}: ${row.title}`).join("\n")}`, kind: "navigation" };
       if (state.kind !== "miss") return { text, kind: state.kind };
-      const queuedId = gaps.recordMiss(parsed.data.query);
+      const queuedId = await gaps.recordMiss(parsed.data.query);
       return { text: `${text}\nResearch request ref-${queuedId} saved. Use guide_updates when useful; no need to repeat the question.`, kind: "miss", queuedId };
     } catch { return { text, kind: state.kind }; }
   }
   return { text, kind: state.kind };
 }
 
-export function lookupGuide(args: GuideArgs, knowledge?: Pick<Knowledge, "searchGuides">, gaps?: KnowledgeGaps): string {
-  return lookupGuideResult(args, knowledge, gaps).text;
+export async function lookupGuide(args: GuideArgs, knowledge?: Pick<Knowledge, "searchGuides">, gaps?: KnowledgeGaps): Promise<string> {
+  return (await lookupGuideResult(args, knowledge, gaps)).text;
 }

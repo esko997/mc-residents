@@ -17,16 +17,29 @@ name=${1:?usage: overseer.sh <Name> <persona> [minutes]}
 persona=${2:?usage: overseer.sh <Name> <persona> [minutes]}
 minutes=${3:-60}
 shift; shift; [ $# -gt 0 ] && shift
-model=${OVERSEER_MODEL:-gpt-6.2-astra}
 
 base=${GARY_CLIENT_HOME:-$HOME/gary-client}
 SYNAPSE_URL=http://127.0.0.1:25599
 # shellcheck source=/dev/null
 [ -f "$base/instances/$name.env" ] && . "$base/instances/$name.env"
+# Hub/station settings and the caretaker's own credential, never a resident token.
+set -a
+for config in "$HOME/.config/commons/env" "$HOME/.config/commons/caretaker.env"; do
+  # shellcheck source=/dev/null
+  [ -f "$config" ] && . "$config"
+done
+set +a
+export COMMONS_ROLE=${COMMONS_ROLE:-hub}
+case "$COMMONS_ROLE" in
+  hub|station) ;;
+  *) echo "COMMONS_ROLE must be hub or station" >&2; exit 2 ;;
+esac
+export COMMONS_URL=${COMMONS_URL:-} COMMONS_TOKEN_FILE=${COMMONS_TOKEN_FILE:-}
+model=${OVERSEER_MODEL:-gpt-6.2-astra}
 work=$base/overseer
 mkdir -p "$work/empty"
 
-digest=$(python3 "$work/digest.py" "$name" "$base/resident/$persona" "$minutes" --synapse "$SYNAPSE_URL" "$@") || exit 1
+digest=$(python3 "$work/digest.py" "$name" "$base/resident/$persona" "$minutes" --base "$base" --synapse "$SYNAPSE_URL" "$@") || exit 1
 # Its standing aims, as its persona states them, so the note can measure time against them.
 aims=$(awk '/^## What you are working towards/{on=1; next} /^## /{on=0} on' "$base/resident/$persona/AGENTS.md" 2>/dev/null)
 
@@ -70,14 +83,13 @@ mode=shadow
   if [ "$status" -eq 0 ] && [ -s "$out" ]; then cat "$out"; else echo "(no answer: codex exit $status; see last-$name.log)"; fi
 } >> "$work/$name.md"
 if [ "$mode" = spoken ] && [ "$status" -eq 0 ] && [ -s "$out" ]; then
-  # The bridge address is the one the web app uses.
-  # shellcheck source=/dev/null
-  [ -f "$HOME/.config/commons/env" ] && . "$HOME/.config/commons/env"
   python3 "$work/speak.py" "$name" "$out" "${CONSOLE_URL:-${CHAT_URL:-}}" >> "$work/$name.md" 2>&1 || true
 fi
 rm -f "$out"
 # The same caretaker also looks over what residents put in the commons since
 # its last pass. This part is not shadow: its verdicts take effect, and a person
 # can undo them in the web app. It returns at once when nothing is new.
-python3 "$work/commons-review.py" >> "$work/last-commons-review.log" 2>&1 || true
+if [ "$COMMONS_ROLE" = hub ]; then
+  python3 "$work/commons-review.py" >> "$work/last-commons-review.log" 2>&1 || true
+fi
 exit "$status"

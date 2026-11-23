@@ -6,12 +6,16 @@ import type { Place } from "../src/notes.ts";
 import { PlacePictures } from "../src/place-pictures.ts";
 import type { Reach } from "../src/synapse.ts";
 import { fakeSynapse, png, tempHome } from "./helpers.ts";
+import { openCommons } from "../src/db.ts";
 
 const place: Place = { name: "orchard", author: "Gary", x: 10, y: 64, z: 20, dimension: "minecraft:overworld" };
 const world = () => ({ pos: { x: 10, y: 64, z: 20 }, dimension: "minecraft:overworld", health: 20, screen: "none" });
 
 function setup() {
   const home = tempHome(), config = home.config();
+  const db = openCommons(config.dbPath, config.schemaPath);
+  const remove = home.remove;
+  home.remove = () => { db.close(); remove(); };
   const runtime = { now: Date.parse("2026-11-22T20:00:00Z"), state: world(), shots: 0,
     fail: false, image: Buffer.from(png()).toString("base64"), onImage: () => {} };
   const get = async (_resident: unknown, path: string): Promise<Reach> => {
@@ -20,9 +24,16 @@ function setup() {
     runtime.onImage();
     return runtime.fail ? { ok: false, status: "offline", detail: "offline" } : { ok: true, data: { image: runtime.image } };
   };
-  const store = new PlacePictures(config, () => runtime.now, get);
+  const store = new PlacePictures(config, () => runtime.now, get, db);
   const save = (places: Place[], at = runtime.now, shared = false) => {
-    const path = home.put(shared ? "resident/shared/places.json" : "resident/gary/places.json", JSON.stringify({ places, deaths: [] }));
+    if (shared) {
+      db.transaction(() => {
+        db.query("DELETE FROM shared_places").run();
+        for (const p of places) db.query("INSERT INTO shared_places(name,author,data,updated_at) VALUES(?,?,?,?)").run(p.name, p.author ?? "", JSON.stringify(p), at);
+      })();
+      return;
+    }
+    const path = home.put("resident/gary/places.json", JSON.stringify({ places, deaths: [] }));
     utimesSync(path, at / 1000, at / 1000);
   };
   return { home, config, runtime, get, store, save };

@@ -29,7 +29,7 @@ function books(entries: { book: string; title: string; text: string }[]): Knowle
   return knowledge;
 }
 
-function readAll(query: string, section: string, knowledge?: Knowledge) {
+async function readAll(query: string, section: string, knowledge?: Knowledge) {
   const responses: string[] = [];
   const payloads: string[] = [];
   const visited = new Set<string>();
@@ -37,7 +37,7 @@ function readAll(query: string, section: string, knowledge?: Knowledge) {
   while (handle) {
     expect(visited.has(handle)).toBe(false);
     visited.add(handle);
-    const response = lookupGuide({ query, section: handle }, knowledge);
+    const response = (await lookupGuide({ query, section: handle }, knowledge));
     // A missing navigation link would lose instructions at the tool's outer cap.
     expect(response.length).toBeLessThanOrEqual(1250);
     expect(response).toContain("Scope:");
@@ -56,55 +56,55 @@ function readAll(query: string, section: string, knowledge?: Knowledge) {
 const whitespace = (text: string) => text.replace(/\s+/g, " ").trim();
 
 describe("offline practical guide routing", () => {
-  test("natural questions select a topic and the relevant species/branch without filler AND matching", () => {
-    expect(lookupGuide({ query: "How to start mekanism" })).toContain("query=mekanism;");
-    expect(lookupGuide({ query: "how do I breed cows?" })).toContain("Section: cows");
-    expect(lookupGuide({ query: "how do I breed cows?" })).toContain("minecraft");
-    expect(lookupGuide({ query: "refined storage tech tree" })).toContain("Section: automation");
-    expect(lookupGuide({ query: "why won't my sheep regrow wool?" })).toContain("Section: sheep");
+  test("natural questions select a topic and the relevant species/branch without filler AND matching", async () => {
+    expect((await lookupGuide({ query: "How to start mekanism" }))).toContain("query=mekanism;");
+    expect((await lookupGuide({ query: "how do I breed cows?" }))).toContain("Section: cows");
+    expect((await lookupGuide({ query: "how do I breed cows?" }))).toContain("minecraft");
+    expect((await lookupGuide({ query: "refined storage tech tree" }))).toContain("Section: automation");
+    expect((await lookupGuide({ query: "why won't my sheep regrow wool?" }))).toContain("Section: sheep");
   });
 
-  test("explicit sections override inferred ones; canonical topics return an overview", () => {
-    expect(lookupGuide({ query: "how to breed cows", section: "feeding" })).toContain("Section: feeding");
-    expect(lookupGuide({ query: "husbandry" })).toContain("Section: overview");
-    expect(lookupGuide({ query: "refined-storage" })).toContain("Section: overview");
-    expect(lookupGuide({ query: "How to start refined storage" })).toContain("Section: overview");
-    expect(lookupGuide({ query: "refined-storage", section: "power" })).toContain("Section: power");
-    expect(lookupGuide({ query: "mekanism", section: "missing" })).toContain("Unknown section");
+  test("explicit sections override inferred ones; canonical topics return an overview", async () => {
+    expect((await lookupGuide({ query: "how to breed cows", section: "feeding" }))).toContain("Section: feeding");
+    expect((await lookupGuide({ query: "husbandry" }))).toContain("Section: overview");
+    expect((await lookupGuide({ query: "refined-storage" }))).toContain("Section: overview");
+    expect((await lookupGuide({ query: "How to start refined storage" }))).toContain("Section: overview");
+    expect((await lookupGuide({ query: "refined-storage", section: "power" }))).toContain("Section: power");
+    expect((await lookupGuide({ query: "mekanism", section: "missing" }))).toContain("Unknown section");
   });
 
-  test("matching is token bounded and ambiguous species do not silently choose one", () => {
-    expect(lookupGuide({ query: "cowardice" })).toContain("No curated match");
-    expect(lookupGuide({ query: "breeding cows and sheep" })).toContain("Section: overview");
-    expect(lookupGuide({ query: "How do I" })).not.toContain("Section:");
+  test("matching is token bounded and ambiguous species do not silently choose one", async () => {
+    expect((await lookupGuide({ query: "cowardice" }))).toContain("No curated match");
+    expect((await lookupGuide({ query: "breeding cows and sheep" }))).toContain("Section: overview");
+    expect((await lookupGuide({ query: "How do I" }))).not.toContain("Section:");
   });
 
-  test("cross-topic questions offer reference choices instead of an unrelated book recipe", () => {
+  test("cross-topic questions offer reference choices instead of an unrelated book recipe", async () => {
     const kb = books([{ book: "naturesaura:book", title: "Altar of Birthing", text: "Wool determines a summoned sheep's colour." }]);
-    const choice = lookupGuide({ query: "wool for a bed" }, kb);
+    const choice = (await lookupGuide({ query: "wool for a bed" }, kb));
     expect(choice).toContain("husbandry, shelter");
     expect(choice).not.toContain("Altar of Birthing");
-    expect(lookupGuide({ query: "how do I breed cows with wheat" }, kb)).toContain("Section: cows");
-    expect(lookupGuide({ query: "wool for a bed", section: "books" }, kb)).toContain("Altar of Birthing");
+    expect((await lookupGuide({ query: "how do I breed cows with wheat" }, kb))).toContain("Section: cows");
+    expect((await lookupGuide({ query: "wool for a bed", section: "books" }, kb))).toContain("Altar of Birthing");
   });
 
-  test("settlement place questions reach their section without capturing home or machine topics", () => {
-    expect(lookupGuide({ query: "how should we lay out the village?" })).toContain("Section: layout");
-    expect(lookupGuide({ query: "settlement maintenance room" })).toContain("Section: layout");
-    expect(lookupGuide({ query: "a path between our homes" })).toContain("Section: routes");
-    expect(lookupGuide({ query: "where should I put signs" })).toContain("Section: names");
-    expect(lookupGuide({ query: "invite Margo to visit my workshop" })).toContain("Section: visits");
-    expect(lookupGuide({ query: "renovate a cramped workshop" })).toContain("Section: renovation");
-    expect(lookupGuide({ query: "settlement" })).toContain("Section: overview");
-    expect(lookupGuide({ query: "how do I build a house" })).toContain("query=shelter;");
-    expect(lookupGuide({ query: "how to start mekanism" })).toContain("query=mekanism;");
+  test("settlement place questions reach their section without capturing home or machine topics", async () => {
+    expect((await lookupGuide({ query: "how should we lay out the village?" }))).toContain("Section: layout");
+    expect((await lookupGuide({ query: "settlement maintenance room" }))).toContain("Section: layout");
+    expect((await lookupGuide({ query: "a path between our homes" }))).toContain("Section: routes");
+    expect((await lookupGuide({ query: "where should I put signs" }))).toContain("Section: names");
+    expect((await lookupGuide({ query: "invite Margo to visit my workshop" }))).toContain("Section: visits");
+    expect((await lookupGuide({ query: "renovate a cramped workshop" }))).toContain("Section: renovation");
+    expect((await lookupGuide({ query: "settlement" }))).toContain("Section: overview");
+    expect((await lookupGuide({ query: "how do I build a house" }))).toContain("query=shelter;");
+    expect((await lookupGuide({ query: "how to start mekanism" }))).toContain("query=mekanism;");
   });
 
-  test("all curated sections survive pagination with provenance and recoverable next handles", () => {
+  test("all curated sections survive pagination with provenance and recoverable next handles", async () => {
     let continuations = 0;
     for (const guide of referenceGuides) {
       for (const section of guide.sections) {
-        const { responses, payloads } = readAll(guide.id, section.id);
+        const { responses, payloads } = (await readAll(guide.id, section.id));
         expect(whitespace(payloads.join(" "))).toBe(whitespace(section.paragraphs.join(" ")));
         for (const response of responses) {
           expect(response).toContain(section.source ?? guide.source);
@@ -117,55 +117,55 @@ describe("offline practical guide routing", () => {
     expect(continuations).toBeGreaterThan(0);
   });
 
-  test("bad continuation handles do not silently restart at page one", () => {
+  test("bad continuation handles do not silently restart at page one", async () => {
     for (const section of ["overview:0", "overview:-1", "overview:1.5", "overview:NaN", "overview:9999999"]) {
-      expect(lookupGuide({ query: "mekanism", section })).toContain("Invalid section handle");
+      expect((await lookupGuide({ query: "mekanism", section }))).toContain("Invalid section handle");
     }
-    expect(lookupGuide({ query: "mekanism", section: "overview:999999" })).toContain("No such page");
+    expect((await lookupGuide({ query: "mekanism", section: "overview:999999" }))).toContain("No such page");
   });
 
-  test("curated content needs neither the database nor a functioning book reader", () => {
+  test("curated content needs neither the database nor a functioning book reader", async () => {
     const unavailable = { searchGuides(): never { throw new Error("database unavailable"); } };
-    expect(lookupGuide({ query: "breed cows" }, unavailable)).toContain("Section: cows");
-    expect(lookupGuide({ query: "foliot" })).toContain("installed-book index unavailable");
-    expect(lookupGuide({ query: "foliot" }, unavailable)).toContain("index could not be read");
+    expect((await lookupGuide({ query: "breed cows" }, unavailable))).toContain("Section: cows");
+    expect((await lookupGuide({ query: "foliot" }))).toContain("installed-book index unavailable");
+    expect((await lookupGuide({ query: "foliot" }, unavailable))).toContain("index could not be read");
   });
 });
 
 describe("installed-book fallback", () => {
-  test("natural language searches real FTS after filler removal", () => {
+  test("natural language searches real FTS after filler removal", async () => {
     const knowledge = books([{ book: "occultism:dictionary", title: "Foliot ritual", text: "Summon a foliot with the prepared ritual." }]);
-    expect(lookupGuide({ query: "How do I get a foliot ritual?" }, knowledge)).toContain("occultism:dictionary / Foliot ritual");
-    expect(lookupGuide({ query: '"() OR * foliot' }, knowledge)).toContain("Foliot ritual");
+    expect((await lookupGuide({ query: "How do I get a foliot ritual?" }, knowledge))).toContain("occultism:dictionary / Foliot ritual");
+    expect((await lookupGuide({ query: '"() OR * foliot' }, knowledge))).toContain("Foliot ritual");
   });
 
-  test("relaxed retrieval ranks overlapping terms first without duplicating snippets", () => {
+  test("relaxed retrieval ranks overlapping terms first without duplicating snippets", async () => {
     const knowledge = books([
       { book: "occultism:dictionary", title: "Foliot ritual", text: "A foliot ritual needs preparation." },
       { book: "occultism:dictionary", title: "Ritual chalk", text: "Chalk draws a ritual circle." },
     ]);
-    const { responses, payloads } = readAll("foliot ritual unfamiliar", "books", knowledge);
+    const { responses, payloads } = (await readAll("foliot ritual unfamiliar", "books", knowledge));
     expect(responses[0]).toContain("Source 1: occultism:dictionary / Foliot ritual");
     expect(responses).toHaveLength(2);
     expect(payloads.join(" ")).toContain("Chalk");
   });
 
-  test("books remains an escape hatch for curated topic matches", () => {
+  test("books remains an escape hatch for curated topic matches", async () => {
     const knowledge = books([{ book: "immersiveengineering:manual", title: "Coke Oven", text: "The oven creates coke and creosote." }]);
-    expect(lookupGuide({ query: "coke" }, knowledge)).toContain("query=immersive-engineering;");
-    const response = lookupGuide({ query: "coke", section: "books" }, knowledge);
+    expect((await lookupGuide({ query: "coke" }, knowledge))).toContain("query=immersive-engineering;");
+    const response = (await lookupGuide({ query: "coke", section: "books" }, knowledge));
     expect(response).toContain("Installed-book excerpts");
     expect(response).toContain("immersiveengineering:manual / Coke Oven");
     expect(response).toContain("not full procedures");
   });
 
-  test("book continuation keeps source identity and reports unavailable pages", () => {
+  test("book continuation keeps source identity and reports unavailable pages", async () => {
     const knowledge = books(Array.from({ length: 4 }, (_, index) => ({
       book: "naturesaura:book", title: `Ancient tree ${index}`, text: `Ancient tree instruction ${index}.`,
     })));
-    const { responses } = readAll("ancient tree", "books", knowledge);
+    const { responses } = (await readAll("ancient tree", "books", knowledge));
     expect(responses).toHaveLength(4);
     for (const response of responses) expect(response).toContain("naturesaura:book / Ancient tree");
-    expect(lookupGuide({ query: "ancient tree", section: "books:5" }, knowledge)).toContain("No such page");
+    expect((await lookupGuide({ query: "ancient tree", section: "books:5" }, knowledge))).toContain("No such page");
   });
 });

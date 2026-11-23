@@ -1,7 +1,7 @@
 import { open, stat, type FileHandle } from "node:fs/promises";
 
 export interface ResidentEvent { seq: number; type: string; [key: string]: unknown }
-const waking: Record<string, true> = { chat: true, hurt: true, died: true, player_near: true, arrived: true, stopped_short: true, navigation_stopped: true, reflex: true };
+const waking: Record<string, true> = { chat: true, hurt: true, died: true, player_near: true, arrived: true, stopped_short: true, navigation_stopped: true, reflex: true, alarm: true };
 /** Lines that carry coordinates and a reason; the rest stay at 91 so eight of them fit a tool result.
  * navigation_stopped ends with how often it has happened, after a goal, a reason and two positions; for a mine
  * job kept near its start it carries what was collected, how far a count got and by which item, a reason that
@@ -10,7 +10,7 @@ const waking: Record<string, true> = { chat: true, hurt: true, died: true, playe
  * `arrived` for a mine job that has its count names the block and up to three kinds of item collected (220).
  * A chat line is never cut: Minecraft sends at most 256 characters, after a sequence number and a sender
  * (a system line is chat too: a server announcement, a death message). */
-const lineLimit: Record<string, number> = { chat: 320, system: 320, arrived: 220, stopped_short: 220, navigation_stopped: 380, died: 160, reflex: 260 };
+const lineLimit: Record<string, number> = { chat: 320, system: 320, arrived: 220, stopped_short: 220, navigation_stopped: 380, died: 160, reflex: 260, alarm: 260 };
 /** The most characters of a tool result (about 1,500 in all) the event tail may take, heading included. Three
  * full chat lines fit, which is the most one `say` sends; the tool's own text keeps about 500. */
 const tailLimit = 1000;
@@ -52,7 +52,8 @@ export class Events {
   }
   private line(event: ResidentEvent) {
     const { seq, type, ...fields } = event;
-    const text = Object.entries(fields).map(([key, value]) => `${key}=${String(value).replace(/\s+/g, " ")}`).join(" ");
+    const text = type === "alarm" ? String(fields.text ?? "").replace(/\s+/g, " ")
+      : Object.entries(fields).map(([key, value]) => `${key}=${String(value).replace(/\s+/g, " ")}`).join(" ");
     const line = `${seq} ${type}${text ? ` ${text}` : ""}`, limit = lineLimit[type] ?? 91;
     return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
   }
@@ -94,6 +95,8 @@ export function parseLogLine(line: string, ownName: string): { type: string; fie
   const marker = line.indexOf("[CHAT] ");
   if (marker < 0) return;
   const text = line.slice(marker + 7).trim();
+  // The global relay is for humans. Residents perceive only distance-filtered hub events.
+  if (/^<\w{1,40} shouts for help: [^<>]*>$/.test(text)) return;
   if (text.startsWith("[Baritone] ")) {
     const reply = text.slice(11);
     if (reply.startsWith("> ")) return;

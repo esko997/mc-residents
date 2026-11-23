@@ -167,7 +167,9 @@ function residentInfo(resident, observer) {
 }
 
 const pictures = new Map(); // name -> { at, url, asked }
+const pictureAmbiguous = name => (state.residents?.residents.filter(resident => resident.name.toLowerCase() === name.toLowerCase()).length ?? 0) > 1;
 async function loadPicture(name, fresh = false) {
+  if (pictureAmbiguous(name)) return;
   const record = pictures.get(name) ?? {};
   pictures.set(name, record);
   if (record.loading) return;
@@ -183,28 +185,31 @@ async function loadPicture(name, fresh = false) {
   showPicture(name);
 }
 function showPicture(name) {
-  const box = document.querySelector(`.view[data-name="${CSS.escape(name)}"]`);
-  if (!box) return;
-  const record = pictures.get(name) ?? {}, resident = state.residents?.residents.find(entry => entry.name === name);
-  const online = resident?.status === "online";
-  const image = $("img", box), blank = $(".blank", box);
-  if (record.url && image.dataset.url !== record.url) { image.src = record.url; image.dataset.url = record.url; }
-  image.hidden = !record.url;
-  blank.hidden = Boolean(record.url);
-  blank.textContent = online ? (record.problem || "Fetching what it sees…") : `No current picture: ${name}'s client is unreachable. Server presence is reported separately.`;
-  box.classList.toggle("stale", Boolean(record.url) && !online);
-  $(".when", box).textContent = record.url ? `${online ? "Seen" : "Last seen"} ${clock(record.at)}` : "";
-  $("button", box).hidden = !online;
+  const ambiguous = pictureAmbiguous(name), record = ambiguous ? {} : pictures.get(name) ?? {};
+  for (const box of document.querySelectorAll(`.view[data-name="${CSS.escape(name)}"]`)) {
+    const resident = state.residents?.residents.find(entry => entry.name === name && entry.host === box.dataset.host);
+    const online = !ambiguous && resident?.status === "online" && !resident.hostUnreachable;
+    const image = $("img", box), blank = $(".blank", box);
+    if (record.url && image.dataset.url !== record.url) { image.src = record.url; image.dataset.url = record.url; }
+    image.hidden = !record.url;
+    blank.hidden = Boolean(record.url);
+    blank.textContent = ambiguous ? `Pictures are unavailable: ${name} is configured on more than one host. Resolve the duplicate resident name.`
+      : resident?.hostUnreachable ? `No current picture: host ${resident.host} is unreachable.`
+      : online ? (record.problem || "Fetching what it sees…") : `No current picture: ${name}'s client is unreachable. Server presence is reported separately.`;
+    box.classList.toggle("stale", Boolean(record.url) && !online);
+    $(".when", box).textContent = record.url ? `${online ? "Seen" : "Last seen"} ${clock(record.at)}` : "";
+    $("button", box).hidden = !online;
+  }
 }
 
 function renderResidents(data) {
-  patch($("#residents"), data.residents, resident => resident.name, (card, resident) => {
+  patch($("#residents"), data.residents, resident => JSON.stringify([resident.host, resident.name]), (card, resident) => {
     if (card.__new) {
       card.__new = false;
       card.className = "card resident";
       card.style.setProperty("--who", colour(resident.name));
       card.innerHTML = html`<header></header>
-        <div class="view" data-name="${resident.name}"><img alt="What ${resident.name} sees" hidden><p class="blank"></p>
+        <div class="view" data-name="${resident.name}" data-host="${resident.host}"><img alt="What ${resident.name} sees" hidden><p class="blank"></p>
           <div class="bar"><span class="when"></span><button type="button">Refresh picture</button></div></div>
         <div class="info"></div>`.text;
       $(".view button", card).onclick = () => loadPicture(resident.name, true);
@@ -215,7 +220,10 @@ function renderResidents(data) {
       unchecked: "not looked at yet",
     }[resident.status] ?? resident.detail;
     const health = resident.sessionHealth;
-    setHtml($("header", card), html`<h2>${resident.name}</h2><span class="pill ${resident.status}">client ${resident.status}</span><span class="meta">${words}</span>
+    setHtml($("header", card), html`<h2>${resident.name}</h2>
+      <span class="${resident.hostUnreachable ? "error" : "meta"}">Host: ${resident.host}${resident.hostUnreachable ? " — host unreachable; showing cached data" : ""}.
+        ${resident.hostLastSeen !== null ? `Host last seen ${stamp(resident.hostLastSeen)} (${ago(resident.hostLastSeen)}).` : "Host not reached yet."}</span>
+      <span class="pill ${resident.hostUnreachable ? "offline" : resident.status}">${resident.hostUnreachable ? `last known client ${resident.status}` : `client ${resident.status}`}</span><span class="meta">${words}</span>
       ${health ? html`<p class="${["paused", "failed"].includes(health.status) ? "error" : "fine"}">
         Session ${health.status}: ${health.reason || "body health watched"}.
         ${health.auto_restart ? `Automatic recovery enabled. Stops ${stamp(health.end_at * 1000)}.` : ""}
@@ -229,6 +237,7 @@ function renderResidents(data) {
 
   const quota = data.quota;
   setHtml($("#shared"), html`
+    ${(data.federationErrors ?? []).map(error => html`<p class="error" role="alert">Federation: ${error}</p>`)}
     ${data.sharedUnits.map(unit => html`<span class="unit"><span class="data">${unit.unit}</span> <span class="pill ${unit.state}">${unit.state}</span></span>`)}
     ${quota ? html`<span>Codex quota: ${quota.usedPercent}% of the ${quota.windowMinutes ? `${Math.round(quota.windowMinutes / 1440)}-day` : ""} window used${
       quota.resetsAt ? `, resets ${stamp(quota.resetsAt)}` : ""} (read ${ago(quota.at)})</span>` : ""}
@@ -243,7 +252,7 @@ async function loadResidents() {
   state.residents = data;
   state.names = data.residents.map(resident => resident.name);
   liveView.updateResidents(data);
-  const online = data.residents.filter(resident => resident.status === "online").length;
+  const online = data.residents.filter(resident => resident.status === "online" && !resident.hostUnreachable).length;
   $("#pulse").textContent = `${online} of ${data.residents.length} clients reachable, read ${clock(data.now)}`;
   renderResidents(data);
   setChat(data.chatUrl);
@@ -254,7 +263,7 @@ function residentsTick() {
   if (state.active !== "residents" || !state.residents) return;
   for (const resident of state.residents.residents) {
     const record = pictures.get(resident.name);
-    if (resident.status === "online" && Date.now() - (record?.asked ?? 0) >= state.residents.pictureSeconds * 1000) void loadPicture(resident.name);
+    if (!pictureAmbiguous(resident.name) && !resident.hostUnreachable && resident.status === "online" && Date.now() - (record?.asked ?? 0) >= state.residents.pictureSeconds * 1000) void loadPicture(resident.name);
   }
 }
 
@@ -952,6 +961,10 @@ $("#commons-body").addEventListener("click", async event => {
   await loadCommons().catch(() => renderCommons());
 });
 async function loadCommons() {
+  if (state.residents?.role === "station") {
+    setHtml($("#commons-body"), html`<p class="empty">Shared Knowledge is available on the Commons hub, not this station.</p>`);
+    return;
+  }
   commons.data = await get("api/commons");
   setBadge("commons", commons.data.pending);
   renderCommons();
@@ -1105,6 +1118,17 @@ $("#console-noise").onchange = event => {
 
 async function loadConsole() {
   const store = consoleStore;
+  if (state.residents?.role === "station") {
+    store.commandsOff = "Console commands are disabled on stations. Use the Commons hub.";
+    store.loaded = true;
+    for (const selector of ["#console-status", "#live-chat-status"]) {
+      const status = $(selector);
+      status.hidden = false;
+      status.textContent = "The server console is available on the Commons hub, not this station.";
+    }
+    drawConsoles();
+    return;
+  }
   const data = await get(`api/console?boot=${encodeURIComponent(store.boot)}&after=${store.rev}`);
   if (data.boot !== store.boot) {
     // The app restarted and numbers its lines from 1 again: rows on screen with those numbers are other lines.

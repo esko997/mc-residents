@@ -6,6 +6,8 @@ import {
   effectiveTripSettings, modeText, sameTripSettings, stopReply, tripSetReply, tripSettingNames, tripSettings,
   tripSettingsSchema, type TripMode, type TripSettings,
 } from "./navigation.ts";
+import { alarmEventSchema, type AlarmRequest } from "../../commons/src/resident-contracts-alarm.ts";
+import { alarmFromState, automaticAlarmReasons, canPerceiveAlarm, perceivedAlarmText, type AutoAlarmClass } from "./alarms.ts";
 
 /** A destination. `y` is present only when the goal names a height, as in `#goto x y z`. */
 export interface Goal { x: number; z: number; y?: number }
@@ -193,6 +195,9 @@ export class Body {
   lastDeath?: Death;
   /** Called once per death, after `lastDeath` is set, so another module can record it. */
   onDeath?: (death: Death) => void | Promise<void>;
+  /** Optional network hook; automatic alarms never await it or interfere with body controls. */
+  onAlarm?: (alarm: AlarmRequest) => Promise<unknown>;
+  private alarmSent = new Map<AutoAlarmClass, number>();
   reflexes: Reflexes = { auto_eat: true, eat_below: 12, when_attacked: "auto", surface: true, escape_fire: true, avoid_creepers: true, water_bucket: false };
   error?: string;
   private pollTimer?: Timer;
@@ -331,6 +336,30 @@ export class Body {
       this.events.add("system", { text: `Baritone's settings did not read back as set: ${wrong.map(name => `${name} ${trip.applied[name]}, wanted ${wanted[name]}`).join("; ")}` });
     }
   }
+  /** Only a current, local body observation can turn a hub alarm into a waking event. */
+  async hearAlarm(fields: unknown): Promise<void> {
+    const parsed = alarmEventSchema.safeParse(fields);
+    if (!parsed.success || this.stopped) return;
+    try {
+      const listener = await this.api.state();
+      if (!this.stopped && canPerceiveAlarm(listener, parsed.data)) {
+        this.events.add("alarm", { text: perceivedAlarmText(listener, parsed.data) });
+      }
+    } catch { /* No current body observation: no perception, and no message to the mind. */ }
+  }
+
+  private raiseAutomaticAlarms(state: State, hurt: boolean): void {
+    if (!this.onAlarm) return;
+    const at = this.now();
+    for (const alarm of automaticAlarmReasons(state, this.entities, hurt)) {
+      if (at - (this.alarmSent.get(alarm.kind) ?? -Infinity) < 30_000) continue;
+      this.alarmSent.set(alarm.kind, at);
+      // Schedule independently even if a hook throws synchronously; no network result gates a rescue.
+      const payload = alarmFromState("auto", alarm.reason, state);
+      void Promise.resolve().then(() => this.onAlarm?.(payload)).catch(() => {});
+    }
+  }
+
   async poll() {
     if (this.stopped) return;
     if (this.polling) return this.polling;
@@ -376,6 +405,7 @@ export class Body {
       for (const name of this.players.keys()) if (!players.has(name)) this.events.add("player_gone", { name });
       this.players = players;
     }
+    this.raiseAutomaticAlarms(this.state, hurt);
     await this.tail.read();
     this.rememberGround(this.state);
     if (this.screenSeen?.screen !== state.screen) this.screenSeen = { screen: state.screen, since: this.now() };

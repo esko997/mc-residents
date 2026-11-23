@@ -12,6 +12,7 @@ export interface Entity {
 }
 export interface State {
   pos: Position; dimension: string; health: number; food: number;
+  maxHealth?: number;
   eye: Position; rotation: { yaw: number; pitch: number };
   hotbar: Stack[]; selectedSlot: number; screen: string;
   lookingAt: { type: string; block?: string; blockPos?: number[]; entity?: string; entityId?: number };
@@ -47,8 +48,9 @@ export interface BlockSearch {
 export interface Config {
   url: string; tokenFile: string; log: string; residentDir: string;
   name: string; knowledgeDb?: string;
-  /** The commons shared by all residents and the management app; skills and shared notes are off without it. */
-  commonsDb?: string;
+  /** Hub base URL and this resident's private bearer-token file. */
+  commonsUrl?: string;
+  commonsTokenFile?: string;
 }
 export const expandHome = (path: string) => path === "~" ? homedir() : path.replace(/^~\//, `${homedir()}/`);
 export function configuration(env = process.env): Config {
@@ -59,7 +61,8 @@ export function configuration(env = process.env): Config {
     tokenFile: expandHome(env.SYNAPSE_TOKEN_FILE ?? "~/.synapse/token"),
     log: expandHome(env.CLIENT_LOG), residentDir: expandHome(env.RESIDENT_DIR ?? process.cwd()),
     name: env.RESIDENT_NAME, knowledgeDb: env.KNOWLEDGE_DB ? expandHome(env.KNOWLEDGE_DB) : undefined,
-    commonsDb: expandHome(env.COMMONS_DB ?? "~/gary-client/commons/commons.sqlite"),
+    commonsUrl: env.COMMONS_URL,
+    commonsTokenFile: env.COMMONS_TOKEN_FILE ? expandHome(env.COMMONS_TOKEN_FILE) : undefined,
   };
 }
 export class Synapse {

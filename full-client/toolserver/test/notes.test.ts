@@ -4,18 +4,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readPlaces } from "../src/ideas.ts";
 import { createNotes, notesDefinitions, type NotesPosition } from "../src/notes.ts";
+import { residentHub, type TestResidentHub } from "../../commons/test/resident-api-fixture.ts";
+import type { SharedPlace } from "../../commons/src/resident-places.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
+const hubs = new Map<string, TestResidentHub>();
 
 async function tempDir(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "resident-notes-"));
   cleanups.unshift(async () => { await rm(dir, { recursive: true, force: true }); });
+  const hub = residentHub(); hubs.set(dir, hub);
+  cleanups.unshift(async () => { hub.close(); hubs.delete(dir); });
   return dir;
 }
 
 function resident(dir: string, name: string, position: () => Promise<NotesPosition>, now?: () => number) {
-  return createNotes({ residentDir: join(dir, name), residentName: name, sharedDir: join(dir, "shared"), position, now });
+  return createNotes({ residentDir: join(dir, name), residentName: name, commons: hubs.get(dir)!.identity(name).client, position, now });
 }
 
 const at = (x: number, y: number, z: number, dimension = "minecraft:overworld") => async (): Promise<NotesPosition> => ({ x, y, z, dimension });
@@ -105,7 +110,7 @@ describe("places", () => {
       return writer.place_save({ name: `place-${index}`, x: index, y: 64, z: 0, shared: true });
     }));
 
-    const data = JSON.parse(await readFile(join(dir, "shared", "places.json"), "utf8")) as { places: { name: string; author: string }[] };
+    const data = { places: await hubs.get(dir)!.identity("A").client.call<SharedPlace[]>("places", "list", {}) };
     expect(data.places).toHaveLength(12);
     for (let index = 0; index < 12; index++) {
       expect(data.places.some(place => place.name === `place-${index}` && place.author === (index % 2 ? "B" : "A"))).toBe(true);
@@ -132,13 +137,13 @@ describe("places", () => {
 
   test("read-only calls on a fresh resident create neither resident nor shared directories", async () => {
     const dir = await tempDir();
-    const notes = createNotes({ residentDir: join(dir, "A"), residentName: "A", position: at(0, 64, 0) });
+    const notes = resident(dir, "A", at(0, 64, 0));
     expect(await notes.place_find({})).toBe("No places or deaths.");
     expect(await notes.recall({ query: "anything" })).toBe('No matches for "anything". Searched: memory.md, journal.md, notebook.md, notes/**/*.md.');
     expect(await readdir(dir)).toEqual([]);
   });
 
-  test("corrupt stores are reported and corrupt JSON never crashes tools", async () => {
+  test("corrupt private stores are reported; retired shared files are never read", async () => {
     const dir = await tempDir();
     const notes = resident(dir, "A", at(0, 64, 0));
     await mkdir(join(dir, "A"), { recursive: true });
@@ -147,7 +152,7 @@ describe("places", () => {
     await writeFile(join(dir, "shared", "places.json"), '{"places":"wrong"}');
     const corrupt = await notes.place_find({});
     expect(corrupt).toContain("private places.json is corrupt; treated as empty");
-    expect(corrupt).toContain("shared places.json is corrupt; treated as empty");
+    expect(corrupt).not.toContain("shared places.json");
     expect(await notes.place_save({ name: "recovered" })).toContain("private places.json is corrupt; treated as empty");
     expect(await notes.place_find({})).toContain("recovered (0,64,0) distance 0 blocks here");
   });
@@ -159,14 +164,14 @@ describe("places", () => {
 
   test("refuge notes are shown as reported, with the age of the last check, and found by the word refuge", async () => {
     const dir = await tempDir();
-    const start = Date.UTC(2026, 10, 22, 6);
+    const start = Date.now();
     let time = start;
     const a = resident(dir, "A", at(0, 64, 0), () => time);
     const b = resident(dir, "B", at(0, 64, 0), () => time);
     expect(await a.place_save({ name: "hut", note: "stone hut", x: 10, y: 64, z: 0, shared: true, refuge: { access: "door on the west side", hazards: "dark inside", checked: true } }))
       .toBe('Saved shared place "hut" at (10,64,0) in minecraft:overworld with refuge notes (checked now).');
     await a.place_save({ name: "field", x: 3, y: 64, z: 0, shared: true });
-    time = start + 3 * 3_600_000;
+    time = Date.now() + 3 * 3_600_000;
     expect(await b.place_find({ query: "refuge" })).toBe("hut (10,64,0) distance 10 blocks east; stone hut; refuge as reported: access: door on the west side; hazards: dark inside; checked 3 h ago; by A");
     expect(await b.place_find({ query: "dark" })).toContain("hut (10,64,0)");
 
@@ -185,7 +190,7 @@ describe("places", () => {
     await notes.place_save({ name: "hut", x: 1, y: 64, z: 1, refuge: { access: "ladder", checked: true } });
     const stored = JSON.parse(await readFile(join(dir, "A", "places.json"), "utf8"));
     expect(stored.places[0].refuge).toEqual({ access: "ladder", checkedAt: 1000 });
-    expect((await readPlaces(join(dir, "A"), join(dir, "shared"))).places.map(place => place.name)).toEqual(["hut"]);
+    expect((await readPlaces(join(dir, "A"), hubs.get(dir)!.identity("A").client)).places.map(place => place.name)).toEqual(["hut"]);
     expect(await notes.place_find({})).toContain("hut (1,64,1)");
   });
 

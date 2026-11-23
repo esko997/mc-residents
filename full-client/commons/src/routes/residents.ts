@@ -31,13 +31,15 @@ async function sessionHealth(path: string): Promise<SessionHealth | null> {
 }
 export interface ResidentsReply {
   now: number; chatUrl: string | null;
+  role: "hub" | "station";
+  federationErrors: string[];
   /** Skills and notes waiting for a reviewer. */
   pending: number;
   quota: Quota | null; sampleSeconds: number; pictureSeconds: number;
   /** Units that belong to no single resident. */
   sharedUnits: UnitState[];
   observer: ObserverHealth;
-  residents: (Sighting & { name: string; memoryBytes: number | null; units: UnitState[]; tokens: TokenTotals; pictureAt: number | null; sessionHealth: SessionHealth | null; serverObservation: ObservedResident | null })[];
+  residents: (Sighting & { name: string; host: string; hostUnreachable: boolean; hostLastSeen: number | null; liveAvailable: boolean; memoryBytes: number | null; units: UnitState[]; tokens: TokenTotals; pictureAt: number | null; sessionHealth: SessionHealth | null; serverObservation: ObservedResident | null })[];
 }
 
 export function residentRoutes({ config, db, watcher, tail, now, readSessions, resident }: Context): Routes {
@@ -47,12 +49,16 @@ export function residentRoutes({ config, db, watcher, tail, now, readSessions, r
       const states = await unitStates(config.systemctl, config.units.map(entry => entry.unit));
       const unitsOf = (name?: string) => config.units.filter(entry => entry.resident === name).map(entry => ({ unit: entry.unit, state: states[entry.unit] }));
       return {
-        now: now(), chatUrl: config.chatUrl ?? null, pending: pendingCount(db), quota: tail.quota ?? null,
+        now: now(), role: config.role, federationErrors: [],
+        chatUrl: config.role === "hub" ? config.chatUrl ?? null : null,
+        pending: config.role === "station" ? 0 : pendingCount(db), quota: tail.quota ?? null,
         sampleSeconds: config.sampleMs / 1000, pictureSeconds: config.pictureMs / 1000,
         sharedUnits: unitsOf(undefined),
         observer: watcher.observer.health(),
         residents: await Promise.all(config.residents.map(async entry => ({
           name: entry.name, ...watcher.sighting(entry.name),
+          host: config.hostName, hostUnreachable: false, hostLastSeen: now(),
+          liveAvailable: config.role === "hub" && config.live?.enabled === true,
           memoryBytes: await fileSize(join(entry.dir, "memory.md")),
           sessionHealth: await sessionHealth(join(config.home, "sessions", `${entry.name}-health.json`)),
           units: unitsOf(entry.name), tokens: tail.tokenTotals(entry.name), pictureAt: watcher.pictureAt(entry.name),

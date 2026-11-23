@@ -31,8 +31,8 @@ export class Watcher {
   readonly placePictures: PlacePictures;
 
   constructor(private config: Config, private db: Database, private now: () => number = Date.now) {
-    this.observer = new ObserverFeed(config.observer, { now });
-    this.placePictures = new PlacePictures(config, now);
+    this.observer = new ObserverFeed(config.role === "station" ? undefined : config.observer, { now });
+    this.placePictures = new PlacePictures(config, now, undefined, config.role === "hub" ? db : undefined);
   }
 
   start() {
@@ -57,7 +57,7 @@ export class Watcher {
   }
 
   private accept() {
-    if (!this.config.autoAccept) return;
+    if (this.config.role === "station" || !this.config.autoAccept) return;
     try { autoAccept(this.db, this.now()); }
     catch (error) {
       // A tool server held the database past the busy timeout: the notes are accepted on the next tick.

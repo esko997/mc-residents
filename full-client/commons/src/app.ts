@@ -7,6 +7,8 @@ import { join } from "node:path";
 import type { Config } from "./config.ts";
 import { Console, ConsoleFeed } from "./console.ts";
 import { openCommons } from "./db.ts";
+import { Federation } from "./federation.ts";
+import { openStation } from "./station-db.ts";
 import { LiveStream } from "./live-stream.ts";
 import type { TextFile } from "./notes.ts";
 import { RolloutTail } from "./rollouts.ts";
@@ -18,6 +20,10 @@ import { mapRoutes, type MapReply } from "./routes/map.ts";
 import { notesRoutes, type NotesReply } from "./routes/notes.ts";
 import { residentRoutes, type ResidentsReply } from "./routes/residents.ts";
 import { Watcher } from "./watcher.ts";
+import { ResidentApi } from "./resident-api.ts";
+import { importSharedPlaces, sharedPlaces } from "./resident-places.ts";
+import { alarmActivityText, recentAlarms } from "./resident-alarms.ts";
+import type { AlarmEvent } from "./resident-contracts-alarm.ts";
 
 /** The JSON each GET route under /<token>/api/ returns, for whoever reads it (the page, the tests). */
 export interface Replies {
@@ -45,11 +51,19 @@ const STATIC: Record<string, string> = {
 const MAX_BODY = 8192;
 
 export function createApp(config: Config, token: string, now: () => number = Date.now, log: (line: string) => void = console.log): App {
-  const db = openCommons(config.dbPath, config.schemaPath);
+  const db = config.role === "station" ? openStation(config.dbPath) : openCommons(config.dbPath, config.schemaPath);
+  if (config.role === "hub") importSharedPlaces(db, config.sharedPlaces);
   const watcher = new Watcher(config, db, now);
   const tail = new RolloutTail(config.sessionsDir, config.residents, { days: config.activityDays, now, callsDir: config.callsDir });
   const stream = new Console(config.consoleUrl !== undefined, { now, names: [...config.residents.map(resident => resident.name), ...config.owners] });
   const feed = new ConsoleFeed(stream, config, now);
+  const alarmActivity = (event: AlarmEvent) =>
+    tail.recordEvent(event.sender, event.at, "alarm", alarmActivityText(event));
+  // Stations have no shared tables; only the hub restores durable alarm history.
+  if (config.role === "hub") for (const event of recentAlarms(db, now() - config.activityDays * 86_400_000)) alarmActivity(event);
+  const residentApi = config.role === "hub" ? new ResidentApi(db, config.credentialsFile, config.autoAccept, {
+    now, command: command => feed.command(command), activity: alarmActivity,
+  }) : undefined;
   const live = new LiveStream(config, { now });
   let lastRead = 0;
   const context: Context = {
@@ -61,10 +75,12 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     },
     resident: name => config.residents.find(resident => resident.name.toLowerCase() === name?.toLowerCase()),
   };
-  const routes: Routes = {
-    ...residentRoutes(context), ...activityRoutes(context), ...mapRoutes(context), ...notesRoutes(context), ...commonsRoutes(context),
-    ...consoleRoutes(context),
+  const localRoutes: Routes = {
+    ...residentRoutes(context), ...activityRoutes(context), ...mapRoutes(context), ...notesRoutes(context),
+    ...(config.role === "hub" ? { ...commonsRoutes(context), ...consoleRoutes(context) } : {}),
   };
+  const federation = config.role === "hub" ? new Federation(config, now, { sharedPlaces: () => sharedPlaces(db) }) : undefined;
+  const routes = federation ? federation.wrap(localRoutes) : localRoutes;
   const secret = Buffer.from(token);
 
   /** `rest` is the path after the token, split at slashes; empty for a bare /<token>. */
@@ -74,7 +90,10 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     const route = rest.join("/");
     // The URL token was checked before this dispatch. Live owns its larger,
     // stream-bounded SDP body limit and same-origin mutation checks.
-    if (rest[0] === "api" && rest[1] === "live") return live.handle(request, rest.slice(2).join("/"));
+    if (rest[0] === "api" && rest[1] === "live") {
+      if (config.role === "station") return refuse(404, "Live is unavailable on stations.");
+      return live.handle(request, rest.slice(2).join("/"));
+    }
     if (rest[0] === "api") {
       const key = `${request.method} ${rest.slice(1).join("/")}`;
       const handler = Object.hasOwn(routes, key) ? routes[key] : undefined;
@@ -94,6 +113,9 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     watcher, tail, stream, feed, db,
     async fetch(request) {
       const url = new URL(request.url);
+      if (url.pathname.startsWith("/resident-api/v1/")) {
+        return residentApi ? residentApi.fetch(request) : Response.json({ error: { code: "not_found", message: "Resident API is available only on the hub." } }, { status: 404 });
+      }
       const [given = "", ...rest] = url.pathname.replace(/^\//, "").split("/");
       const offered = Buffer.from(given);
       if (offered.length !== secret.length || !timingSafeEqual(offered, secret)) {
@@ -110,11 +132,12 @@ export function createApp(config: Config, token: string, now: () => number = Dat
       if (request.method !== "GET" || response.status >= 400) log(`${request.method} /<token>/${rest.join("/")} -> ${response.status}`);
       return response;
     },
-    start() { watcher.start(); feed.start(); void context.readSessions(); },
+    start() { watcher.start(); if (config.role === "hub") feed.start(); federation?.start(); void context.readSessions(); },
     stop() {
       // Abort capture and signal FFmpeg now; TERM → KILL/reap continues boundedly.
       void live.shutdown().catch(() => log("Live video encoder cleanup failed; restart Commons before streaming again."));
-      watcher.stop(); feed.stop(); db.close();
+      residentApi?.close();
+      federation?.stop(); watcher.stop(); feed.stop(); db.close();
     },
   };
 }

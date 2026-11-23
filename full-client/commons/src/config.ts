@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { observerSourceFromEnv, type ObserverSource } from "./observer.ts";
 
@@ -25,12 +25,18 @@ export interface LiveConfig {
   whepUrl: string;
 }
 export interface Config {
+  role: "hub" | "station";
+  hostName: string;
+  /** Only the hub reads this private list of station dashboard URLs. */
+  stationsFile: string;
   home: string;
   port: number;
   hostname: string;
   dbPath: string;
   schemaPath: string;
   tokenFile: string;
+  /** Bearer hashes for the hub Resident API, separate from the dashboard URL token. */
+  credentialsFile: string;
   /** Set when COMMONS_TOKEN is given; otherwise the token file decides. */
   token?: string;
   chatUrl?: string;
@@ -91,7 +97,8 @@ function residents(home: string, env: Record<string, string | undefined>): Resid
     tokenFiles: [...sharedToken, join(homedir(), ".synapse", "token"), join(gameDir, "config", "synapse", "token")],
     clientUnit: unit(name), clientLog: join(gameDir, "logs", "latest.log"),
   });
-  const found = [make("Gary", join(home, "game"), env.GARY_SYNAPSE_URL ?? "http://127.0.0.1:25599")];
+  const found = env.COMMONS_ROLE === "station" && !existsSync(join(home, "resident", "gary"))
+    ? [] : [make("Gary", join(home, "game"), env.GARY_SYNAPSE_URL ?? "http://127.0.0.1:25599")];
   let files: string[] = [];
   try { files = readdirSync(join(home, "instances")).filter(file => file.endsWith(".env")).sort(); } catch { /* no other residents */ }
   for (const file of files) {
@@ -134,6 +141,9 @@ function liveConfig(env: Record<string, string | undefined>): LiveConfig {
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const home = real(expandHome(env.GARY_CLIENT_HOME ?? "~/gary-client"));
+  const role = env.COMMONS_ROLE ?? "hub";
+  if (role !== "hub" && role !== "station") throw new Error("COMMONS_ROLE must be hub or station.");
+  const hostName = env.COMMONS_HOST_NAME?.trim() || hostname();
   const dbPath = expandHome(env.COMMONS_DB ?? join(home, "commons", "commons.sqlite"));
   const port = Number(env.PORT ?? 8770);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`PORT must be a port number, got ${env.PORT}.`);
@@ -153,14 +163,17 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }));
   const consoleUrl = env.CONSOLE_URL || env.CHAT_URL || undefined;
   return {
-    consoleUrl: consoleUrl && `${consoleUrl.replace(/\/+$/, "")}/`,
-    observer: observerSourceFromEnv(env),
-    live: liveConfig(env),
-    autoAccept: !/^(0|off|false|no)$/i.test(env.COMMONS_AUTO_ACCEPT ?? ""),
+    role, hostName,
+    stationsFile: expandHome(env.COMMONS_STATIONS_FILE ?? join(home, "commons-data", "stations.json")),
+    consoleUrl: role === "hub" && consoleUrl ? `${consoleUrl.replace(/\/+$/, "")}/` : undefined,
+    observer: role === "hub" ? observerSourceFromEnv(env) : undefined,
+    live: role === "hub" ? liveConfig(env) : undefined,
+    autoAccept: role === "hub" && !/^(0|off|false|no)$/i.test(env.COMMONS_AUTO_ACCEPT ?? ""),
     owners: (env.COMMONS_OWNER ?? "spesk01").split(/[\s,]+/).filter(Boolean),
     home, port, hostname: env.COMMONS_BIND ?? "0.0.0.0", dbPath,
     schemaPath: expandHome(env.COMMONS_SCHEMA ?? join(packageRoot, "schema.sql")),
     tokenFile: expandHome(env.COMMONS_TOKEN_FILE ?? join(dirname(dbPath), "token")),
+    credentialsFile: expandHome(env.COMMONS_CREDENTIALS_FILE ?? join(home, "commons-data", "credentials.json")),
     token: env.COMMONS_TOKEN, chatUrl: env.CHAT_URL || undefined,
     sessionsDir: join(expandHome(env.CODEX_HOME ?? join(home, "codex-home")), "sessions"),
     callsDir: expandHome(env.CALLS_DIR ?? join(home, "calls")),
