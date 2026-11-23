@@ -66,10 +66,24 @@ test("every book on a shelf or lectern enters the catalogue by itself; pages are
   expect(found).toContain('#1 "Furnace notes" by Tobin (original), 2 pages');
   expect(found).toContain("at the chiseled bookshelf at 100,64,-200 (slot 3); 10 blocks east of you; seen there by the server just now");
   expect(found).toContain("also: #1 at 140,64,-200; 50 blocks east of you");
-  expect(found).toContain("Charcoal comes from logs");
+  expect(found).toContain("Smelting iron: eight ore per coal.");
+  expect(found).not.toContain("Charcoal comes from logs");
   expect(found).not.toContain("Wheat needs water");
   expect(piper.find({ query: "water" })).toContain("at the chiseled bookshelf at 140,64,-200 (slot 1); seen there by the server just now\n  also: #2 at 5,70,9 minecraft:the_nether\n");
   expect(piper.find({ query: "obsidian" })).toContain("No catalogued book matches \"obsidian\". The catalogue holds 2 books: every book the server has seen on a chiseled bookshelf or lectern");
+});
+
+test("catalogue results never return the full text of a short book", async () => {
+  const { bridge, scan, as } = hub();
+  bridge.put(OVERWORLD, 140, 64, -200, { block: LECTERN, slots: [wheat] });
+  await scan.pass();
+  const piper = as("Piper");
+  const detail = piper.find({ id: 1 }), search = piper.find({ query: "four blocks" });
+  for (const reply of [detail, search]) {
+    expect(reply).toContain("#1 \"Wheat\" by Margo");
+    expect(reply).toContain("Wheat needs water…");
+    expect(reply).not.toContain("within four blocks.");
+  }
 });
 
 test("a lectern's only book taken: the read of that lectern marks it gone; book_find says so, unlike an unknown place", async () => {
@@ -217,7 +231,7 @@ test("a book and quill edited on its shelf is a new version; the old draft leave
   const found = as("Piper").find({ query: "shopping" });
   expect(found).toContain("1 text matches");
   expect(found).toContain("#2 an unsigned book and quill");
-  expect(found).toContain("wool, coal, glass");
+  expect(as("Piper").find({ query: "glass" })).toContain("#2 an unsigned book and quill");
   expect(found).not.toContain("#1 ");
 });
 

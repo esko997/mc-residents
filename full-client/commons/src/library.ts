@@ -261,16 +261,13 @@ export function createLibrary(db: Database, resident: string, deps: LibraryDeps 
     const why: Record<string, string> = { unloaded: "its chunk is not loaded", no_level: "its dimension is not loaded", invalid: "a book there could not be read", too_large: "a book there could not be read" };
     return `seen there by the server ${ago(copy.seen_at, at)}${unknown ? `; it could not look since (${why[copy.check_status!] ?? copy.check_status}), so that is the latest known` : ""}`;
   };
-  const excerpt = (book: BookRow, words: string[]): string => {
+  const excerpt = (book: BookRow): string => {
     if (book.text === null) return "(its pages have not been read yet)";
-    const lower = book.text.toLowerCase();
-    const hit = words.map(word => lower.indexOf(word)).filter(index => index >= 0).sort((a, b) => a - b)[0];
-    let start = hit === undefined ? 0 : Math.max(0, hit - 60);
-    // Begin at a word: the first space after the cut, when it comes before the match.
-    const space = book.text.slice(start, hit).search(/\s/);
-    if (start > 0 && space >= 0) start += space + 1;
-    const piece = book.text.slice(start, start + 150).replace(/\s+/g, " ").trim();
-    return `"${start > 0 ? "…" : ""}${piece}${start + 150 < book.text.length ? "…" : ""}"`;
+    const prose = book.text.replace(/\s+/g, " ").trim();
+    // A fixed opening leaves some text at the shelf, even for short books or repeated searches.
+    let end = Math.min(150, Math.floor(prose.length / 2));
+    if (end > 0 && /[\uD800-\uDBFF]/.test(prose[end - 1]!)) end--;
+    return end > 0 ? `"${prose.slice(0, end).trimEnd()}…"` : "(no excerpt)";
   };
   const subjectsOf = (book: BookRow) => JSON.parse(book.subjects_json) as string[];
   const toRead = (id: number) => `To read it, stand within ${READING_RADIUS} blocks of a copy on a shelf or lectern and use read_book {id: ${id}}.`;
@@ -445,7 +442,7 @@ export function createLibrary(db: Database, resident: string, deps: LibraryDeps 
             : ["No copy is known to stand anywhere now."]),
           ...gone.slice(0, 3).map(copy => `  was at ${placeText(copy)}; ${copyState(copy, at)}`),
           ...(others.length ? [`Other editions of the same text: ${others.slice(0, 4).map(edition => `#${edition.id}${generation(edition)}`).join(", ")}.`] : []),
-          `Opening: ${excerpt(book, [])}`,
+          `Opening: ${excerpt(book)}`,
           toRead(book.id),
           "History (newest first):",
           ...history.map(o => `${stamp(o.at)} ${HISTORY[o.kind]?.replace("%s", o.observer) ?? o.kind}${o.x === null ? "" : ` at ${o.x},${o.y},${o.z}`}${o.slot === null ? "" : ` slot ${o.slot}`}${o.note ? `: ${o.note}` : ""}`),
@@ -492,7 +489,7 @@ export function createLibrary(db: Database, resident: string, deps: LibraryDeps 
         }
         const rest = group.here.slice(1);
         if (rest.length) lines.push(`  also: ${rest.slice(0, 3).map(copy => `#${copy.book_id} at ${coords(copy)}${near ? distanceFrom(near, copy) : copy.dimension === "minecraft:overworld" ? "" : ` ${copy.dimension}`}`).join("; ")}${rest.length > 3 ? `; ${rest.length - 3} more` : ""}`);
-        lines.push(`  ${excerpt(book, words)}`);
+        lines.push(`  ${excerpt(book)}`);
       }
       if (texts.length > number * limit) lines.push(`More: page ${number + 1}.`);
       lines.push(`To read one, stand within ${READING_RADIUS} blocks of a copy and use read_book {id}; book_find {id} shows a book's copies and history.`);
