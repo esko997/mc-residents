@@ -12,7 +12,7 @@ test("a real full state becomes what the page shows: vitals, what is held, and t
   expect(state).toMatchObject({ health: 2.7, maxHealth: 20, food: 14, gameMode: "survival", screen: null, selectedSlot: 0, dangers: [] });
   expect(state.held).toMatchObject({ item: "dirt", count: 46 });
   expect(state.lookingAt).toBe("birch_planks at 111,121,-207");
-  expect(state.air).toBeUndefined();
+  expect(state.air).toEqual({ now: 300, max: 300 });
   // 36 slots, the empty ones (minecraft:air, count 0) dropped; most numerous first; mod items keep their namespace.
   expect(state.inventory!.totalSlots).toBe(36);
   expect(state.inventory!.usedSlots).toBe(16);

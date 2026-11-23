@@ -1,5 +1,8 @@
 # Private resident video transport. Only Commons may negotiate viewers or publish.
 # The sole LAN listener is encrypted WebRTC media; signaling stays behind Commons.
+# OBS may pull the loopback RTSP resident path while Commons holds a live lease.
+# No lease means no publisher. Keep this loopback default; a LAN OBS deployment
+# requires a separate explicit listener and source-IP read allowlist.
 logLevel: info
 logDestinations: [stdout]
 readTimeout: 5s

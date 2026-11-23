@@ -14,13 +14,17 @@ export interface ResidentConfig {
   clientUnit: string;
   /** Its client's log; the `[CHAT]` lines in it are what the resident saw in game. */
   clientLog: string;
+  /** Dedicated launcher-owned Pulse null sink; never a speaker or microphone. */
+  audioSink?: string;
 }
 export interface UnitConfig { unit: string; resident?: string }
 
 export interface LiveConfig {
   enabled: boolean;
   ffmpeg: string;
-  encoder: "h264_nvenc" | "libx264";
+  encoder: "h264_nvenc" | "h264_vaapi" | "libx264";
+  vaapiDevice?: string;
+  audio?: boolean;
   rtspUrl: string;
   whepUrl: string;
 }
@@ -47,7 +51,7 @@ export interface Config {
   consoleUrl?: string;
   /** Optional read-only server observations, independent of each client's controls. */
   observer?: ObserverSource;
-  /** On-demand, video-only framebuffer streaming; absent means disabled. */
+  /** On-demand framebuffer streaming, with dedicated resident audio opt-in. */
   live?: LiveConfig;
   /** Make every proposed shared note visible to residents at once; review comes afterwards. */
   autoAccept: boolean;
@@ -88,28 +92,45 @@ export function parseEnvFile(text: string): Record<string, string> {
 
 const real = (path: string) => { try { return realpathSync(path); } catch { return path; } };
 
+/** Restricted namespace reserved for launcher-created null sinks. */
+export function residentAudioSink(value: string | undefined): string | undefined {
+  if (value === undefined || value === "") return undefined;
+  if (!/^resident_[A-Za-z0-9_]{1,48}$/.test(value)) {
+    throw new Error("GARY_CLIENT_AUDIO_SINK must be a dedicated resident_ name containing only letters, digits and underscores.");
+  }
+  return value;
+}
+
 function residents(home: string, env: Record<string, string | undefined>): ResidentConfig[] {
   const sharedToken = env.SYNAPSE_TOKEN_FILE ? [expandHome(env.SYNAPSE_TOKEN_FILE)] : [];
   const unit = (name: string) => (env.COMMONS_CLIENT_UNIT ?? "gary-client@%s").replace("%s", name);
-  const make = (name: string, gameDir: string, synapseUrl: string): ResidentConfig => ({
+  const make = (name: string, gameDir: string, synapseUrl: string, sink?: string): ResidentConfig => ({
     name, dir: join(home, "resident", name.toLowerCase()), synapseUrl: synapseUrl.replace(/\/$/, ""),
     // The mod mirrors its token to ~/.synapse/token (what synapse.sh reads); the game directory is the fallback.
     tokenFiles: [...sharedToken, join(homedir(), ".synapse", "token"), join(gameDir, "config", "synapse", "token")],
     clientUnit: unit(name), clientLog: join(gameDir, "logs", "latest.log"),
+    audioSink: residentAudioSink(sink),
   });
   const found = env.COMMONS_ROLE === "station" && !existsSync(join(home, "resident", "gary"))
-    ? [] : [make("Gary", join(home, "game"), env.GARY_SYNAPSE_URL ?? "http://127.0.0.1:25599")];
+    ? [] : [make("Gary", join(home, "game"), env.GARY_SYNAPSE_URL ?? "http://127.0.0.1:25599", env.GARY_CLIENT_AUDIO_SINK)];
   let files: string[] = [];
   try { files = readdirSync(join(home, "instances")).filter(file => file.endsWith(".env")).sort(); } catch { /* no other residents */ }
   for (const file of files) {
     const name = basename(file, ".env");
-    if (!/^\w{1,16}$/.test(name) || name.toLowerCase() === "gary") continue;
+    if (!/^\w{1,16}$/.test(name)) continue;
     let values: Record<string, string> = {};
     try { values = parseEnvFile(readFileSync(join(home, "instances", file), "utf8")); } catch { continue; }
-    const resident = make(name, values.GAME_DIR ?? join(home, `game-${name}`), values.SYNAPSE_URL ?? "http://127.0.0.1:25599");
+    if (name.toLowerCase() === "gary") {
+      const gary = found.find(resident => resident.name === "Gary");
+      if (gary) gary.audioSink = residentAudioSink(env.GARY_CLIENT_AUDIO_SINK ?? values.GARY_CLIENT_AUDIO_SINK);
+      continue;
+    }
+    const resident = make(name, values.GAME_DIR ?? join(home, `game-${name}`), values.SYNAPSE_URL ?? "http://127.0.0.1:25599", values.GARY_CLIENT_AUDIO_SINK);
     // A test client has an instance file but no life of its own: no notes, nothing to watch.
     if (existsSync(resident.dir)) found.push(resident);
   }
+  const sinks = found.flatMap(resident => resident.audioSink ? [resident.audioSink] : []);
+  if (new Set(sinks).size !== sinks.length) throw new Error("Each resident audio sink must be dedicated to exactly one resident.");
   return found;
 }
 
@@ -127,13 +148,20 @@ function liveConfig(env: Record<string, string | undefined>): LiveConfig {
     return url.href;
   };
   const encoder = env.COMMONS_LIVE_ENCODER ?? "h264_nvenc";
-  if (encoder !== "h264_nvenc" && encoder !== "libx264") {
-    throw new Error("COMMONS_LIVE_ENCODER must be h264_nvenc (production) or libx264 (explicit isolated tests).");
+  if (encoder !== "h264_nvenc" && encoder !== "h264_vaapi" && encoder !== "libx264") {
+    throw new Error("COMMONS_LIVE_ENCODER must explicitly select h264_nvenc, h264_vaapi or libx264; no fallback is used.");
+  }
+  const vaapiDevice = env.COMMONS_LIVE_VAAPI_DEVICE;
+  if ((encoder === "h264_vaapi" && !vaapiDevice) || (vaapiDevice !== undefined && !/^\/dev\/dri\/renderD[0-9]{3,4}$/.test(vaapiDevice))) {
+    throw new Error("COMMONS_LIVE_VAAPI_DEVICE must name a DRM render node for h264_vaapi.");
+  }
+  if (env.COMMONS_LIVE_AUDIO !== undefined && !["true", "false"].includes(env.COMMONS_LIVE_AUDIO)) {
+    throw new Error("COMMONS_LIVE_AUDIO must be true or false (default false).");
   }
   const ffmpeg = env.COMMONS_LIVE_FFMPEG ?? "ffmpeg";
   if (!ffmpeg.trim() || ffmpeg.includes("\0")) throw new Error("COMMONS_LIVE_FFMPEG must name an executable.");
   return {
-    enabled: env.COMMONS_LIVE_ENABLED === "true", ffmpeg, encoder,
+    enabled: env.COMMONS_LIVE_ENABLED === "true", ffmpeg, encoder, vaapiDevice, audio: env.COMMONS_LIVE_AUDIO === "true",
     rtspUrl: endpoint("COMMONS_LIVE_RTSP_URL", "rtsp://127.0.0.1:8554/resident", "rtsp:"),
     whepUrl: endpoint("COMMONS_LIVE_WHEP_URL", "http://127.0.0.1:8889/resident/whep", "http:"),
   };

@@ -130,7 +130,7 @@ function residentInfo(resident, observer) {
     <div class="vitals">
       <span class="label">Health</span>${pips("health", s.health, s.maxHealth)}<span class="data">${s.health} / ${s.maxHealth}</span>
       <span class="label">Food</span>${pips("food", s.food, 20)}<span class="data">${s.food} / 20</span>
-      ${s.air ? html`<span class="label">Air</span>${pips("air", s.air.now, s.air.max)}<span class="data">${s.air.now} / ${s.air.max}</span>` : ""}
+      ${s.air && s.air.now < s.air.max ? html`<span class="label">Air</span>${pips("air", s.air.now, s.air.max)}<span class="data">${s.air.now} / ${s.air.max}</span>` : ""}
     </div>
     ${s.dangers.length ? html`<p class="bad">Right now: ${s.dangers.join(", ")}.</p>` : ""}
     <dl class="facts">

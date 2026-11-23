@@ -2,9 +2,11 @@
 // No source request or encoder exists until watch(); errors never restart automatically.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, readFile, stat } from "node:fs/promises";
 import type { Readable, Writable } from "node:stream";
 import type { Config, LiveConfig, ResidentConfig } from "./config.ts";
+import { buildEncoderArgs } from "./live-encoder.ts";
 
 const TTL = 30_000, HEARTBEAT = 10_000, START_TIMEOUT = 15_000, IO_TIMEOUT = 5_000;
 // JSON may encode each SDP character as six-byte \\uXXXX; the decoded SDP still
@@ -18,7 +20,8 @@ export interface LiveStatus {
   generation: number;
   viewers: number;
   detail: string;
-  videoOnly: true;
+  videoOnly: boolean;
+  audio: boolean;
 }
 export interface EncoderProcess {
   input: Writable;
@@ -128,15 +131,17 @@ export class LiveStream {
     this.spawnEncoder = dependencies.spawn ?? nativeSpawn;
     this.now = dependencies.now ?? Date.now;
     this.state = this.source?.enabled ? "idle" : "disabled";
-    this.detail = this.source?.enabled ? "Press Watch to start video. One shared channel; video only." : "Live video is disabled by the operator.";
+    this.detail = this.source?.enabled ? "Press Watch to start the shared channel. Audio requires a dedicated resident sink and operator opt-in." : "Live video is disabled by the operator.";
   }
 
   status(): LiveStatus {
     this.expire();
+    const audio = this.source?.audio === true && !!this.channel?.resident.audioSink
+      && (this.state === "starting" || this.state === "live");
     return {
       enabled: this.source?.enabled === true, state: this.state,
       resident: this.state === "idle" || this.state === "disabled" ? null : this.channel?.resident.name ?? null,
-      generation: this.generation, viewers: this.channel?.leases.size ?? 0, detail: this.detail, videoOnly: true,
+      generation: this.generation, viewers: this.channel?.leases.size ?? 0, detail: this.detail, videoOnly: !audio, audio,
     };
   }
 
@@ -303,7 +308,23 @@ export class LiveStream {
       // Never overlap publishers, including when a previous SIGKILL failed to reap.
       await previous;
       this.assertCurrent(channel);
-      startup = setTimeout(() => this.fail(channel, new LiveError(504, "The publisher did not become ready. Check NVENC support and MediaMTX.")), START_TIMEOUT);
+      const source = this.source!;
+      const setup = `${source.encoder}${source.audio ? " with dedicated Pulse monitor audio and Opus" : " (video only)"}`;
+      startup = setTimeout(() => this.fail(channel, new LiveError(504, `The publisher did not become ready. Check ${setup} and MediaMTX; no software fallback is used.`)), START_TIMEOUT);
+      if (source.audio && !channel.resident.audioSink) throw new LiveError(503, "Resident audio is enabled but this resident has no dedicated launcher-owned Pulse sink. Configure it or explicitly disable audio.");
+      if (source.encoder === "h264_vaapi") {
+        try {
+          if (!/^\/dev\/dri\/renderD[0-9]{3,4}$/.test(source.vaapiDevice ?? "")) throw new Error();
+          const device = source.vaapiDevice!;
+          const metadata = await bounded(stat(device), IO_TIMEOUT, channel.abort.signal);
+          if (!metadata.isCharacterDevice()) throw new Error();
+          await bounded(access(device, constants.R_OK | constants.W_OK), IO_TIMEOUT, channel.abort.signal);
+        } catch {
+          this.assertCurrent(channel);
+          throw new LiveError(503, "h264_vaapi setup requires an accessible read/write DRM render character device; no software fallback is used.");
+        }
+        this.assertCurrent(channel);
+      }
       let secret: string | undefined;
       for (const file of channel.resident.tokenFiles) {
         try { secret = (await bounded(readFile(file, "utf8"), IO_TIMEOUT, channel.abort.signal)).trim(); } catch { /* next configured file */ }
@@ -336,19 +357,9 @@ export class LiveStream {
       }
       channel.reader = raw.body.getReader();
       this.assertCurrent(channel);
-      const source = this.source!;
-      // 15 fps describes the source ceiling, not its actual render cadence. Clock
-      // packet arrivals, normalize the first PTS, and retain variable intervals:
-      // never manufacture missing frames or catch up from a frame-count timeline.
-      const args = ["-hide_banner", "-loglevel", "warning", "-nostdin", "-nostats", "-stats_period", "0.2", "-progress", "pipe:1",
-        "-filter_threads", "1", "-thread_queue_size", "2",
-        "-use_wallclock_as_timestamps", "1",
-        "-f", "rawvideo", "-pixel_format", "bgra", "-video_size", `${width}x${height}`, "-framerate", "15", "-i", "pipe:0",
-        "-an", "-vf", "vflip,pad=ceil(iw/2)*2:ceil(ih/2)*2,setpts=PTS-STARTPTS",
-        "-fps_mode", "vfr", "-enc_time_base", "1:90000", "-c:v", source.encoder, "-threads", "1",
-        ...(source.encoder === "h264_nvenc" ? ["-preset", "p1", "-tune", "ull", "-rc-lookahead", "0", "-zerolatency", "1", "-surfaces", "4", "-delay", "0"] : ["-preset", "ultrafast", "-tune", "zerolatency"]),
-        "-profile:v", "baseline", "-pix_fmt", "yuv420p", "-bf", "0", "-g", "15", "-b:v", "2M", "-maxrate", "2M", "-bufsize", "1M",
-        "-flush_packets", "1", "-f", "rtsp", "-rtsp_transport", "tcp", source.rtspUrl];
+      // Preserve the actual arrival cadence; never manufacture missing frames.
+      // Both audio/video use one epoch, rather than independently zeroing PTS.
+      const args = buildEncoderArgs(source, { width, height }, { audioSink: channel.resident.audioSink, epochMs: Date.now() });
       const encoder = channel.process = this.spawnEncoder(source.ffmpeg, args);
       let progress = "", errorTail = "";
       encoder.progress.on("data", (chunk: Buffer) => {
@@ -358,7 +369,7 @@ export class LiveStream {
         if (lines.some(line => /^frame=\s*[1-9]\d*\s*$/.test(line)) && !channel.abort.signal.aborted) {
           clearTimeout(startup);
           this.state = "live";
-          this.detail = "Live framebuffer video. One shared channel; no audio or recording.";
+          this.detail = `Live framebuffer via ${setup}. One shared channel; no recording.`;
           channel.ready.resolve();
         }
       });
@@ -366,12 +377,13 @@ export class LiveStream {
         // Never expose stderr, URLs, paths or arbitrary encoder output to the browser/journal.
         errorTail = (errorTail + chunk.toString().slice(-4096).replace(/\S+:\/\/\S+/g, "[endpoint]")).slice(-4096);
       });
-      encoder.input.on("error", () => this.fail(channel, new LiveError(502, "The encoder stopped accepting frames. Check FFmpeg and NVENC support.")));
+      encoder.input.on("error", () => this.fail(channel, new LiveError(502, `The encoder stopped accepting frames. Check ${setup}; no software fallback is used.`)));
       encoder.progress.on("error", () => this.fail(channel, new LiveError(502, "The encoder progress pipe failed.")));
       encoder.errors.on("error", () => {});
       void encoder.exited.then(() => this.fail(channel, new LiveError(502,
-        /nvenc|cuda|nvidia|libcuda/i.test(errorTail) ? "NVENC encoder failed. Check FFmpeg NVENC support and the NVIDIA driver; no software fallback was used."
-          : "The video encoder exited. Check FFmpeg and the MediaMTX RTSP publisher configuration.")));
+        source.audio && /pulse|monitor|libopus|audio|opus/i.test(errorTail)
+          ? `Resident audio setup failed with ${source.encoder}. Check the dedicated Pulse null sink, monitor capture and FFmpeg Opus support; no software fallback was used.`
+          : `${source.encoder} encoder failed. Check its FFmpeg support, hardware/driver access and MediaMTX${source.audio ? ", plus dedicated Pulse monitor audio and Opus" : ""}; no software fallback was used.`)));
       // One HTTP chunk held at a time, at most two frames. Writes are <=64 KiB and
       // await the writable callback: no frame accumulation or unbounded stdin queue.
       const maxChunk = Math.max(65_536, width * height * 8);
@@ -386,7 +398,8 @@ export class LiveStream {
         }
       }
     } catch (error) {
-      this.fail(channel, error instanceof LiveError ? error : new LiveError(502, "Unable to stream video. Check Synapse video settings, FFmpeg and MediaMTX."));
+      this.fail(channel, error instanceof LiveError ? error : new LiveError(502,
+        `Unable to stream with ${this.source!.encoder}${this.source!.audio ? " and dedicated Pulse monitor audio/Opus" : " (video only)"}. Check source, encoder setup and MediaMTX; no software fallback was used.`));
     } finally {
       clearTimeout(startup);
       this.cancel(channel);

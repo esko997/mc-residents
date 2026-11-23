@@ -1,0 +1,46 @@
+{
+  "environment": {
+    "date": "2026-11-23",
+    "gpu": "Bazzite AMD Radeon 8060S",
+    "renderNode": "/dev/dri/renderD128",
+    "relay": "MediaMTX 1.21.4",
+    "video": "854x480 BGRA source, 15fps ceiling, H.264",
+    "audio": "Dedicated PipeWire Pulse null sink monitor, Opus 48kHz stereo",
+    "content": "Synthetic synchronized flash and beep; not Minecraft gameplay"
+  },
+  "runs": [
+    {
+      "encoder": "libx264",
+      "clipSeconds": 185.063,
+      "markers": 37,
+      "spanSeconds": 180,
+      "audioLagMedianMs": 336.85400000000243,
+      "firstToLastDriftMs": -5.99999999998424,
+      "driftMsPerMinute": -0.597439544801242,
+      "encoderCpuPercentOneCore": 6.173728906062392,
+      "encoderPeakRssMiB": 78.93359375,
+      "relayPeakRssMiB": 45.66796875,
+      "firstBrowserFrameMs": 701.8
+    },
+    {
+      "encoder": "h264_vaapi",
+      "clipSeconds": 185.051,
+      "markers": 37,
+      "spanSeconds": 180,
+      "audioLagMedianMs": 329.18699999999745,
+      "firstToLastDriftMs": -4.000000000010218,
+      "driftMsPerMinute": -0.3983442389790812,
+      "encoderCpuPercentOneCore": 5.441957099331034,
+      "encoderPeakRssMiB": 110.4140625,
+      "relayPeakRssMiB": 45.54296875,
+      "firstBrowserFrameMs": 643.7
+    }
+  ],
+  "caveats": [
+    "CPU sampled from /proc at one-second intervals; one core = 100%; low-complexity synthetic content is not a Minecraft performance benchmark.",
+    "Peak RSS is encoder process RSS, not total pipeline memory or GPU allocations.",
+    "Video marker quantization is roughly 67ms. Stable drift does not remove the ~330ms fixed fixture offset.",
+    "First browser frame timing starts before pressing Watch on an already-publishing channel; not cold startup or glass-to-glass latency.",
+    "No OBS application or Twitch transmission verified."
+  ]
+}
