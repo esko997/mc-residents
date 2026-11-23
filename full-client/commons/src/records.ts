@@ -130,11 +130,13 @@ export function createRecords(db: Database, resident: string, deps: RecordsDeps 
           .map(row => ({ at: row.updated_at, text: `${stamp(row.updated_at)} ${row.author} saved shared place "${row.name}" at ${row.place.x},${row.place.y},${row.place.z} ${row.place.dimension}${row.place.note ? `: ${row.place.note.slice(0, 80)}` : ""} [hub]` }));
       },
       books() {
-        return db.query<{ id: number; title: string; author: string; registrant: string; x: number; y: number; z: number; dimension: string; kind: string; observer: string; at: number; note: string }, [number, number]>(
-          `SELECT b.id, b.title, b.author, b.registrant, b.x, b.y, b.z, b.dimension, o.kind, o.observer, o.at, o.note FROM library_observations o JOIN library_books b ON b.id = o.book_id
+        // Where it was at the time: the observation's own place (registered, moved), else where it is listed now.
+        return db.query<{ id: number; title: string; author: string; x: number; y: number; z: number; dimension: string; kind: string; observer: string; at: number }, [number, number]>(
+          `SELECT b.id, b.title, b.author, COALESCE(o.x, b.x) AS x, COALESCE(o.y, b.y) AS y, COALESCE(o.z, b.z) AS z, COALESCE(o.dimension, b.dimension) AS dimension,
+             o.kind, o.observer, o.at FROM library_observations o JOIN library_books b ON b.id = o.book_id
            WHERE o.kind IN ('registered', 'moved', 'withdrawn') AND o.at >= ? AND o.at < ? ORDER BY o.at`).all(since, until)
           .filter(row => (!who || sameName(row.observer, who) || sameName(row.author, who)) && inArea(row.x, row.z, row.dimension))
-          .map(row => ({ at: row.at, text: `${stamp(row.at)} ${row.observer} ${row.kind === "registered" ? "catalogued" : row.kind === "moved" ? "found elsewhere" : "withdrew"} book #${row.id} "${row.title}" by ${row.author}${row.kind === "withdrawn" ? "" : ` (now listed at ${row.x},${row.y},${row.z})`} [hub]` }));
+          .map(row => ({ at: row.at, text: `${stamp(row.at)} ${row.observer} ${row.kind === "registered" ? "catalogued" : row.kind === "moved" ? "found elsewhere" : "withdrew"} book #${row.id} "${row.title}" by ${row.author}${row.kind === "withdrawn" ? "" : ` at ${row.x},${row.y},${row.z}`} [hub]` }));
       },
       sessions() {
         const rows = presence();

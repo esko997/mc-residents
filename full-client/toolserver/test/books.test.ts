@@ -95,6 +95,42 @@ test("read_book reads a page longer than one reply in parts, each bounded, with 
   expect(parts.join("")).toBe(long);
 });
 
+test("read_book loses no text when a full event tail shares the reply: following the handles rebuilds the book", async () => {
+  // Pages as the editor holds them (about 260 characters) and one long page written by a command.
+  const pages = [...Array.from({ length: 9 }, (_, i) => `${i + 1}: ${"river mill wheel flour ".repeat(11)}`.trim()), "z".repeat(3000), "the end"];
+  const f = await body([written(0)], { books: { 0: { kind: "written", title: "Ledger", author: "Server", generation: 0, pages } } });
+  const read: Record<number, string> = {};
+  let args: Record<string, unknown> = { from: 0 };
+  for (let guard = 0; guard < 60; guard++) {
+    // Before every call: more news than the tail can hold (eight long chat lines).
+    for (let i = 0; i < 12; i++) f.body.events.add("chat", { text: `<Piper> ${"so much to say about the weather today ".repeat(7)}${guard}.${i}` });
+    const reply = text(await f.tools.call("read_book", args));
+    expect(reply.length).toBeLessThanOrEqual(1499);
+    expect(reply).not.toContain("remaining output omitted");
+    expect(reply).toContain("Since last time:");
+    const body = reply.split("\n\nSince last time:")[0]!;
+    for (const [, page, part, content] of body.matchAll(/— page (\d+)(?:, part (\d+) of \d+)? —\n([\s\S]*?)(?=\n— page |$)/g)) {
+      read[Number(page)] = (part && Number(part) > 1 ? read[Number(page)] ?? "" : "") + content;
+    }
+    const next = /Continue: read_book \{from: 0, page: (\d+)(?:, part: (\d+))?\}/.exec(body);
+    if (!next) break;
+    args = { from: 0, page: Number(next[1]), ...(next[2] ? { part: Number(next[2]) } : {}) };
+  }
+  expect(Object.keys(read).map(Number)).toEqual(pages.map((_, i) => i + 1));
+  pages.forEach((page, i) => expect(read[i + 1]).toBe(page));
+});
+
+test("use says where a book taken from a chiseled bookshelf went when the hand stays empty", async () => {
+  // Live on 2026-11-23: the book went to H0 while H1 was selected, and use said nothing changed.
+  const f = await body([written(2)], { onUse: state => { state.inventory!.main.push(written(0)); state.hotbar = state.inventory!.main.filter(stack => stack.slot < 9); } });
+  f.state.selectedSlot = 1;
+  f.state.lookingAt = { type: "block", block: "minecraft:chiseled_bookshelf", blockPos: [5, 64, 5] };
+  expect(text(await f.tools.call("use", {}))).toContain("no screen opened. H0 now holds 1 x minecraft:written_book.");
+  const hand = await body([], { onUse: state => { state.inventory!.main.push(written(0)); state.hotbar = state.inventory!.main.filter(stack => stack.slot < 9); } });
+  hand.state.lookingAt = { type: "block", block: "minecraft:chiseled_bookshelf", blockPos: [5, 64, 5] };
+  expect(text(await hand.tools.call("use", {}))).toContain("no screen opened. Your hand now holds 1 x minecraft:written_book.");
+});
+
 test("the catalogue through the body: text read from the item, place from the sights, reports by a neighbour", async () => {
   const db = new Database(":memory:"); databases.push(db);
   db.exec(readFileSync(schemaFile, "utf8"));

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ConsoleLine } from "../src/console.ts";
 import type { ObserverReach } from "../src/observer.ts";
+import { createLibrary } from "../src/library.ts";
 import { createRecords } from "../src/records.ts";
 import { RecordsIngest } from "../src/records-ingest.ts";
 import { createSocietyStore } from "../src/resident-society.ts";
@@ -142,4 +143,17 @@ test("ingest keeps resident events from the bridge and records a restart as a ga
   expect(paths.at(-1)).toContain("after=0");
   expect(db.query("SELECT COUNT(*) AS n FROM history_server_events").get()).toEqual({ n: 3 });
   expect(db.query("SELECT kind FROM server_ingest_gaps").all()).toEqual([{ kind: "server_events" }]);
+});
+
+test("books: each catalogue line gives the place at that time, not where the book is listed now", async () => {
+  const db = database();
+  let clock = T - hour;
+  const library = createLibrary(db, "Tobin", { now: () => clock });
+  const book = { kind: "written" as const, title: "Mill Notes", author: "Tobin", generation: 0, pages: ["The wheel turns."] };
+  await library.register({ book, read_from: "lectern", at: { x: 10, y: 64, z: 20, dimension: "minecraft:overworld" } });
+  clock += minute;
+  await library.report({ id: 1, kind: "found", at: { x: 12, y: 64, z: 20, dimension: "minecraft:overworld" } });
+  const books = createRecords(db, "Tobin", { now: () => T })({ kind: "books" });
+  expect(books).toContain('Tobin catalogued book #1 "Mill Notes" by Tobin at 10,64,20 [hub]');
+  expect(books).toContain('Tobin found elsewhere book #1 "Mill Notes" by Tobin at 12,64,20 [hub]');
 });

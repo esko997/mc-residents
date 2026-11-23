@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Body, mineCounted } from "./body.ts";
-import { hostileEntity, nonempty, playerEntity, unseenSights, type AttackHoldState, type Stack } from "./synapse.ts";
+import { hostileEntity, nonempty, playerEntity, unseenSights, type AttackHoldState, type Stack, type State } from "./synapse.ts";
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 import { craft } from "./craft.ts";
 import { createNotes, notesDefinitions, type Notes } from "./notes.ts";
@@ -197,15 +197,18 @@ export class Tools {
     return (Object.keys(definitions) as ToolName[]).filter(n => this.knowledge || !knowledgeNames.includes(n));
   }
   async call(name: string, args: unknown = {}, signal?: AbortSignal): Promise<CallToolResult> {
-    const reply = await this.run(name, args, signal);
+    // A paged reader takes the event tail first and pages within what is left, so the cut below never drops text
+    // its continuation handle has already passed; events that arrive during the call show in the next result.
+    const early = name === "read_book" ? this.body.events.consume() : undefined;
+    const reply = await this.run(name, args, signal, undefined, early === undefined ? undefined : 1499 - early.length - 2);
     let text = reply.text;
-    const events = this.body.events.consume();
+    const events = early ?? this.body.events.consume();
     const budget = 1499 - events.length - 2;
     if (text.length > budget) text = text.slice(0, budget - 28) + "\n… remaining output omitted.";
     return { isError: reply.isError, content: [...(reply.image ? [{ type: "image" as const, data: reply.image, mimeType: "image/png" }] : []), { type: "text", text: `${text}\n\n${events}` }] };
   }
   /** One tool call without the event tail; errors come back as text. `skill` is set when skill code makes the call. */
-  async run(name: string, args: unknown, signal?: AbortSignal, skill?: SkillRun): Promise<ToolReply & { image?: string }> {
+  async run(name: string, args: unknown, signal?: AbortSignal, skill?: SkillRun, budget?: number): Promise<ToolReply & { image?: string }> {
     let text: string;
     let image: string | undefined;
     let isError = false;
@@ -221,7 +224,7 @@ export class Tools {
       const parsed = definitions[name as ToolName].schema.parse(args);
       // The runtime-selected schema and its tool name are a correlated pair.
       const command = [name, parsed] as Command;
-      const run = () => this.execute(command, signal, skill);
+      const run = () => this.execute(command, signal, skill, budget);
       const onScreen = screenTools.includes(name);
       if (onScreen) this.body.screenTouched();
       const value = await (takeoverTools.includes(name) ? this.body.manualAction(run) : run()).finally(() => { if (onScreen) this.body.screenTouched(); });
@@ -249,7 +252,7 @@ export class Tools {
     }
     return { text, image, isError };
   }
-  private async execute(command: Command, signal?: AbortSignal, skill?: SkillRun): Promise<string | { text: string; image?: string; isError?: boolean }> {
+  private async execute(command: Command, signal?: AbortSignal, skill?: SkillRun, budget?: number): Promise<string | { text: string; image?: string; isError?: boolean }> {
     const [tool, args] = command;
     const body = this.body, api = body.api;
     switch (tool) {
@@ -410,7 +413,8 @@ export class Tools {
         return holdReport(before, await api.state().catch(() => undefined), args.hold_ticks, hold);
       }
       case "use": {
-        const before = !args.hold_ticks ? await api.state() : undefined;
+        // Full state: what a use moves into other slots (a book taken from a chiseled bookshelf goes to the first free one).
+        const before = !args.hold_ticks ? await api.state(true) : undefined;
         const bucket = before && bucketKind(before.hotbar.find(s => s.slot === before.selectedSlot && nonempty(s))?.item);
         // Wren filled her bucket at a pond and boarded the chest boat in front of the water instead.
         if (before && bucket) await bucketGuard(body, before);
@@ -423,7 +427,7 @@ export class Tools {
         const target = at.type === "block" || at.type === "entity" ? sightsText(at) : "nothing in reach (air, or more than about 4.5 blocks away)";
         await Bun.sleep(300);
         // The use already happened; a failed read-back must not become an error.
-        const after = await api.state().catch(() => undefined);
+        const after = await api.state(true).catch(() => undefined);
         if (!after) return `Used ${held} on ${target} (screen read-back unavailable).`;
         const opened = after.screen !== "none" && after.screen !== before.screen;
         // A bucket acts on the fluid along the line, which the crosshair target ignores: say what it did.
@@ -435,8 +439,20 @@ export class Tools {
         const handBefore = before.hotbar.find(s => s.slot === before.selectedSlot), handAfter = after.hotbar.find(s => s.slot === before.selectedSlot);
         const countBefore = has(handBefore) ? handBefore.count : 0, countAfter = has(handAfter) ? handAfter.count : 0;
         if (has(handBefore) && has(handAfter) && handAfter.item !== handBefore.item) effects.push(`your hand now holds ${handAfter.item}`);
+        else if (!has(handBefore) && has(handAfter)) effects.push(`your hand now holds ${handAfter.count} x ${handAfter.item}`);
         else if (countAfter < countBefore) effects.push(`${countBefore - countAfter} ${held} used up, ${countAfter} left`);
         if (!opened && sightsText(after.lookingAt) !== sightsText(at)) effects.push(`now in your sights: ${sightsText(after.lookingAt)}`);
+        // Live, taking a book from a chiseled bookshelf put it in H0 while the hand stayed empty, and the reply said nothing changed.
+        const stacks = (state: State) => new Map<number, Stack>([...(state.inventory?.main ?? state.hotbar), ...(state.inventory ? [{ ...state.inventory.offhand, slot: 40 }] : [])]
+          .filter(nonempty).map(stack => [stack.slot, stack]));
+        const was = stacks(before), now = stacks(after), slotLabel = (slot: number) => slot === 40 ? "your offhand" : slot < 9 ? `H${slot}` : `inventory slot ${slot}`;
+        const moved = [...new Set([...was.keys(), ...now.keys()])].sort((a, b) => a - b).filter(slot => slot !== before.selectedSlot)
+          .flatMap(slot => {
+            const old = was.get(slot), fresh = now.get(slot);
+            if (old?.item === fresh?.item && old?.count === fresh?.count) return [];
+            return [fresh ? `${slotLabel(slot)} now holds ${fresh.count} x ${fresh.item}${old ? ` (was ${old.count} x ${old.item})` : ""}` : `${slotLabel(slot)} is now empty (was ${old!.count} x ${old!.item})`];
+          });
+        effects.push(...moved.slice(0, 3), ...(moved.length > 3 ? [`${moved.length - 3} more slots changed`] : []));
         const result = opened ? `${after.screen} opened` : "no screen opened";
         const told = effects.join("; ");
         return `Used ${held} on ${target}; ${result}.${told ? ` ${told[0].toUpperCase()}${told.slice(1)}.` : opened ? "" : " Nothing your body can see changed."}`;
@@ -497,7 +513,7 @@ export class Tools {
       case "picture": return { text: "Client view.", image: await api.picture() };
       case "write_sign": return writeSign(body, args.lines, this.signWaitMs);
       case "write_book": return this.books.write(args);
-      case "read_book": return this.books.read(args);
+      case "read_book": return this.books.read(args, budget);
       case "book_register": return this.books.register(args);
       case "book_find": return this.books.find(args);
       case "book_report": return this.books.report(args);
