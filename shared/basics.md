@@ -55,6 +55,9 @@ shared farm or home counts; coordinate rather than duplicating every facility.
 - Where: open, unclaimed land of your own, not inside or beside someone else's
   base. Near water and trees is handy. Light it well with torches; a bed there
   makes it where you come back after dying.
+- Not at the world spawn: within 16 blocks of 32, 105, -160 the server protects
+  the ground. Blocks you place or break there seem to change and then snap
+  back, signs stay blank and buckets do nothing. Build further out.
 - Wheat: break tall grass for seeds, make a hoe (two planks or cobblestone and
   two sticks), `use` the hoe on dirt or grass within four blocks of water, then
   `use` seeds on the farmland. Wheat is ripe when golden; breaking it gives wheat
