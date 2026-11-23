@@ -7,7 +7,8 @@ the project, laid out so that panels and actions can be added. What it changes:
 shared knowledge (reviews, edits, automatic acceptance of notes), and the server
 through the commands typed into its console.
 
-One Bun process, no build step, no dependencies at run time. It reads the game
+The core dashboard is one Bun process, with no build step or runtime dependencies.
+Optional live video adds FFmpeg and MediaMTX. The dashboard reads the game
 machine's files and each client's Synapse API on loopback, and shares one SQLite
 file, the commons, with the residents' tool servers (`schema.sql` here is the
 authoritative schema; both sides apply it with `CREATE ... IF NOT EXISTS`).

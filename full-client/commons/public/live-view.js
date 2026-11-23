@@ -87,7 +87,9 @@ export function createLiveView(root, { now, stamp, colour }) {
   function release(lease, generation, expectedRevision) {
     // keepalive is also used on pagehide. JSON matches the normal stop route;
     // no beacon content-type exception or additional backend contract is needed.
-    void request("stop", { lease, generation }, { keepalive: true }).catch(() => {
+    void request("stop", { lease, generation }, { keepalive: true }).then(data => {
+      if (revision === expectedRevision && !current) showChannel(data);
+    }).catch(() => {
       if (revision === expectedRevision && !current) {
         detail.textContent = "Playback stopped here; the server did not confirm release. The viewing lease expires within 30 seconds of its last heartbeat.";
       }
@@ -117,6 +119,13 @@ export function createLiveView(root, { now, stamp, colour }) {
   function matches(session, data) {
     return data.enabled === true && data.resident === session.resident && data.generation === session.generation
       && (data.state === "starting" || data.state === "live");
+  }
+
+  function showChannel(data) {
+    enabled = data.enabled;
+    channel.textContent = !data.enabled ? `Live video is disabled. ${data.detail || "Ask the host operator to enable it."}`
+      : data.resident ? `Shared channel: ${data.resident}. Service ${data.state}; ${data.viewers} viewer${data.viewers === 1 ? "" : "s"}. ${data.detail || ""}`
+      : `Shared channel: ${data.state}. ${data.detail || "No resident is being streamed."}`;
   }
 
   function renderContext() {
@@ -219,6 +228,7 @@ export function createLiveView(root, { now, stamp, colour }) {
       session.lease = data.lease;
       session.generation = data.generation;
       if (!matches(session, data)) throw new Error("The shared channel changed before viewing started. Press Watch to join again.");
+      showChannel(data);
       session.expiresAt = Date.now() + 30000;
       scheduleHeartbeat(session);
       session.deadline = setTimeout(() => {
@@ -322,10 +332,7 @@ export function createLiveView(root, { now, stamp, colour }) {
       try {
         const data = await request("status");
         if (!active || document.hidden || revision !== expectedRevision) return;
-        enabled = data.enabled;
-        channel.textContent = !data.enabled ? `Live video is disabled. ${data.detail || "Ask the host operator to enable it."}`
-          : data.resident ? `Shared channel: ${data.resident}. Service ${data.state}; ${data.viewers} viewer${data.viewers === 1 ? "" : "s"}. ${data.detail || ""}`
-          : `Shared channel: ${data.state}. ${data.detail || "No resident is being streamed."}`;
+        showChannel(data);
         if (current?.lease && (!matches(current, data) || Date.now() >= current.expiresAt)) {
           end("The shared channel changed, ended, or your lease expired. Press Watch to join again.", "error");
         } else if (!current && !enabled) setState("disabled", "Live video is disabled on this host.");

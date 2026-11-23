@@ -19,7 +19,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Go/Pion enumerates local ICE interfaces through route netlink.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 
 [Install]
 WantedBy=default.target
