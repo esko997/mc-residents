@@ -2,6 +2,8 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Events, LogTail, pauseReply, procReply, setReply } from "./events.ts";
 import { angles, hostileEntity, nonempty, playerEntity, type Config, type Entity, type Position, type Stack, type State, Synapse } from "./synapse.ts";
+import { aimHeight, bestWeapon, closable, fightLimit, neutral, swingCooldown, type Weapon } from "./fight.ts";
+import { Hearing } from "./hearing.ts";
 import {
   effectiveTripSettings, modeText, sameTripSettings, stopReply, tripSetReply, tripSettingNames, tripSettings,
   tripSettingsSchema, type TripMode, type TripSettings,
@@ -107,6 +109,27 @@ interface Rescue {
   /** A surface rescue that began with that navigation still under way: he
    * comes up for air and the trip goes on, instead of making for the shore. */
   breath?: true;
+}
+/** The fight-back reflex at work (see Body.fightOn). Times are body clock. */
+interface Fight {
+  started: number; reason: string; origin: Position; healthBefore: number;
+  /** The mob being fought now; others met in the same fight stay in `foes`. */
+  target: number;
+  weapon?: Weapon; previousSlot: number; cooldown: number; nextSwing: number;
+  /** Baritone was paused for this fight (or a trip given during it), and is resumed when it ends. */
+  paused: boolean;
+  swings: number;
+  /** Every mob fought: its type, health when first and last seen, distance last seen, swings that landed on it
+   * (the client had it in the sights and Synapse hit it), and when the last one did. */
+  foes: Map<number, { type: string; firstHealth?: number; health?: number; distance: number; swings: number; lastSwing: number; end?: string }>;
+  /** When a hostile last hurt the body or was within a clear swing. */
+  lastThreat: number;
+  /** What stood in the sights instead of the mob at the last try, when a swing was not clear. */
+  blocked?: string;
+  /** Closing in on a mob that shoots: the least distance so far and when it was reached; `stuck` once that stopped improving. */
+  closing?: { best: number; bestAt: number; stuck?: string };
+  /** A step toward it under way. */
+  step?: Promise<void>;
 }
 const rescuePriority: Record<RescueKind, number> = { retreat: 1, fire: 2, surface: 3, lava: 4 };
 /** Rescues that keep the controls from the resident's own actions: only `stop` takes the body from them. */
@@ -244,7 +267,13 @@ export class Body {
   /** A hazard is present but a screen would not close; reported once per episode. */
   private rescueBlocked = false;
   private nextMeal = 0;
-  private combat?: { target: number; until: number; nextAttack: number; previousSlot: number };
+  private fight?: Fight;
+  /** Mob id -> body clock until which coming close starts no fight with it (a fight already gave up on it). */
+  private calm = new Map<number, number>();
+  /** Each entity's distance at the full read before the latest: a hostile that got closer is closing in. */
+  private lastDistances = new Map<number, number>();
+  /** Which chat lines end a wait (see Hearing). */
+  readonly hearing: Hearing;
   private fleeing = false;
   private fleeGeneration = 0;
   private crumbs: Position[] = [];
@@ -288,7 +317,11 @@ export class Body {
         this.navigation.lastMoved = this.now();
       }
       return false;
-    });
+    }, config.unseen);
+    this.hearing = new Hearing(config.name, config.residents ?? [], now);
+    // Earshot is judged by where the body last sensed the speaker (the players in its latest full state).
+    this.events.wakes = event => event.type !== "chat" || this.hearing.wakes(String(event.from), String(event.text),
+      [...this.players].find(([name]) => name.toLowerCase() === String(event.from).toLowerCase())?.[1].distance);
   }
   async start() {
     // Baritone writes every `#set` to its settings file. A tool server killed in the middle of a mine job that
@@ -425,8 +458,12 @@ export class Body {
       if (state.food < 7 && this.state.food >= 7) this.events.add("hungry", { food: state.food });
     } else if (state.food < 7) this.events.add("hungry", { food: state.food });
     this.state = { ...state, inventory: this.state?.inventory }; this.error = undefined;
-    if (this.now() - this.lastFull >= 1000 || hurt) {
+    // Near a hostile, and all through a fight, every poll reads the full state: a zombie walks a block or two in
+    // the second between full reads, so aim at where it was is no aim, and closing in needs two fresh reads.
+    const danger = this.fight !== undefined || this.entities.some(e => hostileEntity(e) && e.distance <= 8);
+    if (this.now() - this.lastFull >= (danger ? 0 : 1000) || hurt) {
       const full = await this.api.state(true);
+      this.lastDistances = new Map(this.entities.map(e => [e.id, e.distance]));
       this.lastFull = this.now(); this.fullReads++; this.entities = full.nearbyEntities ?? [];
       this.state = { ...state, inventory: full.inventory };
       const players = new Map<string, Entity>();
@@ -595,7 +632,7 @@ export class Body {
   private async checkNavigation(state: State) {
     const nav = this.navigation;
     if (!nav) return;
-    const held = this.combat || this.fleeing || this.rescue?.paused || this.eating?.paused;
+    const held = this.fight || this.fleeing || this.rescue?.paused || this.eating?.paused;
     if (nav.reported) {
       // A stall was reported, but Baritone may still be at work (a hard block outlasts the stall clock) and
       // walk on afterwards: the radius holds until Baritone says it has no job. Any other reported trip is
@@ -712,7 +749,9 @@ export class Body {
         await this.api.chat(avoidBreaking(relaxed ? "1" : this.kept)); this.lifted = relaxed;
       }
       await this.api.chat(command); sent = true;
-      if (this.combat || this.fleeing || this.rescue?.paused) await this.api.chat("#pause");
+      // A trip given during a fight waits for it, and is resumed when it ends.
+      if (this.fight) this.fight.paused = true;
+      if (this.fight || this.fleeing || this.rescue?.paused) await this.api.chat("#pause");
     } catch (error) {
       // A command that was not sent leaves Baritone at what it was doing: a mine job goes on being watched, with
       // its radius and its cost, unless the mode switch cancelled it. One that was sent is under way, and is
@@ -865,7 +904,8 @@ export class Body {
         const still = rescue.kind === "surface" ? `${state?.underwater === true ? "still under water, " : ""}${air}` : state?.inLava === true ? "still in lava" : "no longer in lava";
         await this.finishRescue(`ended by your stop; ${still}`, rescue.breath);
       } else if (rescue) await this.finishRescue("interrupted by your action", rescue.breath);
-      await this.finishCombat();
+      // The resident took over: the mobs of this fight start no new one just by staying close (being hurt still does).
+      await this.endFight("interrupted by your action", { calm: true });
       if (this.fleeing) {
         this.fleeGeneration++; this.fleeing = false;
         await this.api.player({ action: "release" }); await this.api.chat("#resume");
@@ -891,17 +931,175 @@ export class Body {
       return `Stopped navigation and released keys.${settings}`;
     }, { override: true });
   }
-  private async finishCombat(resume = true) {
-    const combat = this.combat;
-    if (!combat) return;
-    this.combat = undefined;
-    await this.api.player({ action: "release" });
-    await this.api.player({ action: "selectHotbar", slot: combat.previousSlot });
-    if (resume) {
-      await this.api.chat("#resume");
-      this.restartStallClock();
-      this.events.add("reflex", { text: "fight ended; navigation resumed" });
+  /** Starts the fight-back reflex, or fleeing, when the body was just hurt with a hostile close by, or when a
+   * hostile (not a creeper, not a neutral mob) comes within reach. Returns whether a reflex took the body. */
+  private async fightBack(state: State, hurt: boolean): Promise<boolean> {
+    const mode = this.reflexes.when_attacked, now = this.now();
+    if (mode === "nothing") return false;
+    for (const [id, until] of this.calm) if (until <= now) this.calm.delete(id);
+    // A mob a fight gave up on (out of reach, no clear swing, the cap) starts nothing more unless it hurts the
+    // body from within reach: live, a skeleton started a new fight every few seconds that could never reach it.
+    const near = this.entities.filter(e => hostileEntity(e) && e.distance <= fightLimit.notice && (!this.calm.has(e.id) || (hurt && e.distance <= fightLimit.reach)))
+      .sort((a, b) => a.distance - b.distance);
+    const weapon = bestWeapon(state.hotbar);
+    const able = mode === "fight" || (mode === "auto" && weapon !== undefined && state.health >= fightLimit.startHealth);
+    if (hurt && near.length) {
+      if (!able) {
+        if (this.eating) await this.releaseMeal(this.eating);
+        await this.startFlee(near[0]!, state, mode === "flee" ? "flee configured" : !weapon ? "no weapon" : "low health");
+        return true;
+      }
+      // Never a creeper: avoid_creepers backs away from a close or hissing one.
+      const foe = near.find(e => e.type !== "minecraft:creeper");
+      if (!foe) return false;
+      await this.startFight(foe, state, weapon, "you were just hurt");
+      return true;
     }
+    if (hurt || !able) return false;
+    // Within reach and closing: nearer than at the full read before, or already on top of him.
+    const foe = near.find(e => e.type !== "minecraft:creeper" && !neutral[e.type] && !this.calm.has(e.id) && e.distance <= fightLimit.reach
+      && (e.distance <= 2 || (this.lastDistances.get(e.id) ?? Infinity) - e.distance >= 0.2));
+    if (!foe) return false;
+    await this.startFight(foe, state, weapon, "it came within reach");
+    return true;
+  }
+  private async startFight(foe: Entity, state: State, weapon: Weapon | undefined, reason: string) {
+    if (this.eating) await this.releaseMeal(this.eating);
+    const nav = this.navigation, now = this.now();
+    // A trip Baritone may still be at: not yet reported, or a mine job, which outlives its stall report.
+    const paused = nav !== undefined && (!nav.reported || nav.limit !== undefined);
+    if (paused) await this.api.chat("#pause");
+    const switched = weapon !== undefined && weapon.slot !== state.selectedSlot;
+    if (switched) await this.api.player({ action: "selectHotbar", slot: weapon.slot });
+    const cooldown = swingCooldown(weapon);
+    const fight: Fight = {
+      started: now, reason, origin: { ...state.pos }, healthBefore: state.health, target: foe.id,
+      weapon, previousSlot: state.selectedSlot, cooldown,
+      // Changing the held item restarts the attack cooldown: a swing before it is over lands weak.
+      nextSwing: switched ? now + cooldown : now, paused, swings: 0, foes: new Map(), lastThreat: now,
+    };
+    this.meet(fight, foe);
+    this.fight = fight;
+    this.events.add("reflex", { text: `fighting back against ${foe.type} ${tenth(foe.distance)} blocks away (${reason}) with ${weapon ? `${weapon.item} in H${weapon.slot}` : "bare hands"}, health ${tenth(state.health)}${paused ? "; walk paused" : ""}` });
+  }
+  private meet(fight: Fight, mob: Entity) {
+    if (!fight.foes.has(mob.id)) fight.foes.set(mob.id, { type: mob.type, firstHealth: mob.health, health: mob.health, distance: mob.distance, swings: 0, lastSwing: -Infinity });
+  }
+  /**
+   * One poll of a fight, at the poller's rate (4 Hz, with a full state read each time). It swings only at the
+   * hostile chosen, only when the client has it in the crosshair, and only once the weapon's attack cooldown is
+   * over; it never moves except to close in on a mob that shoots (see `closeIn`). It hands over to fleeing at low
+   * health, and ends when no hostile was within a clear swing for 2 s, or at 20 s.
+   */
+  private async fightOn(state: State, hurt: boolean) {
+    const fight = this.fight!, now = this.now(), mode = this.reflexes.when_attacked;
+    for (const [id, foe] of fight.foes) {
+      if (foe.end) continue;
+      const seen = this.entities.find(e => e.id === id);
+      if (seen) { foe.health = seen.health ?? foe.health; foe.distance = seen.distance; }
+      // Dead when its health reads 0, or gone within 2 s of a swing that landed (its drops lie where it fell).
+      if (!seen || (seen.health ?? 1) <= 0) foe.end = (foe.health ?? 1) <= 0 || now - foe.lastSwing <= 2000 ? "killed" : "out of sight";
+    }
+    if (hurt) fight.lastThreat = now;
+    const hostiles = this.entities.filter(e => hostileEntity(e) && e.type !== "minecraft:creeper");
+    if (mode === "nothing") { await this.endFight("attack response set to nothing"); return; }
+    if (state.health <= fightLimit.fleeHealth || mode === "flee") {
+      const enemy = hostiles.find(e => e.id === fight.target) ?? hostiles.sort((a, b) => a.distance - b.distance)[0];
+      const low = state.health <= fightLimit.fleeHealth;
+      await this.endFight(low ? `your health is ${tenth(state.health)}, fleeing instead` : "flee configured", { resume: !enemy });
+      if (enemy) await this.startFlee(enemy, state, low ? "low health" : "flee configured");
+      return;
+    }
+    if (now - fight.started >= fightLimit.capMs) { await this.endFight(`${seconds(fightLimit.capMs)} limit reached`, { calm: true }); return; }
+    // The mob being fought, unless another is within reach and it is not; then the nearest within reach.
+    const inReach = hostiles.filter(e => e.distance <= fightLimit.reach).sort((a, b) => a.distance - b.distance);
+    let target = hostiles.find(e => e.id === fight.target);
+    if (!target || target.distance > fightLimit.reach) target = inReach[0] ?? target;
+    if (!target) {
+      if (now - fight.lastThreat >= fightLimit.quietMs) await this.endFight(`no hostile within reach for ${seconds(fightLimit.quietMs)}`);
+      return;
+    }
+    if (target.id !== fight.target) { fight.target = target.id; fight.closing = undefined; fight.blocked = undefined; }
+    this.meet(fight, target);
+    if (target.distance > fightLimit.reach) {
+      if (closable[target.type] && !fight.closing?.stuck && await this.closeIn(fight, target, state)) fight.lastThreat = now;
+      if (now - fight.lastThreat < fightLimit.quietMs) return;
+      const off = `${target.type} stayed ${tenth(target.distance)} blocks off`;
+      await this.endFight(closable[target.type]
+        ? `${off}: ${fight.closing?.stuck ?? "out of reach"}. The body closes in on a mob that shoots only ${fightLimit.leash} blocks and on level dry ground; out of its line of sight is safer`
+        : `${off}, out of reach; the body does not chase`, { calm: true });
+      return;
+    }
+    if (fight.blocked && now - fight.lastThreat >= fightLimit.quietMs) {
+      await this.endFight(`${target.type} was within reach but never in a clear swing (${fight.blocked} in the way)`, { calm: true });
+      return;
+    }
+    if (fight.step || now < fight.nextSwing) return;
+    await this.lookAt({ x: target.pos[0], y: target.pos[1] + aimHeight(target.type), z: target.pos[2] }, state);
+    // The crosshair follows a look only once the client has picked again: read it two ticks later, as meals do.
+    await this.api.request("/wait?ticks=2");
+    const aimed = await this.api.state();
+    if (this.fight !== fight || this.manual || this.stopped) return;
+    if (aimed.screen !== "none") { await this.endFight(`screen opened: ${aimed.screen}`); return; }
+    const sights = aimed.lookingAt;
+    // Only the mob chosen: a player or an animal stepping in between, or a block in the way, takes no swing.
+    if (sights.type !== "entity" || sights.entityId !== target.id) {
+      fight.blocked = sights.type === "entity" ? sights.entity ?? "an entity" : sights.type === "block" ? sights.block ?? "a block" : "nothing in the crosshair";
+      return;
+    }
+    // The read above and the click are two client-thread tasks: something can step into the crosshair between them.
+    // A Synapse with expectEntityId checks the target in the click's own task and refuses (struck: false); a build
+    // without it (all built so far, 2026-11-23) ignores the field and clicks whatever is in the crosshair by then.
+    const swing = await this.api.player({ action: "attack", expectEntityId: target.id });
+    if (swing.struck === false) {
+      fight.blocked = swing.on === "entity" ? "another entity" : swing.on === "block" ? "a block" : "nothing in the crosshair";
+      return;
+    }
+    fight.blocked = undefined;
+    fight.swings++; fight.lastThreat = now; fight.nextSwing = now + fight.cooldown;
+    if (swing.on === "entity") { const foe = fight.foes.get(target.id)!; foe.swings++; foe.lastSwing = now; }
+  }
+  /** One step toward a mob that shoots, facing it: only on dry ground, not toward a drop, within the leash.
+   * Returns whether it is still closing in; once it is not, `closing.stuck` says why. */
+  private async closeIn(fight: Fight, target: Entity, state: State): Promise<boolean> {
+    const now = this.now(), closing = fight.closing ??= { best: target.distance, bestAt: now };
+    if (target.distance <= closing.best - 0.5) { closing.best = target.distance; closing.bestAt = now; }
+    if (fight.step) return true;
+    const away = distance(state.pos, fight.origin);
+    closing.stuck = now - closing.bestAt >= fightLimit.stuckMs ? `it got no closer in ${seconds(fightLimit.stuckMs)}`
+      : away >= fightLimit.leash ? `already ${tenth(away)} blocks from where the fight began`
+      : state.onGround !== true || state.inWater !== false || state.inLava !== false ? "not on dry ground"
+      : target.pos[1] < state.pos.y - 1.5 ? "it is below a drop" : undefined;
+    if (closing.stuck) return false;
+    await this.lookAt({ x: target.pos[0], y: state.eye.y, z: target.pos[2] }, state);
+    // Timed movement blocks its HTTP call: the poller goes on reading while the step runs.
+    fight.step = this.api.player({ action: "move", forward: true, sprint: true, ticks: 5 }).then(() => {}, () => {}).finally(() => { fight.step = undefined; });
+    return true;
+  }
+  /**
+   * Ends the fight and says how it went, unless `silent` (a death says that itself). Keys are let go and the hotbar
+   * slot put back. A walk the fight paused is resumed, or with `resume: false` left paused for the reflex that takes
+   * over (fleeing, a rescue), which resumes or stops it in turn. `calm`: the fight gave up on mobs still there,
+   * which then start no new fight by coming close (see `fightBack`).
+   */
+  private async endFight(why: string, options: { resume?: boolean; silent?: boolean; calm?: boolean } = {}) {
+    const fight = this.fight;
+    if (!fight) return;
+    this.fight = undefined;
+    const resume = options.resume !== false, now = this.now();
+    await fight.step;
+    await this.api.player({ action: "release" });
+    await this.api.player({ action: "selectHotbar", slot: fight.previousSlot });
+    if (fight.paused && resume) { await this.api.chat("#resume"); this.restartStallClock(); }
+    if (options.calm) for (const [id, foe] of fight.foes) if (!foe.end) this.calm.set(id, now + fightLimit.calmMs);
+    if (options.silent) return;
+    const foes = [...fight.foes.values()].slice(0, 3).map(foe => {
+      const health = foe.firstHealth !== undefined && foe.health !== foe.firstHealth ? `, health ${tenth(foe.firstHealth)} -> ${tenth(foe.health ?? 0)}` : "";
+      const end = foe.end ?? `still ${tenth(foe.distance)} blocks away`;
+      return `${foe.type} ${end} (${foe.swings} hit${foe.swings === 1 ? "" : "s"}${health})`;
+    }).join(", ");
+    const health = this.state ? tenth(this.state.health) : "unknown";
+    this.events.add("reflex", { text: `fight ended after ${seconds(now - fight.started)}: ${why}; ${foes}; ${fight.swings} swing${fight.swings === 1 ? "" : "s"}; your health ${tenth(fight.healthBefore)} -> ${health}${fight.paused ? resume ? "; walk resumed" : "; walk still paused" : ""}` });
   }
   private async startFlee(enemy: Entity, state: State, reason: string) {
     if (this.retreatSensors(state)) {
@@ -948,12 +1146,12 @@ export class Body {
     }
     return undefined;
   }
-  private async interruptForRescue() {
-    // A meal that paused Baritone hands that pause on to the rescue, which resumes or stops it when it ends.
+  private async interruptForRescue(kind: RescueKind) {
+    // A meal or fight that paused Baritone hands that pause on to the rescue, which resumes or stops it when it ends.
     const meal = this.eating;
-    const paused = this.combat !== undefined || this.fleeing || meal?.paused === true;
+    const paused = this.fight?.paused === true || this.fleeing || meal?.paused === true;
     if (meal) await this.releaseMeal(meal, false);
-    if (this.combat) await this.finishCombat(false);
+    await this.endFight(`a ${kind} rescue took over`, { resume: false });
     if (this.fleeing) {
       this.fleeGeneration++; this.fleeing = false;
       await this.api.player({ action: "release" });
@@ -962,7 +1160,7 @@ export class Body {
   }
   private async startRescue(kind: RescueKind, reason: string, state: State, enemy?: Entity) {
     if (this.rescue) return;
-    const inheritedPause = await this.interruptForRescue();
+    const inheritedPause = await this.interruptForRescue(kind);
     let current = state;
     if (kind === "fire") current = await this.api.state();
     const bucket = kind === "fire" && this.reflexes.water_bucket ? current.hotbar.find(s => nonempty(s) && s.item === "minecraft:water_bucket") : undefined;
@@ -1242,14 +1440,14 @@ export class Body {
    * closed, and nothing is said beyond the `died` event and the end of a trip that was under way. */
   private async settleDeath() {
     const meal = this.eating, nav = this.navigation;
-    const paused = meal?.paused === true || this.combat !== undefined || this.fleeing;
+    const paused = meal?.paused === true || this.fight?.paused === true || this.fleeing;
     this.navigation = undefined; this.breaths = undefined;
     if (meal) await this.releaseMeal(meal, false);
     if (this.fleeing) {
       this.fleeGeneration++; this.fleeing = false;
       await this.api.player({ action: "release" });
     }
-    await this.finishCombat(false);
+    await this.endFight("death", { resume: false, silent: true });
     // A mine job outlives its stall report: that one too is still Baritone's and would set off again.
     const live = nav !== undefined && (!nav.reported || nav.limit !== undefined);
     // Baritone's stop also drops the pause a reflex set. A trip left alive would set off again from the respawn
@@ -1329,7 +1527,7 @@ export class Body {
         await this.api.player({ action: "release" });
         this.events.add("reflex", { text: "automatic input released (screen, death or manual control)" });
       }
-      await this.finishCombat(); return;
+      await this.endFight(state.screen !== "none" ? `screen opened: ${state.screen}` : "manual control"); return;
     }
     const requested = this.environmentalRescue(state);
     if (this.rescue && requested && rescuePriority[requested.kind] > rescuePriority[this.rescue.kind]) {
@@ -1349,43 +1547,8 @@ export class Body {
         state = await this.api.state();
       } else if (!hurt) return;
     }
-    if (this.combat) {
-      const combat = this.combat;
-      const enemy = this.entities.find(e => e.id === combat.target && hostileEntity(e) && e.type !== "minecraft:creeper" && e.distance <= 6);
-      if (!enemy || this.now() >= combat.until || this.reflexes.when_attacked === "nothing") { await this.finishCombat(); return; }
-      if (state.health <= 6 || this.reflexes.when_attacked === "flee") {
-        await this.finishCombat(false);
-        await this.startFlee(enemy, state, state.health <= 6 ? "low health" : "flee configured");
-        return;
-      }
-      if (this.now() >= combat.nextAttack) {
-        await this.lookAt({ x: enemy.pos[0], y: enemy.pos[1] + 1, z: enemy.pos[2] }, state);
-        // Do not swing through a player who steps between Gary and the mob.
-        const aimed = await this.api.state();
-        if (aimed.screen !== "none") { await this.finishCombat(); return; }
-        if (this.combat !== combat || this.manual || this.stopped) return;
-        if (aimed.lookingAt.entityId === enemy.id && aimed.lookingAt.entity !== "minecraft:player") await this.api.player({ action: "attack" });
-        combat.nextAttack = this.now() + 600;
-      }
-      return;
-    }
-    const enemy = hurt ? this.entities.find(e => hostileEntity(e) && e.distance <= 6) : undefined;
-    if (enemy && this.reflexes.when_attacked !== "nothing") {
-      if (this.eating) await this.releaseMeal(this.eating);
-      const weapon = state.hotbar.find(s => nonempty(s) && /_(sword|axe)$/.test(s.item));
-      const mode = this.reflexes.when_attacked;
-      const shouldFlee = mode === "flee" || (mode === "auto" && (!weapon || state.health < 8));
-      if (enemy.type === "minecraft:creeper" && !shouldFlee) return;
-      if (shouldFlee) {
-        await this.startFlee(enemy, state, mode === "flee" ? "flee configured" : !weapon ? "no weapon" : "low health");
-      } else {
-        await this.api.chat("#pause");
-        if (weapon) await this.api.player({ action: "selectHotbar", slot: weapon.slot });
-        this.combat = { target: enemy.id, until: this.now() + 15000, nextAttack: 0, previousSlot: state.selectedSlot };
-        this.events.add("reflex", { text: `defending against ${enemy.type}; navigation paused` });
-      }
-      return;
-    }
+    if (this.fight) { await this.fightOn(state, hurt); return; }
+    if (await this.fightBack(state, hurt)) return;
     if (needsMeal && !this.eating && this.now() >= this.nextMeal && this.food(state)) {
       try {
         const meal = await this.beginEating(state, undefined, true);

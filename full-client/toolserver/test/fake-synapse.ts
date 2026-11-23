@@ -3,7 +3,7 @@ import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Body } from "../src/body.ts";
-import { Synapse, nonempty, type BlockSearch, type Screen, type Stack, type State } from "../src/synapse.ts";
+import { Synapse, defaultResidents, defaultUnseen, nonempty, type BlockSearch, type Screen, type Stack, type State } from "../src/synapse.ts";
 import { Tools } from "../src/tools.ts";
 
 export interface Request { path: string; body: Record<string, unknown> }
@@ -20,6 +20,8 @@ export interface FakeOptions {
   closeFailures?: number; escapeBlocked?: boolean; eatWorks?: boolean; openWorks?: boolean;
   /** Resident identity and optional isolated hub. No network defaults. */
   name?: string; commonsUrl?: string; commonsTokenFile?: string;
+  /** Players the body never perceives, and the residents' names; production's defaults when left out. */
+  unseen?: string[]; residents?: string[];
   swapWorks?: boolean; interactable?: boolean; forceMealScreen?: boolean;
   /** Fail this many plain /gui reads (no action) with a 500. */
   guiReadFailures?: number;
@@ -56,6 +58,14 @@ export interface FakeOptions {
   signPlacement?: "editor" | "nothing" | "blank";
   /** What a plain right-click does to the world as the client then sees it, for uses the fake does not model. */
   onUse?: (state: State) => void;
+  /** What a held attack does to the world as the client then sees it (a block broken, say). */
+  onHold?: (state: State) => void;
+  /** What changes in the world between the body's last state read and the click arriving (someone steps into the crosshair). */
+  beforeAttack?: (state: State) => void;
+  /** false: the Synapse built so far, which ignores `expectEntityId` and clicks whatever is in the crosshair. */
+  attackChecksTarget?: boolean;
+  /** Every entity an attack click actually landed on, in order. */
+  struck?: number[];
 }
 export interface Fixture {
   dir: string; log: string; state: State; requests: Request[]; body: Body; tools: Tools; options: FakeOptions;
@@ -343,6 +353,17 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
         state.lookingAt = { type: "block", block: "minecraft:wheat", blockPos: [x, y + 1, z] };
       }
       if (body.action === "selectHotbar") state.selectedSlot = body.slot as number;
+      // A click lands on what the crosshair rests on when it arrives, and Synapse says which kind of thing that was.
+      // With expectEntityId (and a build that knows it) it clicks only when that entity is the target, as in PlayerController.attack.
+      if (body.action === "attack" && !body.ticks) {
+        options.beforeAttack?.(state);
+        const at = state.lookingAt, on = at.type === "entity" || at.type === "block" ? at.type : "air";
+        const checked = body.expectEntityId !== undefined && options.attackChecksTarget !== false;
+        const struck = !checked || (on === "entity" && at.entityId === body.expectEntityId);
+        if (struck && on === "entity") (options.struck ??= []).push(at.entityId!);
+        data = { action: "attack", on, ...(checked ? { struck, ...(on === "entity" ? { entityId: at.entityId } : {}) } : {}) };
+      }
+      if (body.action === "attack" && body.ticks) { data = { holding: "attack", ticks: body.ticks }; options.onHold?.(state); }
       if (body.action === "look") state.rotation = { yaw: body.yaw as number, pitch: body.pitch as number };
       // A hold begins on the next client tick, with the view as it is then.
       if (body.action === "use" && body.ticks) steer();
@@ -374,8 +395,9 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
     return Response.json({ ok: true, data });
   } });
   const url = `http://127.0.0.1:${server.port}`;
-  const api = new Synapse(url, "test-token");
-  const body = new Body({ url, tokenFile: "", log, name: options.name ?? "Gary", residentDir: dir, commonsUrl: options.commonsUrl, commonsTokenFile: options.commonsTokenFile }, api, () => clock);
+  const unseen = options.unseen ?? defaultUnseen;
+  const api = new Synapse(url, "test-token", unseen);
+  const body = new Body({ url, tokenFile: "", log, name: options.name ?? "Gary", residentDir: dir, commonsUrl: options.commonsUrl, commonsTokenFile: options.commonsTokenFile, unseen, residents: options.residents ?? defaultResidents }, api, () => clock);
   const tools = new Tools(body);
   cleanups.push(async () => { await body.close(); tools.close(); server.stop(true); await rm(dir, { recursive: true, force: true }); });
   return {

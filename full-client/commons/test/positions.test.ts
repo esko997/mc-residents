@@ -124,3 +124,22 @@ test("a week of samples for one resident is read and decimated quickly", () => {
   expect(trail.legs.reduce((sum, leg) => sum + leg.points.length, 0)).toBeLessThanOrEqual(3000);
   expect(elapsed).toBeLessThan(2000);
 });
+
+test("straight, staircase and zigzag legs of a week's samples do not degrade to quadratic work", () => {
+  const shapes: Record<string, (i: number) => TrailPoint> = {
+    straight: i => [i * 10_000, i, 64, 0, 15],
+    staircase: i => [i * 10_000, i, 64, Math.round(i * 0.37), 15],
+    zigzag: i => [i * 10_000, i, 64, i % 2, 15],
+  };
+  for (const [name, shape] of Object.entries(shapes)) {
+    const leg: TrailLeg = { dimension: "overworld", points: Array.from({ length: 60_480 }, (_, i) => shape(i)) };
+    const started = performance.now();
+    const [out] = decimateLegs([leg], 3000);
+    const elapsed = performance.now() - started;
+    expect(`${name} ${out.points.length}`).toBe(`${name} 3000`);
+    expect(out.points[0]).toBe(leg.points[0]);
+    expect(out.points.at(-1)).toBe(leg.points.at(-1));
+    // Before the fix the staircase took ~1.6 s here and grows with the square of the length.
+    expect(elapsed).toBeLessThan(1000);
+  }
+});

@@ -60,6 +60,20 @@ export interface Config {
   /** Hub base URL and this resident's private bearer-token file. */
   commonsUrl?: string;
   commonsTokenFile?: string;
+  /** Players this body never perceives, as a person cannot see a spectator (see `Synapse.hideUnseen`). */
+  unseen?: readonly string[];
+  /** The names of every resident body; a chat line from anyone else (a person, the caretaker) always wakes `wait`. */
+  residents?: readonly string[];
+}
+/** The owner's spectator account, watching the world unseen. */
+export const defaultUnseen = ["Lantern_"];
+export const defaultResidents = ["Gary", "Margo", "Wren", "Tobin"];
+/** A comma-separated list of player names; empty means none. */
+function names(variable: string, value: string): string[] {
+  const list = value.split(",").map(name => name.trim()).filter(Boolean);
+  const bad = list.find(name => !/^\w{1,16}$/.test(name));
+  if (bad !== undefined) throw new Error(`${variable}: "${bad}" is not a Minecraft player name.`);
+  return list;
 }
 export const expandHome = (path: string) => path === "~" ? homedir() : path.replace(/^~\//, `${homedir()}/`);
 export function configuration(env = process.env): Config {
@@ -72,16 +86,23 @@ export function configuration(env = process.env): Config {
     name: env.RESIDENT_NAME, knowledgeDb: env.KNOWLEDGE_DB ? expandHome(env.KNOWLEDGE_DB) : undefined,
     commonsUrl: env.COMMONS_URL,
     commonsTokenFile: env.COMMONS_TOKEN_FILE ? expandHome(env.COMMONS_TOKEN_FILE) : undefined,
+    unseen: names("RESIDENT_UNSEEN_PLAYERS", env.RESIDENT_UNSEEN_PLAYERS ?? defaultUnseen.join(",")),
+    residents: names("RESIDENT_NAMES", env.RESIDENT_NAMES ?? defaultResidents.join(",")),
   };
 }
 export class Synapse {
-  constructor(private url: string, private token: string) {}
+  private readonly unseen: ReadonlySet<string>;
+  /** Entity ids of unseen players in the latest full state: the crosshair can rest on one between full reads. */
+  private unseenIds = new Set<number>();
+  constructor(private url: string, private token: string, unseen: readonly string[] = []) {
+    this.unseen = new Set(unseen.map(name => name.toLowerCase()));
+  }
   static async connect(config: Config) {
     let token: string;
     try { token = (await readFile(config.tokenFile, "utf8")).trim(); }
     catch { throw new Error(`Cannot read Synapse token file: ${config.tokenFile}`); }
     if (!token) throw new Error("Synapse token file is empty.");
-    return new Synapse(config.url, token);
+    return new Synapse(config.url, token, config.unseen);
   }
   async request<T>(path: string, body?: object): Promise<T> {
     let response: Response;
@@ -103,7 +124,24 @@ export class Synapse {
   player(body: object) { return this.request<Record<string, unknown>>("/player", body); }
   gui(body?: object) { return this.request<Screen>("/gui", body); }
   chat(text: string) { return this.request("/chat", { text }); }
-  state(full = false) { return this.request<State>(`/state?mode=${full ? "full" : "summary"}`); }
+  /** Every state the body reads passes through here, so an unseen player is in no list, target or sight. */
+  async state(full = false) { return this.hideUnseen(await this.request<State>(`/state?mode=${full ? "full" : "summary"}`)); }
+  /** Unseen players are taken out of `nearbyEntities`; one in the crosshair reads as nothing in the sights (`miss`). */
+  private hideUnseen(state: State): State {
+    if (!this.unseen.size) return state;
+    if (state.nearbyEntities) {
+      const unseen = (entity: Entity) => playerEntity(entity) && this.unseen.has((entity.name ?? "").toLowerCase());
+      this.unseenIds = new Set(state.nearbyEntities.filter(unseen).map(entity => entity.id));
+      state.nearbyEntities = state.nearbyEntities.filter(entity => !unseen(entity));
+    }
+    const at = state.lookingAt;
+    if (at?.type === "entity" && at.entityId !== undefined && this.unseenIds.has(at.entityId)) {
+      const { entity: _entity, entityId: _id, ...rest } = at;
+      state.lookingAt = { ...rest, type: "miss" };
+      unseenSights.add(state.lookingAt);
+    }
+    return state;
+  }
   /** Reads loaded chunks only: nothing moves, loads or breaks. radius 1..96, limit 1..32; an id that names no block is an error. */
   blocks(block: string, radius: number, limit: number) {
     return this.request<BlockSearch>(`/blocks?block=${encodeURIComponent(block)}&radius=${radius}&limit=${limit}`);
@@ -113,6 +151,9 @@ export class Synapse {
     return data.image;
   }
 }
+/** Sights that read `miss` only because an unseen player is in the crosshair: a click there would still hit or use
+ * that player, so the tools that click (attack) do not. A set, not a field, so skill code never sees the mark. */
+export const unseenSights = new WeakSet<object>();
 export function angles(eye: Position, target: Position) {
   const dx = target.x - eye.x, dy = target.y - eye.y, dz = target.z - eye.z;
   return { yaw: -Math.atan2(dx, dz) * 180 / Math.PI, pitch: -Math.atan2(dy, Math.hypot(dx, dz)) * 180 / Math.PI };

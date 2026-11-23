@@ -117,7 +117,7 @@ function inventoryChanges(before: Snapshot, after: Snapshot | undefined) {
  */
 function takeover(event: ResidentEvent): string | undefined {
   if (event.type === "died") return `you died at ${event.at} in ${event.dimension}`;
-  if (event.type === "reflex" && /^(\w+ rescue started|fleeing from|defending against)/.test(String(event.text))) return `a reflex took over your body (${oneLine(String(event.text), 100)})`;
+  if (event.type === "reflex" && /^(\w+ rescue started|fleeing from|fighting back against)/.test(String(event.text))) return `a reflex took over your body (${oneLine(String(event.text), 100)})`;
   return undefined;
 }
 function stopReason(outcome: Exclude<Outcome, { kind: "finished" } | { kind: "unavailable" }>, seconds: number): string {

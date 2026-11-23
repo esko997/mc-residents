@@ -68,9 +68,11 @@ its first pass and stops at the deadline. A one-off pass is:
 
 Notes append to `overseer/Name.md`; model diagnostics go to `last-Name.log`.
 With `overseer/speak` absent, notes are shadow-only. Creating that flag enables the
-existing `speak.py` bridge; remove it to return to shadow mode. The speech transport
-has not changed. A host's caretaker may nudge only its explicitly supplied roster,
-not administer residents or connect another body toolserver.
+existing `speak.py` bridge; remove it to return to shadow mode. A spoken note goes
+out as `tellraw <Name>`, so only the resident it addresses sees it (the others no
+longer hear, or answer, notes meant for someone else). A host's caretaker may nudge
+only its explicitly supplied roster, not administer residents or connect another
+body toolserver.
 
 ## Central jobs: hub only
 

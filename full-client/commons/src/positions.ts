@@ -99,6 +99,9 @@ function deviation(p: TrailPoint, a: TrailPoint, b: TrailPoint): number {
  * Ramer-Douglas-Peucker as a ranking: each point's value is the tolerance below which RDP would
  * keep it (clamped by its parent's, so keeping every value above a threshold is exactly RDP at
  * that threshold). Ends are Infinity. Iterative: legs can hold tens of thousands of points.
+ * Deviations count in half blocks (points are whole blocks; less is rounding noise). Equal ones
+ * split nearest the middle and a span lying on its chord stops (its points stay 0), so straight,
+ * staircase and zigzag legs cost about O(n log n), not O(n²).
  */
 export function significance(points: TrailPoint[]): Float64Array {
   const n = points.length, value = new Float64Array(n);
@@ -108,11 +111,13 @@ export function significance(points: TrailPoint[]): Float64Array {
   while (stack.length) {
     const [a, b, cap] = stack.pop()!;
     if (b - a < 2) continue;
+    const middle = (a + b) / 2;
     let best = -1, index = a + 1;
     for (let i = a + 1; i < b; i++) {
-      const d = deviation(points[i], points[a], points[b]);
-      if (d > best) { best = d; index = i; }
+      const d = Math.round(deviation(points[i], points[a], points[b]) * 2) / 2;
+      if (d > best || (d === best && Math.abs(i - middle) < Math.abs(index - middle))) { best = d; index = i; }
     }
+    if (best <= 0) continue;
     const kept = Math.min(best, cap);
     value[index] = kept;
     stack.push([a, index, kept], [index, b, kept]);

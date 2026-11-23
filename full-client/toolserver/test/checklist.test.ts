@@ -20,7 +20,7 @@ async function startFight(f: Fixture) {
   f.state.health = 18;
   f.state.nearbyEntities = [{ id: 9, type: "minecraft:zombie", hostile: true, distance: 2, pos: [0, 64, 2], health: 20 }];
   f.state.lookingAt = { type: "entity", entity: "minecraft:zombie", entityId: 9 };
-  await f.body.poll(); await f.body.poll();
+  await f.body.poll(); f.tick(700); await f.body.poll();
   expect(f.requests.some(r => r.body.action === "attack")).toBe(true);
 }
 
@@ -32,16 +32,17 @@ async function startMeal(f: Fixture, food = 8) {
   expect(f.state.selectedSlot).toBe(1);
 }
 
-test("A22 Reflex fight monopolizes the body indefinitely", async () => {
+test("A22 Reflex fight monopolizes the body indefinitely: it stops at 20 s and says so", async () => {
   const f = await fixture(); await f.tools.call("go_to", { x: 20, z: 0 }); await startFight(f);
-  f.tick(14999); await f.body.poll();
+  f.tick(19299); await f.body.poll();
   expect(f.requests.some(r => r.body.text === "#resume")).toBe(false);
   const attacks = f.requests.filter(r => r.body.action === "attack").length;
   f.tick(1); await f.body.poll();
   const cleanup = f.requests.filter(r => r.path === "/player" || r.path === "/chat").slice(-3).map(r => r.body);
   expect(cleanup).toEqual([{ action: "release" }, { action: "selectHotbar", slot: 4 }, { text: "#resume" }]);
-  expect(f.body.events.consume()).toContain("fight ended; navigation resumed");
-  await f.body.poll();
+  expect(f.body.events.consume()).toContain("fight ended after 20 s: 20 s limit reached; minecraft:zombie still 2 blocks away (2 hits); 2 swings; your health 18 -> 18; walk resumed");
+  // The zombie it gave up on, still beside him, starts no new fight by standing there.
+  f.tick(250); await f.body.poll(); f.tick(250); await f.body.poll();
   expect(f.requests.filter(r => r.body.action === "attack")).toHaveLength(attacks);
   expect(f.state.selectedSlot).toBe(4);
   expect(f.body.navigation?.description).toBe("goto 20 0");
@@ -870,8 +871,8 @@ test("I01 a meal straight after a fight, the trip resumed and a crafting table i
   f.state.nearbyEntities = [{ id: 9, type: "minecraft:skeleton", hostile: true, distance: 2, pos: [0, 64, 2], health: 20 }];
   await f.body.poll();
   expect(f.baritone.paused).toBe(true);
-  // The skeleton backs off: the fight ends and the trip goes on, a moment before the meal the wounds call for.
-  f.state.nearbyEntities = []; f.tick(1000); await f.body.poll();
+  // The skeleton backs off: 2 s later the fight ends and the trip goes on, a moment before the meal the wounds call for.
+  f.state.nearbyEntities = []; f.tick(2000); await f.body.poll();
   expect(f.baritone).toEqual({ active: true, paused: false });
   await f.body.poll();
   expect(mealUses(f)).toHaveLength(1);

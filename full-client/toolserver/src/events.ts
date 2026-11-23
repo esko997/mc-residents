@@ -6,11 +6,12 @@ const waking: Record<string, true> = { chat: true, hurt: true, died: true, playe
  * navigation_stopped ends with how often it has happened, after a goal, a reason and two positions; for a mine
  * job kept near its start it carries what was collected, how far a count got and by which item, a reason that
  * names the block and the start, and two more positions (380).
- * A reflex line can name a screen closed for a meal and why that meal did not start (260).
+ * A reflex line can name a screen closed for a meal and why that meal did not start, or say how a fight went:
+ * why it ended, each mob and what became of it, swings, health and the walk (300).
  * `arrived` for a mine job that has its count names the block and up to three kinds of item collected (220).
  * A chat line is never cut: Minecraft sends at most 256 characters, after a sequence number and a sender
  * (a system line is chat too: a server announcement, a death message). */
-const lineLimit: Record<string, number> = { chat: 320, system: 320, arrived: 220, stopped_short: 220, navigation_stopped: 380, died: 160, reflex: 260, alarm: 260 };
+const lineLimit: Record<string, number> = { chat: 320, system: 320, arrived: 220, stopped_short: 220, navigation_stopped: 380, died: 160, reflex: 300, alarm: 260 };
 /** The most characters of a tool result (about 1,500 in all) the event tail may take, heading included. Three
  * full chat lines fit, which is the most one `say` sends; the tool's own text keeps about 500. */
 const tailLimit = 1000;
@@ -19,10 +20,15 @@ export class Events {
   private seen = 0;
   private entries: ResidentEvent[] = [];
   private listeners = new Set<(event: ResidentEvent) => void>();
+  /** Events of a waking type that end no wait: chat lines this resident only overhears (see `wakes`). Shown in the tail as any other. */
+  private quiet = new Set<number>();
+  /** Decides, as an event of a waking type is added, whether it may end a wait; unset, every one may. */
+  wakes?: (event: ResidentEvent) => boolean;
   add(type: string, fields: Record<string, unknown> = {}) {
     const event = { ...fields, type, seq: ++this.sequence };
     this.entries.push(event);
-    if (this.entries.length > 128) this.entries.shift();
+    if (this.entries.length > 128) this.quiet.delete(this.entries.shift()!.seq);
+    if (waking[type] && this.wakes?.(event) === false) this.quiet.add(event.seq);
     for (const listener of this.listeners) listener(event);
   }
   /** The newest event's number; with `wait` and `since`, a cursor for a reader other than the tool-result tail. */
@@ -35,7 +41,7 @@ export class Events {
   /** `after`: only events newer than this number count; by default those not yet shown in a tool result. */
   async wait(seconds: number, filter?: string[], signal?: AbortSignal, after = this.seen): Promise<string> {
     // A rescue can end a navigation without arrival or stall; a wait for either of those must not sleep through it.
-    const matches = (e: ResidentEvent) => waking[e.type] === true && (!filter?.length || filter.includes(e.type) ||
+    const matches = (e: ResidentEvent) => waking[e.type] === true && !this.quiet.has(e.seq) && (!filter?.length || filter.includes(e.type) ||
       (e.type === "navigation_stopped" && (filter.includes("arrived") || filter.includes("stopped_short"))));
     if (this.entries.some(e => e.seq > after && matches(e))) return "Waking event received.";
     if (signal?.aborted) return "Wait cancelled.";
@@ -91,7 +97,12 @@ export const procReply = /^(?:(Class|Priority|Temporary|Display name|Last comman
 /** Baritone 1.10.1's answer to `#set`, which only the body sends, to lift and restore avoidBreakingMultiplier
  * around a mine job: two lines after the echoed command. */
 export const setReply = /^(Successfully set avoidBreakingMultiplier to |Old value: )/;
-export function parseLogLine(line: string, ownName: string): { type: string; fields: Record<string, unknown> } | undefined {
+/** Whether `text` names `name` as a whole word, whatever the case: "gary," and "Gary!" do, "Garyson" does not.
+ * Names are Minecraft player names (letters, digits, underscore), so they need no escaping. */
+export const mentions = (text: string, name: string) => new RegExp(`(?<!\\w)${name}(?!\\w)`, "i").test(text);
+/** `unseen`: players this body never perceives (see Config.unseen). What they say, and every system or Baritone
+ * line that names them (joining, leaving, an advancement, a death, a whisper), is no line at all: no event, no number. */
+export function parseLogLine(line: string, ownName: string, unseen: readonly string[] = []): { type: string; fields: Record<string, unknown> } | undefined {
   const marker = line.indexOf("[CHAT] ");
   if (marker < 0) return;
   const text = line.slice(marker + 7).trim();
@@ -99,14 +110,16 @@ export function parseLogLine(line: string, ownName: string): { type: string; fie
   if (/^<\w{1,40} shouts for help: [^<>]*>$/.test(text)) return;
   if (text.startsWith("[Baritone] ")) {
     const reply = text.slice(11);
-    if (reply.startsWith("> ")) return;
+    if (reply.startsWith("> ") || unseen.some(name => mentions(reply, name))) return;
     return { type: "baritone", fields: { text: reply } };
   }
   const chat = /^<([^>]+)>\s?(.*)$/.exec(text);
   if (chat) {
-    if (chat[1].toLowerCase() === ownName.toLowerCase()) return;
+    const from = chat[1].toLowerCase();
+    if (from === ownName.toLowerCase() || unseen.some(name => name.toLowerCase() === from)) return;
     return { type: "chat", fields: { from: chat[1], text: chat[2] } };
   }
+  if (unseen.some(name => mentions(text, name))) return;
   return { type: "system", fields: { text } };
 }
 export class LogTail {
@@ -119,7 +132,7 @@ export class LogTail {
   private timer?: Timer;
   private reading?: Promise<void>;
   /** `onBaritone` returns true for a reply the body asked for and read itself; such a line is no event. */
-  constructor(private path: string, private ownName: string, private events: Events, private onBaritone?: (reply: string) => boolean) {}
+  constructor(private path: string, private ownName: string, private events: Events, private onBaritone?: (reply: string) => boolean, private unseen: readonly string[] = []) {}
   async start() {
     // Old chat must not masquerade as a fresh wake-up on resident startup.
     await this.read(true);
@@ -152,7 +165,7 @@ export class LogTail {
       const lines = (this.partial + this.decoder.decode(buffer.subarray(0, bytesRead), { stream: true })).split(/\r?\n/);
       this.partial = lines.pop()!.slice(-16384);
       for (const line of lines) {
-        const parsed = parseLogLine(line, this.ownName);
+        const parsed = parseLogLine(line, this.ownName, this.unseen);
         if (parsed) {
           if (parsed.type === "baritone") {
             const reply = String(parsed.fields.text);

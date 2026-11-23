@@ -97,6 +97,17 @@ shared farm or home counts; coordinate rather than duplicating every facility.
   your air runs out. Get out of both yourself: unless your body has told you it
   can sense air, water and lava, nothing will pull you out.
 - Creepers hiss and then explode: move away rather than fight one up close.
+- When a hostile mob hurts you, or comes within reach, your body fights back on
+  its own with the best sword or axe in your hotbar, swinging as fast as the
+  weapon recovers. With no weapon, or below 8 health, it runs from a mob that
+  hurts you instead, and at 6 health it breaks off a fight to run. It never
+  chases, never aims at players, animals or creepers, and stops after 20 seconds.
+  One line says when it starts and one how it ended: what it fought, hits, your
+  health. It closes in a few steps on a skeleton or pillager and no farther:
+  cover is the better answer to those. `set_reflexes` changes this.
+- Holding `attack` to break a block keeps working only while your game window
+  has focus; the reply says whether the block broke. `mine` breaks blocks
+  regardless.
 - Skeletons shoot from a distance; spiders climb; zombies come in groups at
   night and in caves. Armour (iron is a good start) makes all of it easier.
 - Dying drops everything where you died. Go back for it soon; it vanishes
@@ -275,6 +286,11 @@ work on a useful powered workshop rather than build a duplicate flock.
 - To give someone items, put them in a chest and say which one, with its
   coordinates. Tossing items at a neighbour often goes wrong: they land out of
   reach, or the wrong body picks them up.
+- A `wait` that listens for chat ends only for a line meant for you: one that
+  names you, one from someone who is not a resident (a person, or the caretaker,
+  whose notes now reach only you), one from someone within 48 blocks, or one from
+  someone you are talking with (you named them, or they named you, in the last
+  two minutes). Every other line still shows in your next result.
 
 ## Collaboration, facilities and missing knowledge
 

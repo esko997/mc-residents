@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Body, mineCounted } from "./body.ts";
-import { hostileEntity, nonempty, playerEntity, type Stack } from "./synapse.ts";
+import { hostileEntity, nonempty, playerEntity, unseenSights, type Stack } from "./synapse.ts";
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 import { craft } from "./craft.ts";
 import { createNotes, notesDefinitions, type Notes } from "./notes.ts";
@@ -19,7 +19,7 @@ import { machineDefinitions, machineToolNames, Machines } from "./machines.ts";
 import { executeNavigation, navigationDefinitions, navigationStatus } from "./navigation.ts";
 import { vehicleDefinitions, Vehicles, vehicleStatusLine } from "./vehicles.ts";
 import { alarmDefinition, alarmFromState } from "./alarms.ts";
-import { bucketGuard, bucketKind, bucketReport, lookReport, sightsText, writeSign } from "./aim.ts";
+import { attackReport, bucketGuard, bucketKind, bucketReport, holdReport, lookReport, sightsText, writeSign } from "./aim.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -29,7 +29,7 @@ const itemId = z.string().regex(/^(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+$/, "Use an ite
 const hold = { hold_ticks: z.number().int().min(1).max(200).optional() };
 const key = z.enum(["ENTER", "ESCAPE", "BACKSPACE", "TAB", "UP", "DOWN", "LEFT", "RIGHT", "DELETE"]);
 export const definitions = {
-  wait: { description: "Wait for chat, danger, rescue reflexes, audible alarms, players or navigation (seconds 1..120); wakes immediately.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short", "navigation_stopped", "reflex", "alarm"])).optional() }) },
+  wait: { description: "Wait 1..120 seconds until something happens: chat, damage, death, a reflex, an audible alarm, a player arriving, or news of your trip; for lists which of these may end it (default: all). A chat line ends it only if it names you, comes from someone who is not a resident (a person or the caretaker), comes from within 48 blocks, or continues an exchange (you named them, or they named you, in the last 2 minutes); every other line still shows in the next result.", schema: z.object({ seconds: z.number().min(1).max(120), for: z.array(z.enum(["chat", "hurt", "died", "player_near", "arrived", "stopped_short", "navigation_stopped", "reflex", "alarm"])).optional() }).strict() },
   alarm: alarmDefinition,
   ...navigationDefinitions,
   mine: { description: "Start Baritone mining of blocks near you: it walks to the nearest blocks of this kind within radius blocks (default 32, max 96) of where you stand now and breaks them to collect them. With count it stops when that many have come into your inventory (an arrived event says what was collected); without it, or when none is left that near, it stops with a navigation_stopped event that says what was collected and the nearest one Baritone knows farther off. To see where they are first, without moving: find_block (same radius). To look farther: a larger radius, or go there first. It breaks ANY matching block, including ones players placed (chests, doors, machines), so use it for natural blocks such as logs, stone and ores, never for things someone built. With the tree-chopping mod a log takes several chops; mining a log handles that. Bare block names mean minecraft:.", schema: z.object({ block: itemId, count: z.number().int().positive().optional(), radius: z.number().int().min(1).max(96).optional() }).strict() },
@@ -38,13 +38,13 @@ export const definitions = {
   inventory: { description: "Non-empty inventory stacks; H marks hotbar (slots 0..8).", schema: z.object({}) },
   say: { description: "Speak plain chat, independently of walking; not commands. Text longer than one chat line (256 characters) is sent as up to three lines.", schema: z.object({ text: z.string().min(1).max(768) }) },
   look: { description: "Look by yaw and/or pitch (an omitted one stays as it is), at a world block (floats use the containing block; aims at its centre and says what is actually in your sights, water and lava included, and whether a fluid is a source a bucket can take), or at a nearby player by name.", schema: z.union([z.object({ yaw: finite.optional(), pitch: finite.min(-90).max(90).optional() }).strict().refine(a => a.yaw !== undefined || a.pitch !== undefined, "give yaw, pitch or both"), z.object({ x: blockCoordinate, y: blockCoordinate, z: blockCoordinate }).strict(), z.object({ player: name }).strict()]) },
-  use: { description: "Right-click; optionally hold use 1..200 ticks (20 ticks/s). With a bucket it acts on the fluid along your line of sight and says what it did: an empty bucket takes the first source block of water or lava in reach (look at it first: look x,y,z), a full one pours against the block face in your sights. A boat, cart or player in your sights is refused rather than boarded.", schema: z.object(hold) },
-  attack: { description: "Left-click; optionally hold attack to mine by hand.", schema: z.object(hold) },
+  use: { description: "Right-click; optionally hold use 1..200 ticks (20 ticks/s). With a bucket it acts on the fluid along your line of sight and says what it did: an empty bucket takes the first source block of water or lava in reach (look at it first: look x,y,z), a full one pours against the block face in your sights. A boat, cart or player in your sights is refused rather than boarded.", schema: z.object(hold).strict() },
+  attack: { description: "Left-click what is in your sights and say what it hit. hold_ticks holds attack to break a block by hand, then says whether it broke (the reply comes when the hold is over); a held attack hits a creature only once. Your body fights back on its own when attacked (set_reflexes).", schema: z.object(hold).strict() },
   select_hotbar: { description: "Select hotbar slot 0..8.", schema: z.object({ slot: z.number().int().min(0).max(8) }) },
-  eat: { description: "Eat inventory food, moving it to the hotbar if needed; refuses open screens and reports observed food change.", schema: z.object({ item: itemId.optional() }) },
+  eat: { description: "Eat inventory food, moving it to the hotbar if needed; refuses open screens and reports observed food change.", schema: z.object({ item: itemId.optional() }).strict() },
   open_inventory: { description: "Open your own inventory to inspect or move stacks; refuses to replace another screen.", schema: z.object({}) },
   screen: { description: "Read screen title, indexed stacks, empty slot indexes, buttons and text boxes. Slot indexes belong to this menu, not your inventory. For modded machines consult guide or picture for slot roles; empty does not mean it accepts every item.", schema: z.object({}) },
-  click_slot: { description: "Click a container menu slot; indexes come from screen, not inventory. Mode THROW throws the stack (button 1) or one item (button 0) the way you face; after two seconds anyone can pick it up, you included, so throw toward the receiver and step back.", schema: z.object({ slot: z.number().int().min(-999), button: z.number().int().min(0).max(8).optional(), mode: z.enum(["PICKUP", "QUICK_MOVE", "SWAP", "CLONE", "THROW", "QUICK_CRAFT", "PICKUP_ALL"]).optional() }) },
+  click_slot: { description: "Click a container menu slot; indexes come from screen, not inventory. Mode THROW throws the stack (button 1) or one item (button 0) the way you face; after two seconds anyone can pick it up, you included, so throw toward the receiver and step back.", schema: z.object({ slot: z.number().int().min(-999), button: z.number().int().min(0).max(8).optional(), mode: z.enum(["PICKUP", "QUICK_MOVE", "SWAP", "CLONE", "THROW", "QUICK_CRAFT", "PICKUP_ALL"]).optional() }).strict() },
   click_button: { description: "Press a screen button by label or widget index.", schema: z.union([z.object({ label: z.string().min(1) }).strict(), z.object({ index: z.number().int().nonnegative() }).strict()]) },
   type_text: { description: "Type characters into the open screen (including sign/book editors).", schema: z.object({ text: z.string().max(8192) }) },
   press_key: { description: "Press a named key once and report the screen open afterwards.", schema: z.object({ key }) },
@@ -62,7 +62,7 @@ export const definitions = {
   ...machineDefinitions,
   ...vehicleDefinitions,
   note_difficulty: { description: "Tell body maintainers what is hard; append dated position and last error to difficulties.md.", schema: z.object({ text: z.string().min(1).max(4000) }) },
-  set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
+  set_reflexes: { description: "Configure eating, attack response and survival rescues. when_attacked: auto (default) fights back with the best sword or axe in your hotbar when a hostile mob hurts you or comes within reach, at 8 health or more, and otherwise flees; fight fights back even bare-handed; flee always flees; nothing does neither. A fight never chases, never aims at players, animals or creepers, and breaks off to flee at 6 health. Rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
   ...notesDefinitions,
   ...skillDefinitions,
   // The shared contracts leave the cap out of these two descriptions; a larger limit is shown as the cap.
@@ -88,8 +88,24 @@ function limitCap(schema: unknown): number | undefined {
 }
 const limitCaps: Partial<Record<string, number>> = Object.fromEntries(Object.entries(definitions)
   .map(([tool, definition]): [string, number | undefined] => [tool, limitCap(definition.schema)]).filter(([, cap]) => cap !== undefined));
+/** The argument names a tool takes, read from its schema by shape (an object, or each form of a union such as look's). */
+function argumentNames(schema: unknown): string[] {
+  type Node = { _def?: { schema?: Node; innerType?: Node; options?: Node[] }; shape?: Record<string, Node> };
+  let node = schema as Node | undefined;
+  for (let inner = node?._def?.schema ?? node?._def?.innerType; inner; inner = node?._def?.schema ?? node?._def?.innerType) node = inner;
+  if (node?._def?.options) return [...new Set(node._def.options.flatMap(argumentNames))];
+  return Object.keys(node?.shape ?? {});
+}
+/** What to say about an argument a tool does not take, when a likely meaning is known. Margo's `until` (201 waits in
+ * one hour, 2026-11-23) was dropped without a word while wait was lenient, and chat she meant to ignore woke her. */
+const argumentHints: Partial<Record<string, Record<string, string>>> = {
+  wait: { until: "use for to list the events that may end the wait" },
+  attack: { ticks: "use hold_ticks" }, use: { ticks: "use hold_ticks" },
+  click_slot: { action: "use mode for QUICK_MOVE, THROW and the rest" },
+};
 const knowledgeNames = ["find_item", "recipes", "craft", "uses"];
-const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "mount", "dismount", "vehicle_control", "vehicle_boost", "vehicle_inventory", ...machineToolNames];
+// attack takes the body itself, for the click only: see execute().
+const takeoverTools = ["look", "use", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "mount", "dismount", "vehicle_control", "vehicle_boost", "vehicle_inventory", ...machineToolNames];
 /** The resident's own actions on a screen. While one of these was called in the last 30 s, auto-eat leaves an open screen alone. */
 const screenTools = ["use", "open_inventory", "screen", "click_slot", "click_button", "craft", "type_text", "press_key", "close_screen", "write_sign", "vehicle_inventory", ...machineToolNames];
 const compass = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
@@ -210,8 +226,15 @@ export class Tools {
       // Shared contracts parse with Commons' own zod copy, so match by shape, not class.
       const issues = error instanceof Error && error.name === "ZodError" && Array.isArray((error as z.ZodError).issues)
         ? (error as z.ZodError).issues : undefined;
+      // An argument the tool does not take is named, with the ones it does take, rather than dropped.
+      const issueText = (i: z.ZodIssue) => {
+        if (i.code !== "unrecognized_keys") return `${i.path.join(".") || "input"}: ${i.message}`;
+        const hints = i.keys.flatMap(key => argumentHints[name]?.[key] ? [`for ${key}, ${argumentHints[name]![key]}`] : []);
+        const taken = argumentNames(definitions[name as ToolName]?.schema);
+        return `${i.keys.join(", ")} ${i.keys.length === 1 ? "is not an argument" : "are not arguments"} of ${name}, which takes ${taken.join(", ") || "none"}${hints.length ? `; ${hints.join("; ")}` : ""}`;
+      };
       const message = issues
-        ? `${issues.map(i => `${i.path.join(".") || "input"}: ${i.message}`).join("; ")}. ${name}: ${definitions[name as ToolName]?.description ?? ""}`
+        ? `${issues.map(issueText).join("; ")}. ${name}: ${definitions[name as ToolName]?.description ?? ""}`
         : error instanceof Error ? error.message : "Tool failed.";
       this.lastError = message.replace(/\s+/g, " ").slice(0, 400);
       text = `Error: ${this.lastError}`; isError = true;
@@ -237,6 +260,8 @@ export class Tools {
         return [outcome, ...body.events.since(cursor)].join("\n");
       }
       case "go_to": case "follow": case "explore": case "stop":
+        // Following an unseen player would show where they are; to the body they are not there.
+        if (tool === "follow" && body.config.unseen?.some(player => player.toLowerCase() === args.player.toLowerCase())) throw new Error(`Player ${args.player} is not nearby.`);
         return executeNavigation(body, command);
       case "storage_grid": case "storage_grid_take": case "machine_sides": case "machine_sides_set":
         return this.machines.run(command);
@@ -288,6 +313,8 @@ export class Tools {
         }
         if (rest) lines.push(rest);
         for (const line of lines) await api.chat(line);
+        // Whoever it names is someone this resident is now talking to: their replies wake its waits (see Hearing).
+        body.hearing.said(args.text);
         return lines.length === 1 ? "Said." : `Said, in ${lines.length} lines.`;
       }
       case "status": {
@@ -347,14 +374,27 @@ export class Tools {
         }
         return "Looked.";
       }
-      case "use": case "attack": {
-        const before = tool === "use" && !args.hold_ticks ? await api.state() : undefined;
+      case "attack": {
+        // Only the click takes the body from a reflex; while a hold runs the reflexes stay free to act. An unseen
+        // player in the crosshair is nothing in reach: no click is sent, which would hit them.
+        const { before, swing } = await body.manualAction(async () => {
+          const before = await api.state();
+          if (unseenSights.has(before.lookingAt)) return { before, swing: { on: "air" } as Record<string, unknown> };
+          return { before, swing: await api.player({ action: "attack", ...(args.hold_ticks === undefined ? {} : { ticks: args.hold_ticks }) }) };
+        });
+        if (!args.hold_ticks) return attackReport(before.lookingAt, swing.on);
+        if (swing.on === "air") return holdReport(before, undefined, args.hold_ticks);
+        // The hold ends on the client after its ticks; the server's answer about the block follows within a tick or two.
+        await Bun.sleep(args.hold_ticks * 50 + 300);
+        return holdReport(before, await api.state().catch(() => undefined), args.hold_ticks);
+      }
+      case "use": {
+        const before = !args.hold_ticks ? await api.state() : undefined;
         const bucket = before && bucketKind(before.hotbar.find(s => s.slot === before.selectedSlot && nonempty(s))?.item);
         // Wren filled her bucket at a pond and boarded the chest boat in front of the water instead.
         if (before && bucket) await bucketGuard(body, before);
-        await api.player({ action: tool, ...(args.hold_ticks === undefined ? {} : { ticks: args.hold_ticks }) });
-        if (args.hold_ticks) return `Holding ${tool} for ${args.hold_ticks} ticks.`;
-        if (!before) return "Attacked.";
+        await api.player({ action: "use", ...(args.hold_ticks === undefined ? {} : { ticks: args.hold_ticks }) });
+        if (!before) return `Holding use for ${args.hold_ticks} ticks.`;
         // A bare "Used." left Margo right-clicking across sessions without
         // knowing what she faced; she concluded crafting tables never open.
         const held = before.hotbar.find(s => s.slot === before.selectedSlot && s.item !== "minecraft:air")?.item ?? "empty hand";

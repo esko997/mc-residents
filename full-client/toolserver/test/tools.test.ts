@@ -182,15 +182,53 @@ describe("reflexes and interactions", () => {
     const f = await fixture(); f.state.food = 8; f.state.hotbar = [{ slot: 0, count: 1, item: "minecraft:bread" }];
     await f.tools.call("set_reflexes", { auto_eat: false }); await f.body.poll(); expect(f.requests.some(r => r.body.action === "use")).toBe(false);
   });
-  test("fight selects weapon, targets mob, respects cooldown, resumes", async () => {
-    const f = await fixture(); f.state.hotbar = [{ slot: 2, count: 1, item: "minecraft:iron_sword" }];
-    await f.body.poll(); f.state.health = 18;
+  test("a zombie that hurts him is fought with the best hotbar weapon, on its cooldown, and both reflex lines say how it went", async () => {
+    // The Synapse built so far: it ignores expectEntityId, and the fight still works with it.
+    const f = await fixture({ attackChecksTarget: false });
+    f.state.hotbar = [{ slot: 1, count: 1, item: "minecraft:wooden_sword" }, { slot: 2, count: 1, item: "minecraft:iron_sword" }, { slot: 3, count: 1, item: "minecraft:stone_axe" }];
+    await f.tools.call("go_to", { x: 20, z: 0 }); await f.body.poll(); f.state.health = 18;
     f.state.nearbyEntities = [{ id: 9, type: "minecraft:zombie", hostile: true, pos: [0, 64, 2], distance: 2, health: 20 }];
     f.state.lookingAt = { type: "entity", entity: "minecraft:zombie", entityId: 9 };
-    await f.body.poll(); expect(f.requests.some(r => r.body.text === "#pause")).toBe(true);
-    await f.body.poll(); await f.body.poll(); expect(f.requests.filter(r => r.body.action === "attack")).toHaveLength(1);
-    f.tick(600); await f.body.poll(); expect(f.requests.filter(r => r.body.action === "attack")).toHaveLength(2);
-    f.state.nearbyEntities = []; f.tick(1000); await f.body.poll(); expect(f.requests.some(r => r.body.text === "#resume")).toBe(true);
+    await f.body.poll();
+    expect(f.body.events.consume()).toContain("reflex text=fighting back against minecraft:zombie 2 blocks away (you were just hurt) with minecraft:iron_sword in H2, health 18; walk paused");
+    expect(f.baritone.paused).toBe(true); expect(f.state.selectedSlot).toBe(2);
+    const attacks = () => f.requests.filter(r => r.body.action === "attack").length;
+    // A new item in hand restarts the attack cooldown: an iron sword is ready again after 0.625 s.
+    await f.body.poll(); expect(attacks()).toBe(0);
+    f.tick(675); await f.body.poll(); expect(attacks()).toBe(1);
+    // Aimed at the middle of the zombie, and the crosshair read two ticks after the look.
+    const look = f.requests.filter(r => r.body.action === "look").at(-1)!.body;
+    expect(look.yaw as number).toBeCloseTo(0); expect(look.pitch as number).toBeCloseTo(Math.atan2(65.62 - 64.9, 2) * 180 / Math.PI);
+    expect(f.requests.map(r => r.path).lastIndexOf("/wait")).toBeLessThan(f.requests.map(r => r.body.action).lastIndexOf("attack"));
+    f.tick(600); await f.body.poll(); expect(attacks()).toBe(1);
+    f.state.nearbyEntities[0]!.health = 9; f.tick(75); await f.body.poll(); expect(attacks()).toBe(2);
+    // Gone a moment after a swing landed: killed. The fight waits 2 s for another before letting go.
+    f.state.nearbyEntities = []; f.tick(250); await f.body.poll(); expect(f.baritone.paused).toBe(true);
+    f.tick(1750); await f.body.poll();
+    expect(f.body.events.consume()).toMatch(/reflex text=fight ended after 3\.\d s: no hostile within reach for 2 s; minecraft:zombie killed \(2 hits, health 20 -> 9\); 2 swings; your health 18 -> 18; walk resumed/);
+    expect(f.requests.filter(r => r.path === "/player" || r.path === "/chat").slice(-3).map(r => r.body)).toEqual([{ action: "release" }, { action: "selectHotbar", slot: 0 }, { text: "#resume" }]);
+    expect(f.baritone.paused).toBe(false); expect(f.body.navigation?.description).toBe("goto 20 0");
+  });
+  test("never swings at a player or an animal: not when hurt beside them, nor when one stands in the swing", async () => {
+    const f = await fixture(); f.state.hotbar = [{ slot: 0, count: 1, item: "minecraft:iron_sword" }]; await f.body.poll();
+    f.state.health = 18;
+    f.state.nearbyEntities = [
+      { id: 3, type: "minecraft:player", player: true, hostile: true, name: "Levi", pos: [0, 64, 1], distance: 1 },
+      { id: 4, type: "minecraft:cow", pos: [1, 64, 0], distance: 1, health: 10 },
+    ];
+    f.state.lookingAt = { type: "entity", entity: "minecraft:cow", entityId: 4 };
+    await f.body.poll(); f.tick(1000); await f.body.poll();
+    expect(f.requests.some(r => r.body.action === "attack" || r.body.action === "look")).toBe(false);
+    expect(f.body.events.consume()).not.toContain("fighting back");
+    // A zombie hurts him from behind the cow: the fight is with the zombie, and the cow in the sights takes no swing.
+    f.state.nearbyEntities.push({ id: 9, type: "minecraft:zombie", hostile: true, pos: [0, 64, 2], distance: 2, health: 20 });
+    f.state.health = 16; f.tick(250); await f.body.poll();
+    expect(f.body.events.consume()).toContain("fighting back against minecraft:zombie");
+    f.tick(250); await f.body.poll(); f.tick(250); await f.body.poll();
+    expect(f.requests.some(r => r.body.action === "attack")).toBe(false);
+    f.state.lookingAt = { type: "entity", entity: "minecraft:zombie", entityId: 9 };
+    f.tick(250); await f.body.poll();
+    expect(f.requests.filter(r => r.body.action === "attack")).toHaveLength(1);
   });
   test("never fights players, even when they are hurt nearby", async () => {
     const f = await fixture(); await f.body.poll(); f.state.health = 18;
@@ -420,13 +458,13 @@ describe("live-run regressions", () => {
     await f.body.poll(); f.body.events.add("chat", { from: "Levi", text: "hi" });
     expect((await tools.call(tool, args)).isError).toBe(false);
     expect(f.requests.some(r => r.body.action === "release" || r.body.text === "#resume")).toBe(false);
-    await f.body.poll(); expect(f.requests.some(r => r.body.action === "attack")).toBe(true);
+    f.tick(700); await f.body.poll(); expect(f.requests.some(r => r.body.action === "attack")).toBe(true);
     if (["go_to", "mine", "follow", "explore"].includes(tool)) expect(f.requests.filter(r => r.path === "/chat").at(-1)?.body.text).toBe("#pause");
   });
   test.each([
     ["unarmed", 18, false, "no weapon", "move"],
     ["armed but below eight health", 7, true, "low health", "move"],
-    ["armed with eight health", 8, true, "defending", "attack"],
+    ["armed with eight health", 8, true, "fighting back against minecraft:zombie", "attack"],
   ] as const)("auto response: %s", async (_label, health, armed, expectedEvent, action) => {
     const f = await fixture();
     if (armed) f.state.hotbar = [{ slot: 2, item: "minecraft:iron_sword", count: 1 }];
@@ -434,7 +472,7 @@ describe("live-run regressions", () => {
     f.state.nearbyEntities = [{ id: 9, type: "minecraft:zombie", hostile: true, pos: [0, 64, 2], distance: 2 }];
     f.state.lookingAt = { type: "entity", entity: "minecraft:zombie", entityId: 9 };
     await f.body.poll(); expect(f.body.events.consume()).toContain(expectedEvent);
-    if (action === "attack") await f.body.poll();
+    if (action === "attack") { f.tick(700); await f.body.poll(); }
     // Observe the asynchronous movement HTTP request directly, rather than sleeping.
     await f.body.api.state();
     expect(f.requests.some(r => r.body.action === action)).toBe(true);
@@ -444,9 +482,11 @@ describe("live-run regressions", () => {
     f.state.hotbar = [{ slot: 2, item: "minecraft:iron_sword", count: 1 }]; await f.body.poll(); f.state.health = 18;
     f.state.nearbyEntities = [{ id: 9, type: "minecraft:zombie", hostile: true, pos: [0, 64, 2], distance: 2 }];
     f.state.lookingAt = { type: "entity", entity: "minecraft:zombie", entityId: 9 };
-    await f.body.poll(); await f.body.poll(); const attacks = f.requests.filter(r => r.body.action === "attack").length;
+    await f.body.poll(); f.tick(700); await f.body.poll(); const attacks = f.requests.filter(r => r.body.action === "attack").length;
+    expect(attacks).toBe(1);
     f.state.health = 6; await f.body.poll(); await f.body.api.state();
-    expect(f.body.events.consume()).toContain("fleeing from minecraft:zombie (low health)");
+    const events = f.body.events.consume();
+    expect(events).toMatch(/fight ended after 0\.7 s: your health is 6, fleeing instead; minecraft:zombie still 2 blocks away \(1 hit\); 1 swing; your health 18 -> 6\n.*retreat rescue started: fleeing from minecraft:zombie \(low health\)/);
     expect(f.requests.some(r => r.body.action === "release")).toBe(true);
     expect(f.requests.some(r => r.body.action === "move")).toBe(true);
     expect(f.requests.filter(r => r.body.action === "attack")).toHaveLength(attacks);

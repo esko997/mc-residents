@@ -23,6 +23,37 @@ const fluidText = (hit: FluidHit) => `${hit.fluid} ${hit.source ? "source" : "(f
 export function sightsText(at: Sights): string {
   return at.type === "block" ? `${at.block}${at.blockPos ? ` at ${xyz(at.blockPos)}` : ""}` : at.type === "entity" ? String(at.entity) : "nothing";
 }
+/** The reply to a single attack click, from what was in the sights and what Synapse says the click met. */
+export function attackReport(at: Sights, on: unknown): string {
+  if (on === "entity") return `Hit ${at.type === "entity" ? at.entity : "the creature in your sights"}.`;
+  if (on === "block") return `Struck ${sightsText(at)}. One click breaks only what breaks at once (plants, torches); hold_ticks keeps at a harder block.`;
+  if (on === "air") return "Nothing in your sights was in reach; nothing was hit.";
+  return `Attacked ${sightsText(at)}.`;
+}
+/**
+ * The reply to a held attack, once the hold is over: what became of the block it began on. Vanilla goes on
+ * breaking a block only while the game window has the mouse captured (Minecraft.continueAttack is passed
+ * `MouseHandler.isMouseGrabbed()`), so on a client in the background a hold is one click and no more. Live on
+ * 2026-11-23, 01:03 to 02:40 UTC, Gary's holds on chalk, bauxite, amethyst and obsidian changed nothing while each
+ * reply said only "Holding attack for N ticks."; Margo's hold broke the same obsidian block with the same pick.
+ */
+export function holdReport(before: State, after: State | undefined, ticks: number): string {
+  const at = before.lookingAt, slot = before.selectedSlot;
+  const hand = before.hotbar.find(s => s.slot === slot && nonempty(s));
+  const head = `Held attack for ${ticks} ticks with ${hand?.item ?? "an empty hand"}`;
+  if (at.type === "entity") return `${head} on ${at.entity}: a held attack hits a creature once, on its first tick, as in the game. To fight, attack once per swing (a sword is ready again after about 0.6 s, an axe after 1 s), or leave it to your body, which fights back when attacked.`;
+  if (at.type !== "block" || !at.blockPos) return `${head} at nothing in reach: nothing was broken.`;
+  const block = `${at.block} at ${xyz(at.blockPos)}`;
+  if (!after) return `${head} on ${block}; the read-back failed, so whether it broke is not known.`;
+  const now = after.lookingAt, moved = Math.abs(after.rotation.yaw - before.rotation.yaw) > 1 || Math.abs(after.rotation.pitch - before.rotation.pitch) > 1;
+  const kept = after.hotbar.find(s => s.slot === slot && nonempty(s));
+  const wear = hand?.durability !== undefined && kept?.item === hand.item && kept.durability !== undefined ? ` (${hand.item} durability ${hand.durability} -> ${kept.durability})` : "";
+  if (now.type === "block" && now.block === at.block && same(now.blockPos, at.blockPos)) {
+    return `${head} on ${block}: it is still there${wear}. Holding attack goes on breaking a block only while this client's game window has input focus (the game stops when the mouse is not captured), so a client running in the background gets one hit and no more; the block may also need a better tool or a longer hold, or be protected. mine breaks blocks through Baritone without needing focus.`;
+  }
+  if (moved) return `${head} on ${block}: your view moved during the hold (something else turned it), and now rests on ${sightsText(now)}; whether the block broke was not seen.`;
+  return `${head}: ${block} broke${wear}. Now in your sights: ${sightsText(now)}.`;
+}
 
 /** The reply to `look` at block x,y,z, after aiming at its centre: what is actually in the sights, fluids included. */
 export function lookReport(target: readonly [number, number, number], at: Sights): string {
