@@ -227,30 +227,46 @@ describe("the readout names what is drawn", () => {
       : [[x + .25, y + .12, z + .25], [x + .75, y + .12, z + .25], [x + .75, y + .12, z + .75], [x + .25, y + .12, z + .75]];
     return points.map(point => project(...point));
   }
-  /** Signed distance from a point to a convex polygon's edges: positive inside, whichever way it winds. */
-  function inside(points, [px, py]) {
-    let sign = 0, least = Infinity;
-    for (let i = 0; i < points.length; i++) {
-      const [ax, ay] = points[i], [bx, by] = points[(i + 1) % points.length], length = Math.hypot(bx - ax, by - ay);
-      const d = ((bx - ax) * (py - ay) - (by - ay) * (px - ax)) / length;
-      if (Math.abs(d) < 1e-3) return 0;
-      if (sign === 0) sign = Math.sign(d);
-      if (Math.sign(d) !== sign) return -1;
-      least = Math.min(least, Math.abs(d));
+  const EDGE_EPSILON = 1e-3;
+  function shape(points) {
+    const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+    const edges = points.map(([x, y], i) => {
+      const [bx, by] = points[(i + 1) % points.length], dx = bx - x, dy = by - y;
+      return { x, y, dx, dy, length: Math.hypot(dx, dy) };
+    });
+    return { left: Math.min(...xs) - EDGE_EPSILON, right: Math.max(...xs) + EDGE_EPSILON,
+      top: Math.min(...ys) - EDGE_EPSILON, bottom: Math.max(...ys) + EDGE_EPSILON, edges };
+  }
+
+  /** Returns 1 in the painted face, 0 on its edge, or -1 outside. Reject distant faces before checking their edges. */
+  function inside({ left, right, top, bottom, edges }, px, py) {
+    if (px < left || px > right || py < top || py > bottom) return -1;
+    let sign = 0, edge = false;
+    for (const { x, y, dx, dy, length } of edges) {
+      const d = (dx * (py - y) - dy * (px - x)) / length;
+      if (Math.abs(d) < EDGE_EPSILON) { edge = true; continue; }
+      const side = Math.sign(d);
+      if (sign && side !== sign) return -1;
+      sign = side;
     }
-    return least;
+    return edge ? 0 : 1;
   }
 
   test("on a random slab with glass, water, torches, levels and an opening, the readout is the face painted last there", () => {
     const next = random(11), choices = ["minecraft:air", "minecraft:air", "minecraft:air", "minecraft:stone", "minecraft:stone", "minecraft:glass", "minecraft:water", "minecraft:torch"];
     const grid = gridOf(16, 14, () => choices[Math.floor(next() * choices.length)]);
     for (const win of [{ top: 13, bottom: 0 }, { top: 9, bottom: 3, open: opening(grid, { x: 8.5, y: 64 + 5, z: 8.5 }) }]) {
-      const geometry = layout(grid, 640, 520, win), list = faces(grid, win), shapes = list.map(face => polygon(geometry.project, face));
+      const geometry = layout(grid, 640, 520, win), list = faces(grid, win), shapes = list.map(face => shape(polygon(geometry.project, face)));
       let checked = 0;
-      for (let i = 0; i < 4000; i++) {
-        const point = [next() * 640, next() * 520], depth = shapes.map(shape => inside(shape, point));
-        if (depth.some(d => d === 0)) continue; // on an edge: either answer is fair
-        const last = depth.findLastIndex(d => d > 0), hit = pick(grid, win, geometry, ...point);
+      samples: for (let i = 0; i < 4000; i++) {
+        const x = next() * 640, y = next() * 520;
+        let last = -1;
+        for (let j = 0; j < shapes.length; j++) {
+          const depth = inside(shapes[j], x, y);
+          if (depth === 0) continue samples; // on an edge: either answer is fair
+          if (depth > 0) last = j;
+        }
+        const hit = pick(grid, win, geometry, x, y);
         expect(hit && [hit.x, hit.y, hit.z]).toEqual(last < 0 ? null : list[last].slice(0, 3));
         checked++;
       }
