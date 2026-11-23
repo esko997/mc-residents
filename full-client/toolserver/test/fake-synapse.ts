@@ -51,6 +51,11 @@ export interface FakeOptions {
   unloadedChunks?: string[];
   /** Baritone's settings file, `<game dir>/baritone/settings.txt`, as `name value` lines. `#set` rewrites its line, as Baritone does. */
   baritoneSettings?: string;
+  /** What using a sign against a block does: the editor opens (default), nothing is placed, or a sign is placed
+   * without an editor. Uncrouched, a chest or barrel in the sights opens instead, as on a server. */
+  signPlacement?: "editor" | "nothing" | "blank";
+  /** What a plain right-click does to the world as the client then sees it, for uses the fake does not model. */
+  onUse?: (state: State) => void;
 }
 export interface Fixture {
   dir: string; log: string; state: State; requests: Request[]; body: Body; tools: Tools; options: FakeOptions;
@@ -234,6 +239,8 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
   };
   let unavailable = false;
   const baritone = { active: options.baritoneBusy === true, paused: false };
+  /** A move with sneak lowers the eye as crouching does; release ends it. */
+  let sneaking = false;
   /** The job Baritone was last given, and the block he stood in then. */
   let job = { command: "", feet: [0, 0, 0] };
   // Baritone 1.10.1 prints its replies to chat, which the client writes to its log; a command is echoed first.
@@ -316,10 +323,18 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
       if (((close || (body.key === "ESCAPE" && !options.escapeBlocked)) && dismissable) || body.action === "clickButton") show({ screen: "none" });
       data = menu ? menu.render() : screen;
     } else if (url.pathname === "/player") {
-      if (body.action === "use" && !body.ticks && state.hotbar.some(s => s.item.endsWith("_sign"))) {
-        show({ screen: "SignEditScreen", widgets: [{ index: 0, label: "Done", button: true, active: true, visible: true }] });
+      const held = state.hotbar.find(s => s.slot === state.selectedSlot);
+      if (body.action === "move" && body.sneak === true && !sneaking) { sneaking = true; state.eye = { ...state.eye, y: state.eye.y - 0.35 }; }
+      if (body.action === "release" && sneaking) { sneaking = false; state.eye = { ...state.eye, y: state.eye.y + 0.35 }; }
+      if (body.action === "use" && !body.ticks && held?.item.endsWith("_sign")) {
+        if (!sneaking && /chest|barrel/.test(state.lookingAt.block ?? "")) show({ screen: "ContainerScreen" });
+        else if (options.signPlacement !== "nothing") {
+          held.count -= 1;
+          if (options.signPlacement !== "blank") show({ screen: "SignEditScreen", widgets: [{ index: 0, label: "Done", button: true, active: true, visible: true }] });
+        }
       }
       if (body.action === "use" && !body.ticks && state.lookingAt.block === "minecraft:crafting_table") openMenu("CraftingScreen");
+      if (body.action === "use" && !body.ticks) options.onUse?.(state);
       // Planting: a seed leaves the hand and the crop is what the crosshair then rests on.
       const hand = state.hotbar.find(s => s.slot === state.selectedSlot);
       if (body.action === "use" && !body.ticks && hand?.item === "minecraft:wheat_seeds" && state.lookingAt.block === "minecraft:farmland") {

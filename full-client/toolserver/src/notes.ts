@@ -32,7 +32,7 @@ const placeSaveSchema = z.object({
 
 export const notesDefinitions = {
   recall: {
-    description: "Search your own Markdown notes by keywords. Returns short matching passages with file and line; use it instead of reading whole notes files.",
+    description: "Search your own Markdown notes by keywords. Returns short matching passages with file and line; use it instead of reading whole notes files. limit: default 4, at most 8.",
     schema: z.object({ query: z.string().trim().min(1), limit: z.number().int().min(1).max(8).optional() }).strict(),
   },
   place_save: {
@@ -40,7 +40,7 @@ export const notesDefinitions = {
     schema: placeSaveSchema,
   },
   place_find: {
-    description: "List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name, note or refuge words; refuge lists the places saved with refuge notes.",
+    description: "List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name, note or refuge words; refuge lists the places saved with refuge notes. limit: default 10, which is also the most it lists.",
     schema: z.object({ query: z.string().trim().min(1).optional(), limit: z.number().int().min(1).max(10).optional() }).strict(),
   },
   place_remove: {

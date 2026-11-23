@@ -53,5 +53,11 @@ export interface Knowledge {
   itemsInTag(tag: string, limit?: number): string[];
   /** Full-text search over guide-book entries. */
   searchGuides(query: string, limit?: number): GuideHit[];
+  /**
+   * Items a block's loot table can drop when broken with an ordinary tool (entries that need Silk Touch or
+   * shears left out), for example `denseores:dense_iron_ore` -> `minecraft:raw_iron`. Undefined when the export
+   * predates loot tables; empty when the block has none.
+   */
+  blockDrops?(blockId: string): string[] | undefined;
   close(): void;
 }

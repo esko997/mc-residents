@@ -73,7 +73,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   if (config.role === "hub") for (const event of recentAlarms(db, now() - config.activityDays * 86_400_000)) alarmActivity(event);
   const residentApi = config.role === "hub" ? new ResidentApi(db, config.credentialsFile, config.autoAccept, {
     now, command: command => feed.command(command), activity: alarmActivity,
-  }) : undefined;
+  }, { source: config.observer ?? null }) : undefined;
   const live = new LiveStream(config, { now });
   let lastRead = 0;
   const context: Context = {

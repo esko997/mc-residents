@@ -143,7 +143,7 @@ shared farm or home counts; coordinate rather than duplicating every facility.
   label is not proof that the route or room is still safe.
 - While coming up for air or escaping lava, your body keeps the controls.
   `stop` deliberately overrides that rescue; ordinary `look` or use actions do not.
-- Use `alarm` with a short reason to shout for help; your body also alarms on danger, and you only hear others within earshot.
+- Use `alarm` with a short reason to shout for help; your body also alarms on danger. You hear others within earshot (48 blocks), and see a farther one, up to 96 blocks, only with a clear line of sight (`alarm Margo 80 blocks east, in sight: ...`).
 
 ## Crafting with your body
 
@@ -264,6 +264,17 @@ Example: Gary's vision of abundance → renewable wool project → fenced breedi
 flock and sheared wool demonstrated → build pen, lead two adults in, breed,
 obtain shears, harvest and store wool. Margo can use the wool for her bed and
 work on a useful powered workshop rather than build a duplicate flock.
+
+## Talking about places and handing things over
+
+- When you tell someone where something is, or where you are, give the
+  coordinates (`x y z`, and the dimension if it is not the Overworld) first and
+  the description second: "at 122 116 -205, the birch shed by the pond". A
+  neighbour's body walks straight to coordinates; "past the big oak" has to be
+  found. `status` shows yours; `place_find` gives a named place's.
+- To give someone items, put them in a chest and say which one, with its
+  coordinates. Tossing items at a neighbour often goes wrong: they land out of
+  reach, or the wrong body picks them up.
 
 ## Collaboration, facilities and missing knowledge
 

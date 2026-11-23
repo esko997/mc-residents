@@ -3,7 +3,7 @@ import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { Body } from "./body.ts";
+import { Body, mineCounted } from "./body.ts";
 import { hostileEntity, nonempty, playerEntity, type Stack } from "./synapse.ts";
 import type { Knowledge, RecipeSummary } from "./knowledge/types.ts";
 import { craft } from "./craft.ts";
@@ -19,6 +19,7 @@ import { machineDefinitions, machineToolNames, Machines } from "./machines.ts";
 import { executeNavigation, navigationDefinitions, navigationStatus } from "./navigation.ts";
 import { vehicleDefinitions, Vehicles, vehicleStatusLine } from "./vehicles.ts";
 import { alarmDefinition, alarmFromState } from "./alarms.ts";
+import { bucketGuard, bucketKind, bucketReport, lookReport, sightsText, writeSign } from "./aim.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -36,8 +37,8 @@ export const definitions = {
   status: { description: "Brief body, surroundings, navigation and screen status, and the current step of the plan in focus.", schema: z.object({}) },
   inventory: { description: "Non-empty inventory stacks; H marks hotbar (slots 0..8).", schema: z.object({}) },
   say: { description: "Speak plain chat, independently of walking; not commands. Text longer than one chat line (256 characters) is sent as up to three lines.", schema: z.object({ text: z.string().min(1).max(768) }) },
-  look: { description: "Look by yaw and/or pitch (an omitted one stays as it is), at a world block (floats use the containing block; aims at its centre and says what is actually in your sights), or at a nearby player by name.", schema: z.union([z.object({ yaw: finite.optional(), pitch: finite.min(-90).max(90).optional() }).strict().refine(a => a.yaw !== undefined || a.pitch !== undefined, "give yaw, pitch or both"), z.object({ x: blockCoordinate, y: blockCoordinate, z: blockCoordinate }).strict(), z.object({ player: name }).strict()]) },
-  use: { description: "Right-click; optionally hold use 1..200 ticks (20 ticks/s).", schema: z.object(hold) },
+  look: { description: "Look by yaw and/or pitch (an omitted one stays as it is), at a world block (floats use the containing block; aims at its centre and says what is actually in your sights, water and lava included, and whether a fluid is a source a bucket can take), or at a nearby player by name.", schema: z.union([z.object({ yaw: finite.optional(), pitch: finite.min(-90).max(90).optional() }).strict().refine(a => a.yaw !== undefined || a.pitch !== undefined, "give yaw, pitch or both"), z.object({ x: blockCoordinate, y: blockCoordinate, z: blockCoordinate }).strict(), z.object({ player: name }).strict()]) },
+  use: { description: "Right-click; optionally hold use 1..200 ticks (20 ticks/s). With a bucket it acts on the fluid along your line of sight and says what it did: an empty bucket takes the first source block of water or lava in reach (look at it first: look x,y,z), a full one pours against the block face in your sights. A boat, cart or player in your sights is refused rather than boarded.", schema: z.object(hold) },
   attack: { description: "Left-click; optionally hold attack to mine by hand.", schema: z.object(hold) },
   select_hotbar: { description: "Select hotbar slot 0..8.", schema: z.object({ slot: z.number().int().min(0).max(8) }) },
   eat: { description: "Eat inventory food, moving it to the hotbar if needed; refuses open screens and reports observed food change.", schema: z.object({ item: itemId.optional() }) },
@@ -49,7 +50,7 @@ export const definitions = {
   press_key: { description: "Press a named key once and report the screen open afterwards.", schema: z.object({ key }) },
   close_screen: { description: "Close the current screen, verify, and try ESCAPE if still open; report the actual result.", schema: z.object({}) },
   picture: { description: "See the client framebuffer as an image.", schema: z.object({}) },
-  write_sign: { description: "Place selected sign on the looked-at block, write up to four lines, finish.", schema: z.object({ lines: z.array(z.string().max(90).refine(s => !/[\r\n]/.test(s), "One line per entry.")).min(1).max(4) }) },
+  write_sign: { description: "Put the selected sign on the face of the block you look at (crouching, so a chest, barrel or door there is not opened), write up to four lines, finish. Says where it went, or why nothing was placed.", schema: z.object({ lines: z.array(z.string().max(90).refine(s => !/[\r\n]/.test(s), "One line per entry.")).min(1).max(4) }) },
   find_item: { description: "Search modpack item ids and display names.", schema: z.object({ query: z.string().min(1).max(200) }) },
   recipes: { description: "Recipes producing an item id, including shaped grids.", schema: z.object({ item: itemId }) },
   craft: { description: "Craft an item in one call: looks up the recipe, lays it out in the grid and takes the result into your inventory; prefer it to click_slot. Works at an open crafting table (3x3); recipes that fit 2x2 also work with no screen open, because it opens your own inventory itself. count is the number of crafting operations, not items (one craft of sticks gives 4); default 1. The screen stays open afterwards.", schema: z.object({ item: itemId, count: z.number().int().min(1).max(16).optional() }).strict() },
@@ -64,10 +65,29 @@ export const definitions = {
   set_reflexes: { description: "Configure eating, attack response and survival rescues: surface (drowning), escape_fire (fire/lava), avoid_creepers, water_bucket (douse fire with a hotbar water bucket; off by default because the water can push you and is left flowing).", schema: z.object({ auto_eat: z.boolean().optional(), eat_below: z.number().int().min(0).max(20).optional(), when_attacked: z.enum(["auto", "fight", "flee", "nothing"]).optional(), surface: z.boolean().optional(), escape_fire: z.boolean().optional(), avoid_creepers: z.boolean().optional(), water_bucket: z.boolean().optional() }) },
   ...notesDefinitions,
   ...skillDefinitions,
+  // The shared contracts leave the cap out of these two descriptions; a larger limit is shown as the cap.
+  skill_find: { ...skillDefinitions.skill_find, description: `${skillDefinitions.skill_find.description} limit: default 5, at most 10.` },
+  notes_shared: { ...skillDefinitions.notes_shared, description: `${skillDefinitions.notes_shared.description} limit: default 3, at most 8.` },
   ...planDefinitions,
   what_next: { description: "For when you are unsure what to do: at most five suggestions worked out from what your body can see (what you carry and wear, health and food, saved places, recent deaths, your plan), each with the numbers it rests on. They name things that are missing or unused; they are not orders. The current step of your plan in focus comes first.", schema: z.object({}).strict() },
 };
 export type ToolName = keyof typeof definitions;
+/**
+ * The most a tool's `limit` argument accepts, read from its schema (zod 3; the shared contracts' own zod copy
+ * too, so by shape). A larger limit is lowered to it, and the reply says so, rather than refused: residents kept
+ * asking place_find for 12 to 20 places and losing the call.
+ */
+function limitCap(schema: unknown): number | undefined {
+  type Node = { _def?: { schema?: Node; innerType?: Node; checks?: { kind: string; value?: unknown }[] }; shape?: Record<string, Node> };
+  let object = schema as Node | undefined;
+  while (object?._def?.schema) object = object._def.schema;
+  let field = object?.shape?.limit;
+  while (field?._def?.innerType) field = field._def.innerType;
+  const max = field?._def?.checks?.find(check => check.kind === "max")?.value;
+  return typeof max === "number" ? max : undefined;
+}
+const limitCaps: Partial<Record<string, number>> = Object.fromEntries(Object.entries(definitions)
+  .map(([tool, definition]): [string, number | undefined] => [tool, limitCap(definition.schema)]).filter(([, cap]) => cap !== undefined));
 const knowledgeNames = ["find_item", "recipes", "craft", "uses"];
 const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "mount", "dismount", "vehicle_control", "vehicle_boost", "vehicle_inventory", ...machineToolNames];
 /** The resident's own actions on a screen. While one of these was called in the last 30 s, auto-eat leaves an open screen alone. */
@@ -104,6 +124,8 @@ export class Tools {
   lastError?: string;
   /** How long craft waits for the server to show a crafting result or deliver it. */
   craftWaitMs = 2000;
+  /** How long write_sign waits for the sign editor after the click. */
+  signWaitMs = 2000;
   /** Wall clock for plans and suggestions: their times are kept on disk and outlive the tool server. */
   now: () => number = Date.now;
   /** His own notes and places. Deaths are recorded as places so he can judge whether to go back. */
@@ -134,6 +156,8 @@ export class Tools {
     if (body.config.commonsUrl && body.config.commonsTokenFile) {
       void registerResidentTools(this.commons, name, this.registeredNames).catch(() => {});
       body.onAlarm = alarm => this.commons.alarm(alarm);
+      // Only alarms beyond earshot ask; a failed or slow hub answers null, which perceives nothing.
+      body.canSee = sender => this.commons.sight(sender).then(answer => answer.visible, () => null);
       this.stopPolling = this.commons.poll(body.events, alarm => body.hearAlarm(alarm));
     }
     this.gaps = new KnowledgeGaps(this.commons, name, () => {
@@ -143,7 +167,7 @@ export class Tools {
       } catch { return ""; }
     });
   }
-  close() { this.stopPolling?.(); this.body.onAlarm = undefined; }
+  close() { this.stopPolling?.(); this.body.onAlarm = undefined; this.body.canSee = undefined; }
   private social(): Society { return this.society; }
   get registeredNames(): ToolName[] {
     return (Object.keys(definitions) as ToolName[]).filter(n => this.knowledge || !knowledgeNames.includes(n));
@@ -163,6 +187,13 @@ export class Tools {
     let isError = false;
     try {
       if (!Object.hasOwn(definitions, name)) throw new Error(`Unknown tool: ${name}`);
+      const cap = limitCaps[name];
+      let lowered: string | undefined;
+      // Only a whole number over the cap is lowered; fractions, Infinity and NaN still fail the schema's own checks.
+      if (cap !== undefined && args !== null && typeof args === "object" && "limit" in args && typeof args.limit === "number" && Number.isInteger(args.limit) && args.limit > cap) {
+        lowered = `Asked for ${args.limit}; showing at most ${cap}, the most ${name} lists.`;
+        args = { ...args, limit: cap };
+      }
       const parsed = definitions[name as ToolName].schema.parse(args);
       // The runtime-selected schema and its tool name are a correlated pair.
       const command = [name, parsed] as Command;
@@ -172,6 +203,7 @@ export class Tools {
       const value = await (takeoverTools.includes(name) ? this.body.manualAction(run) : run()).finally(() => { if (onScreen) this.body.screenTouched(); });
       if (typeof value === "string") text = value;
       else { text = value.text; image = value.image; isError = value.isError === true; }
+      if (lowered && !isError) text = `${lowered}\n${text}`;
     } catch (error) {
       // A bare "Invalid input" (from a union such as look's three forms) tells
       // the model nothing; the description says which shapes are accepted.
@@ -213,8 +245,14 @@ export class Tools {
         return this.vehicles.run(tool, args, signal);
       case "mine": {
         const command = `#mine ${args.count === undefined ? "" : `${args.count} `}${args.block}`, radius = args.radius ?? 32;
-        await body.navigate(command, { mode: "excavate", mine: { block: args.block, radius, count: args.count } });
-        return `Started ${command}, kept within ${radius} blocks of here.`;
+        // Gary's `mine 12 denseores:dense_iron_ore` ran on past 13 raw iron: the count was kept in the dense ore alone.
+        const lootDrops = this.knowledge?.blockDrops?.(args.block);
+        await body.navigate(command, { mode: "excavate", mine: { block: args.block, radius, count: args.count, lootDrops } });
+        const started = `Started ${command}, kept within ${radius} blocks of here.`;
+        if (args.count === undefined) return started;
+        const { counted, known } = mineCounted(args.block, lootDrops);
+        if (!known) return `${started} The count is kept in ${args.block} itself only: what it drops is not known, so the count may not finish; watch your inventory and stop when you have enough.`;
+        return `${started} The count is kept in ${counted.join(" and ")}${known === "vanilla" ? "" : ` (drop known from ${known})`}: what came into your inventory, not blocks broken.`;
       }
       case "find_block": {
         const radius = args.radius ?? 32;
@@ -305,14 +343,15 @@ export class Tools {
           await Bun.sleep(100);
           const at = (await api.state().catch(() => undefined))?.lookingAt;
           if (!at) return "Looked (target read-back unavailable).";
-          if (at.type !== "block") return `Looked toward ${args.x},${args.y},${args.z}, but ${at.type === "entity" ? `${at.entity} is in the way` : "it is out of reach (more than about 4.5 blocks) or hidden"}.`;
-          const hit = at.blockPos?.join(",");
-          return hit === `${args.x},${args.y},${args.z}` ? `Looking at ${at.block} at ${hit}.` : `Looked toward ${args.x},${args.y},${args.z}, but ${at.block} at ${hit} is in the way.`;
+          return lookReport([args.x, args.y, args.z], at);
         }
         return "Looked.";
       }
       case "use": case "attack": {
         const before = tool === "use" && !args.hold_ticks ? await api.state() : undefined;
+        const bucket = before && bucketKind(before.hotbar.find(s => s.slot === before.selectedSlot && nonempty(s))?.item);
+        // Wren filled her bucket at a pond and boarded the chest boat in front of the water instead.
+        if (before && bucket) await bucketGuard(body, before);
         await api.player({ action: tool, ...(args.hold_ticks === undefined ? {} : { ticks: args.hold_ticks }) });
         if (args.hold_ticks) return `Holding ${tool} for ${args.hold_ticks} ticks.`;
         if (!before) return "Attacked.";
@@ -320,12 +359,14 @@ export class Tools {
         // knowing what she faced; she concluded crafting tables never open.
         const held = before.hotbar.find(s => s.slot === before.selectedSlot && s.item !== "minecraft:air")?.item ?? "empty hand";
         const at = before.lookingAt;
-        const target = at.type === "block" ? `${at.block}${at.blockPos ? ` at ${at.blockPos.join(",")}` : ""}` : at.type === "entity" ? at.entity : "nothing in reach (air, or more than about 4.5 blocks away)";
+        const target = at.type === "block" || at.type === "entity" ? sightsText(at) : "nothing in reach (air, or more than about 4.5 blocks away)";
         await Bun.sleep(300);
         // The use already happened; a failed read-back must not become an error.
         const after = await api.state().catch(() => undefined);
         if (!after) return `Used ${held} on ${target} (screen read-back unavailable).`;
         const opened = after.screen !== "none" && after.screen !== before.screen;
+        // A bucket acts on the fluid along the line, which the crosshair target ignores: say what it did.
+        if (bucket && !opened) return bucketReport(held, bucket, before, after);
         // Planting, placing and filling open no screen. Margo could not tell
         // whether a seed had gone in: say what the hand and the sights show now.
         const effects: string[] = [];
@@ -334,8 +375,7 @@ export class Tools {
         const countBefore = has(handBefore) ? handBefore.count : 0, countAfter = has(handAfter) ? handAfter.count : 0;
         if (has(handBefore) && has(handAfter) && handAfter.item !== handBefore.item) effects.push(`your hand now holds ${handAfter.item}`);
         else if (countAfter < countBefore) effects.push(`${countBefore - countAfter} ${held} used up, ${countAfter} left`);
-        const sights = (l: typeof at) => l.type === "block" ? `${l.block}${l.blockPos ? ` at ${l.blockPos.join(",")}` : ""}` : l.type === "entity" ? String(l.entity) : "nothing";
-        if (!opened && sights(after.lookingAt) !== sights(at)) effects.push(`now in your sights: ${sights(after.lookingAt)}`);
+        if (!opened && sightsText(after.lookingAt) !== sightsText(at)) effects.push(`now in your sights: ${sightsText(after.lookingAt)}`);
         const result = opened ? `${after.screen} opened` : "no screen opened";
         const told = effects.join("; ");
         return `Used ${held} on ${target}; ${result}.${told ? ` ${told[0].toUpperCase()}${told.slice(1)}.` : opened ? "" : " Nothing your body can see changed."}`;
@@ -394,26 +434,7 @@ export class Tools {
         return `Closed ${before}.${carried && carried !== "minecraft:air" ? ` The ${carried} on your cursor was dropped on the ground in front of you; walk over it to pick it up.` : ""}`;
       }
       case "picture": return { text: "Client view.", image: await api.picture() };
-      case "write_sign": {
-        const state = await api.state();
-        const held = state.hotbar.find(s => s.slot === state.selectedSlot);
-        if (!held?.item.endsWith("_sign") || state.lookingAt.type !== "block") throw new Error("Select a sign in the hotbar and look at a block first.");
-        if (state.screen !== "none") throw new Error("Close the current screen before placing a sign.");
-        await api.player({ action: "use" });
-        let screen = await api.gui();
-        for (let tries = 0; tries < 20 && !/sign/i.test(screen.screen); tries++) { await Bun.sleep(100); screen = await api.gui(); }
-        if (!/sign/i.test(screen.screen)) throw new Error(`Sign editor did not open (screen ${screen.screen}); no text was entered.`);
-        for (let i = 0; i < args.lines.length; i++) {
-          if (i) await api.gui({ action: "key", key: "ENTER" });
-          await api.gui({ action: "keys", text: args.lines[i] });
-        }
-        screen = await api.gui();
-        const done = screen.widgets?.find(w => w.button && w.active && w.visible && /^done$/i.test(w.label));
-        await api.gui(done ? { action: "clickButton", index: done.index } : { action: "key", key: "ESCAPE" });
-        const after = await api.gui();
-        if (/sign/i.test(after.screen)) throw new Error("Text entered, but sign editor is still open; inspect screen before continuing.");
-        return `Entered ${args.lines.length} sign lines; editor closed (${done ? "Done" : "ESCAPE"}). Text persistence is server-controlled.`;
-      }
+      case "write_sign": return writeSign(body, args.lines, this.signWaitMs);
       case "guide": return lookupGuide(args, this.knowledge, this.gaps);
       case "guide_feedback": return this.gaps.feedback(args);
       case "guide_updates": return this.gaps.updates(args);

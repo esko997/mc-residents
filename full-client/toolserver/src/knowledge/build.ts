@@ -128,6 +128,26 @@ export function plainText(text: string): string {
     .replace(/\\([\\[\]*_])/g, "$1").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Item ids a block loot table can drop with an ordinary tool: every `minecraft:item` entry, through
+ * alternatives/groups/sequences, except entries (or their parents) that need a tool match such as Silk Touch
+ * or shears. Tag, nested-table and dynamic entries name no fixed item and are left out.
+ */
+export function lootDrops(table: unknown): string[] {
+  const items = new Set<string>();
+  const needsTool = (conditions: unknown) => Array.isArray(conditions) &&
+    conditions.some((condition) => isObject(condition) && String(condition.condition ?? "").endsWith(":match_tool"));
+  const walk = (entry: unknown): void => {
+    if (!isObject(entry) || needsTool(entry.conditions)) return;
+    if (entry.type === "minecraft:item" && typeof entry.name === "string") items.add(registryId(entry.name));
+    if (Array.isArray(entry.children)) entry.children.forEach(walk);
+  };
+  for (const pool of isObject(table) && Array.isArray(table.pools) ? table.pools : []) {
+    if (isObject(pool) && !needsTool(pool.conditions) && Array.isArray(pool.entries)) pool.entries.forEach(walk);
+  }
+  return [...items];
+}
+
 export async function buildKnowledge(jarPaths: string[], modDirs: string[], output: string): Promise<void> {
   const jars = new Set(jarPaths.map((path) => resolve(path)));
   for (const dir of modDirs) {
@@ -149,6 +169,7 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
       CREATE TABLE recipe_inputs(recipe TEXT NOT NULL, what TEXT NOT NULL, PRIMARY KEY(recipe,what));
       CREATE TABLE recipe_outputs(recipe TEXT NOT NULL, what TEXT NOT NULL, PRIMARY KEY(recipe,what));
       CREATE TABLE tag_items(tag TEXT NOT NULL, item TEXT NOT NULL, PRIMARY KEY(tag,item));
+      CREATE TABLE block_drops(block TEXT NOT NULL, item TEXT NOT NULL, PRIMARY KEY(block,item));
       CREATE VIRTUAL TABLE guides USING fts5(book UNINDEXED, title, text, tokenize='unicode61');`);
     const itemInsert = db.query("INSERT INTO items VALUES (?,?) ON CONFLICT(id) DO UPDATE SET name=coalesce(excluded.name,items.name)");
     const langInsert = db.query("INSERT OR REPLACE INTO lang VALUES (?,?)");
@@ -188,6 +209,7 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
       })();
     }
     const recipeInsert = db.query("INSERT OR REPLACE INTO recipes VALUES (?,?,?)");
+    const dropInsert = db.query("INSERT OR IGNORE INTO block_drops VALUES (?,?)");
     const inInsert = db.query("INSERT OR IGNORE INTO recipe_inputs VALUES (?,?)");
     const outInsert = db.query("INSERT OR IGNORE INTO recipe_outputs VALUES (?,?)");
     const guideInsert = db.query("INSERT INTO guides(book,title,text) VALUES (?,?,?)");
@@ -218,7 +240,7 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
     };
     for (const jar of jars) {
       const files = unzipSync(new Uint8Array(await Bun.file(jar).arrayBuffer()), { filter: (entry) =>
-        /^data\/[^/]+\/(recipes|tags\/items)\/.+\.json$/.test(entry.name) ||
+        /^data\/[^/]+\/(recipes|tags\/items|loot_tables\/blocks)\/.+\.json$/.test(entry.name) ||
         /^(?:data|assets)\/[^/]+\/(?:patchouli_books|modonomicon\/books)\/.+\.json$/.test(entry.name) ||
         /^assets\/immersiveengineering\/manual\/en_us\/.+\.txt$/.test(entry.name) });
       db.transaction(() => {
@@ -238,6 +260,14 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
             if (!isObject(data)) throw new Error("Expected resource object");
             match = /^data\/([^/]+)\/recipes\/(.+)\.json$/.exec(path);
             if (match) { addRecipe(`${match[1]}:${match[2]}`, data); continue; }
+            match = /^data\/([^/]+)\/loot_tables\/blocks\/(.+)\.json$/.exec(path);
+            if (match) {
+              // A later jar's table replaces an earlier one, as a datapack does.
+              const block = `${match[1]}:${match[2]}`;
+              db.query("DELETE FROM block_drops WHERE block=?").run(block);
+              for (const item of lootDrops(data)) dropInsert.run(block, item);
+              continue;
+            }
             match = /^data\/([^/]+)\/tags\/items\/(.+)\.json$/.exec(path);
             if (match) {
               const id = `${match[1]}:${match[2]}`;
@@ -261,7 +291,7 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
               const clean = plainText(fragments.join(" "));
               if (clean) guideInsert.run(book, title, clean);
             }
-          } catch { skip(`invalid ${path.includes("/recipes/") ? "recipe" : path.includes("/tags/") ? "tag" : "guide"} file`); }
+          } catch { skip(`invalid ${path.includes("/recipes/") ? "recipe" : path.includes("/tags/") ? "tag" : path.includes("/loot_tables/") ? "loot table" : "guide"} file`); }
         }
       })();
     }
@@ -287,7 +317,7 @@ export async function buildKnowledge(jarPaths: string[], modDirs: string[], outp
       CREATE INDEX tag_item ON tag_items(item,tag);
       DROP TABLE lang; INSERT INTO guides(guides) VALUES('optimize'); PRAGMA optimize; VACUUM;`);
     console.log(`Jars: ${jars.size}; detected mods: ${mods.size}`);
-    for (const table of ["items", "recipes", "guides"]) {
+    for (const table of ["items", "recipes", "guides", "block_drops"]) {
       const row = db.query<{ n: number }, []>(`SELECT count(*) AS n FROM ${table}`).get();
       console.log(`${table}: ${row?.n}`);
     }

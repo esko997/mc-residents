@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -118,6 +119,40 @@ describe("recipe and guide boundaries", () => {
         expect(knowledge.recipesFor("test:absent")).toEqual([]);
         expect(knowledge.recipesFor("test:present")).toHaveLength(1);
       } finally { knowledge.close(); }
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+  test("block loot tables: ordinary-tool drops, later jars replace, an older export answers undefined", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "resident-knowledge-loot-"));
+    try {
+      const silk = [{ condition: "minecraft:match_tool", predicate: { enchantments: [{ enchantment: "minecraft:silk_touch", levels: { min: 1 } }] } }];
+      // denseores 1.2.1's own table for dense iron ore, trimmed: Silk Touch gives the block, otherwise 2-4 raw iron.
+      const dense = { type: "minecraft:block", pools: [{ rolls: 1, entries: [{ type: "minecraft:alternatives", children: [
+        { type: "minecraft:item", conditions: silk, name: "denseores:dense_iron_ore" },
+        { type: "minecraft:item", functions: [{ function: "minecraft:set_count", count: { type: "minecraft:uniform", min: 2, max: 4 } }], name: "minecraft:raw_iron" },
+      ] }] }] };
+      const leaves = { type: "minecraft:block", pools: [
+        { rolls: 1, entries: [{ type: "minecraft:alternatives", children: [{ type: "minecraft:item", conditions: [{ condition: "minecraft:any_of", terms: [] }, ...silk], name: "test:leaves" }, { type: "minecraft:item", name: "test:sapling" }] }] },
+        { rolls: 1, conditions: [{ condition: "minecraft:inverted", term: silk[0] }], entries: [{ type: "minecraft:item", name: "stick" }, { type: "minecraft:tag", name: "test:extras" }] },
+      ] };
+      const first = join(dir, "first.jar"), second = join(dir, "second.jar"), out = join(dir, "knowledge.sqlite");
+      await Bun.write(first, zipSync({
+        "data/denseores/loot_tables/blocks/dense_iron_ore.json": strToU8(JSON.stringify(dense)),
+        "data/test/loot_tables/blocks/leaves.json": strToU8(JSON.stringify(leaves)),
+        "data/test/loot_tables/blocks/old.json": strToU8(JSON.stringify({ pools: [{ rolls: 1, entries: [{ type: "minecraft:item", name: "test:old_drop" }] }] })),
+      }));
+      await Bun.write(second, zipSync({ "data/test/loot_tables/blocks/old.json": strToU8(JSON.stringify({ pools: [{ rolls: 1, entries: [{ type: "minecraft:item", name: "test:new_drop" }] }] })) }));
+      await buildKnowledge([first, second], [], out);
+      const knowledge = openKnowledge(out);
+      try {
+        expect(knowledge.blockDrops!("denseores:dense_iron_ore")).toEqual(["minecraft:raw_iron"]);
+        expect(knowledge.blockDrops!("test:leaves")).toEqual(["minecraft:stick", "test:sapling"]);
+        expect(knowledge.blockDrops!("test:old")).toEqual(["test:new_drop"]);
+        expect(knowledge.blockDrops!("test:none")).toEqual([]);
+      } finally { knowledge.close(); }
+      const old = join(dir, "old.sqlite");
+      const legacy = new Database(old, { create: true }); legacy.exec("CREATE TABLE items(id TEXT PRIMARY KEY, name TEXT)"); legacy.close();
+      const older = openKnowledge(old);
+      try { expect(older.blockDrops!("denseores:dense_iron_ore")).toBeUndefined(); } finally { older.close(); }
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
   test("recipe lookup ranks direct matches, approachable types, then type and recipe id before limiting", async () => {

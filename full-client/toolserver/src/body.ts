@@ -7,7 +7,7 @@ import {
   tripSettingsSchema, type TripMode, type TripSettings,
 } from "./navigation.ts";
 import { alarmEventSchema, type AlarmRequest } from "../../commons/src/resident-contracts-alarm.ts";
-import { alarmFromState, automaticAlarmReasons, canPerceiveAlarm, perceivedAlarmText, type AutoAlarmClass } from "./alarms.ts";
+import { alarmFromState, alarmPerception, automaticAlarmReasons, perceivedAlarmText, type AutoAlarmClass } from "./alarms.ts";
 
 /** A destination. `y` is present only when the goal names a height, as in `#goto x y z`. */
 export interface Goal { x: number; z: number; y?: number }
@@ -18,9 +18,11 @@ export interface MineLimit {
   block: string; radius: number;
   /** The job is done when this many of the `counted` items came in; without it, when none is left within the radius. */
   count?: number;
-  /** The items a count is kept in: the block's own, and what a vanilla block is known to drop instead. No other
-   * pickup counts, so a block whose drop is not known ends by the radius, never by a count it did not reach. */
+  /** The items a count is kept in: the block's own, and what it is known to drop instead (see `mineCounted`). No
+   * other pickup counts, so a block whose drop is not known ends by the radius, never by a count it did not reach. */
   counted: string[];
+  /** How the drop was known, when it was: see `mineCounted`. */
+  known?: string;
   /** Item counts carried when the job began, to say what it collected, and how many full state reads the
    * body had made by then: only a later read shows what the job brought in. */
   had: Record<string, number>; reads: number;
@@ -78,9 +80,10 @@ class MealRefused extends Error {}
 /** No meal for a dead body. Reflexes say nothing about it: the `died` event already has. */
 class DeadError extends MealRefused { constructor() { super("You are dead; nothing was eaten."); } }
 const deathScreen = "DeathScreen";
-/** Blocks whose right-click opens or toggles something even with food in hand, by registry name. A heuristic for
- * modded worlds: it only decides whether a meal is refused under such a block, never what is opened. */
-const interactable = /(table|chest|barrel|furnace|smoker|shulker_box|hopper|dropper|dispenser|door|gate|button|lever|anvil|sign|loom|stonecutter|grindstone|brewing_stand|beacon|lectern|bell|cake|crate|drawer|cabinet|workbench)(_|$)/;
+/** Blocks whose right-click opens or toggles something even with food or a sign in hand, by registry name. A
+ * heuristic for modded worlds: it only decides whether a meal (or an uncrouched sign) is refused under such a
+ * block, never what is opened. */
+export const interactable = /(table|chest|barrel|furnace|smoker|shulker_box|hopper|dropper|dispenser|door|gate|button|lever|anvil|sign|loom|stonecutter|grindstone|brewing_stand|beacon|lectern|bell|cake|crate|drawer|cabinet|workbench|composter)(_|$)/;
 type RescueKind = "retreat" | "surface" | "lava" | "fire";
 interface Rescue {
   kind: RescueKind; reason: string; started: number; paused: boolean; busy: boolean;
@@ -167,12 +170,29 @@ function gainText(gained: Gain[], counted: string[]) {
   const ordered = [...gained].sort((a, b) => Number(counted.includes(b[0])) - Number(counted.includes(a[0])));
   return ordered.slice(0, 3).map(([item, count]) => `${count} x ${item}`).join(", ") + (ordered.length > 3 ? ` and ${ordered.length - 3} more kinds` : "") || "nothing";
 }
+/**
+ * The items a mine count is kept in, and how the drop was known: the vanilla table above; else the block's loot
+ * table from the knowledge export (`lootDrops`); else, for a modded ore, the vanilla ore its name ends in
+ * (denseores:dense_iron_ore drops raw iron, as minecraft:iron_ore does). Otherwise only the block's own item.
+ */
+export function mineCounted(block: string, lootDrops?: readonly string[]): { counted: string[]; known?: string } {
+  const vanilla = vanillaDrops[block];
+  if (vanilla) return { counted: [block, ...vanilla], known: "vanilla" };
+  if (lootDrops?.length) return { counted: [...new Set([block, ...lootDrops])], known: "its loot table" };
+  const path = block.slice(block.indexOf(":") + 1), words = path.split("_");
+  for (let i = 0; path.endsWith("_ore") && i < words.length - 1; i++) {
+    const ore = `minecraft:${words.slice(i).join("_")}`;
+    if (vanillaDrops[ore]) return { counted: [block, ...vanillaDrops[ore]!], known: `its name, like ${ore}` };
+  }
+  return { counted: [block] };
+}
 /** For a job that ended short of its count with something picked up: how far the count got, and, when the
  * block's drop is not known and none of its own item came in, that only that item was counted. */
 function countText(gained: Gain[], limit: MineLimit) {
   if (limit.count === undefined || !gained.length) return undefined;
   const have = tally(gained, limit.counted);
-  return `${have} of ${limit.count}${have || vanillaDrops[limit.block] ? "" : ` (only ${limit.block} itself is counted; what it drops is not known)`}`;
+  if (limit.known && limit.known !== "vanilla") return `${have} of ${limit.count} (counted in ${limit.counted.join(", ")}; drop known from ${limit.known})`;
+  return `${have} of ${limit.count}${have || limit.known ? "" : ` (only ${limit.block} itself is counted; what it drops is not known)`}`;
 }
 /** Baritone breaks a block on its blocksToAvoidBreaking list only at a cost (avoidBreakingMultiplier 0.01), and
  * then `#mine` of such a block finds no path to it. The cost is lifted while a mine job that asks for one may be
@@ -197,6 +217,9 @@ export class Body {
   onDeath?: (death: Death) => void | Promise<void>;
   /** Optional network hook; automatic alarms never await it or interfere with body controls. */
   onAlarm?: (alarm: AlarmRequest) => Promise<unknown>;
+  /** Optional hub question for an alarm beyond earshot: can this resident see `sender` now? true, false, or null
+   * when unknown. Must be bounded; only `true` makes the alarm perceived. */
+  canSee?: (sender: string) => Promise<boolean | null>;
   private alarmSent = new Map<AutoAlarmClass, number>();
   reflexes: Reflexes = { auto_eat: true, eat_below: 12, when_attacked: "auto", surface: true, escape_fire: true, avoid_creepers: true, water_bucket: false };
   error?: string;
@@ -336,16 +359,27 @@ export class Body {
       this.events.add("system", { text: `Baritone's settings did not read back as set: ${wrong.map(name => `${name} ${trip.applied[name]}, wanted ${wanted[name]}`).join("; ")}` });
     }
   }
-  /** Only a current, local body observation can turn a hub alarm into a waking event. */
-  async hearAlarm(fields: unknown): Promise<void> {
+  /**
+   * Only a current, local body observation can turn a hub alarm into a waking event: heard within earshot, or
+   * seen farther off when the hub confirms a clear line of sight. The sight question is fire-and-continue: the
+   * events poller and the reflexes never wait on it. Its pending check is returned for callers that want it.
+   */
+  async hearAlarm(fields: unknown): Promise<{ sight?: Promise<void> }> {
     const parsed = alarmEventSchema.safeParse(fields);
-    if (!parsed.success || this.stopped) return;
+    if (!parsed.success || this.stopped) return {};
+    const alarm = parsed.data;
     try {
       const listener = await this.api.state();
-      if (!this.stopped && canPerceiveAlarm(listener, parsed.data)) {
-        this.events.add("alarm", { text: perceivedAlarmText(listener, parsed.data) });
-      }
-    } catch { /* No current body observation: no perception, and no message to the mind. */ }
+      const perception = this.stopped ? undefined : alarmPerception(listener, alarm);
+      if (perception === "heard") this.events.add("alarm", { text: perceivedAlarmText(listener, alarm) });
+      const ask = this.canSee;
+      if (perception !== "sight" || !ask) return {};
+      // Anything but a confirmed sight (blocked, unknown, slow or failed hub) is silence, as out of earshot is.
+      const sight = Promise.resolve().then(() => ask(alarm.sender)).then(visible => {
+        if (visible === true && !this.stopped) this.events.add("alarm", { text: perceivedAlarmText(listener, alarm, true) });
+      }, () => {});
+      return { sight };
+    } catch { return {}; } // No current body observation: no perception, and no message to the mind.
   }
 
   private raiseAutomaticAlarms(state: State, hurt: boolean): void {
@@ -629,7 +663,7 @@ export class Body {
    * under the old settings is walked (and dug) whatever they say afterwards; then the settings are set and read
    * back from Baritone's settings file, and the trip starts only if they read back as wanted. `mine` has the
    * body watch the job: see MineLimit. */
-  async navigate(command: string, trip: { mode: TripMode; target?: Goal; follow?: string; mine?: { block: string; radius: number; count?: number } }): Promise<void> {
+  async navigate(command: string, trip: { mode: TripMode; target?: Goal; follow?: string; mine?: { block: string; radius: number; count?: number; lootDrops?: readonly string[] } }): Promise<void> {
     const { mode, target, follow, mine } = trip;
     const state = await this.api.state(mine !== undefined);
     const settings: Record<string, string | undefined> = await this.baritoneSettings();
@@ -666,7 +700,8 @@ export class Body {
       this.navigation = {
         description, target, follow, mode, start: { ...state.pos }, lastPos: { ...state.pos }, lastMoved: now, lastStep: now, lastView: viewOf(state), reported: false,
         ...(mine ? { limit: {
-          ...mine, counted: [mine.block, ...(vanillaDrops[mine.block] ?? [])], had: carried(state), reads: this.fullReads, probeAt: now + probe.first,
+          block: mine.block, radius: mine.radius, ...(mine.count === undefined ? {} : { count: mine.count }),
+          ...mineCounted(mine.block, mine.lootDrops), had: carried(state), reads: this.fullReads, probeAt: now + probe.first,
           ...(relaxed ? { relaxed: true as const } : {}),
         } } : {}),
       };

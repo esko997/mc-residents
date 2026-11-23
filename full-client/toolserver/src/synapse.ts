@@ -10,12 +10,21 @@ export interface Entity {
   fuse?: boolean;
   passengers?: number; mountable?: boolean;
 }
+export interface FluidHit { fluid: string; source: boolean; blockPos: number[]; face: string }
 export interface State {
   pos: Position; dimension: string; health: number; food: number;
   maxHealth?: number;
   eye: Position; rotation: { yaw: number; pitch: number };
   hotbar: Stack[]; selectedSlot: number; screen: string;
-  lookingAt: { type: string; block?: string; blockPos?: number[]; entity?: string; entityId?: number };
+  lookingAt: {
+    type: string; block?: string; blockPos?: number[]; face?: string; entity?: string; entityId?: number;
+    /** A Synapse that reports fluids on the view ray sets this; without it, `fluid` absent means unknown. */
+    fluidsChecked?: boolean;
+    /** The first fluid cell on the view ray within block reach, nearer than any block outline (the crosshair ignores fluids). */
+    fluid?: FluidHit;
+    /** The first source fluid cell on that ray: what an empty bucket would take. */
+    fluidSource?: FluidHit;
+  };
   nearbyEntities?: Entity[];
   inventory?: { main: Stack[]; armor: Stack[]; offhand: Stack };
   air?: number; maxAir?: number;

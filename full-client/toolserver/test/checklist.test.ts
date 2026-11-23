@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { appendFile } from "node:fs/promises";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { fixture as fakeFixture, type Fixture } from "./fake-synapse.ts";
+import { Tools } from "../src/tools.ts";
+import type { Knowledge } from "../src/knowledge/types.ts";
 
 const fixture = () => fakeFixture({ rotation: { yaw: 73, pitch: 10 }, selectedSlot: 4 });
 const toolText = (result: CallToolResult) => result.content.filter(c => c.type === "text").map(c => c.text).join("\n");
@@ -1097,6 +1099,33 @@ test("R09 a block whose drop is not known is counted by its own item alone, and 
   f.tick(3000); await f.body.poll(); await f.body.poll();
   expect(f.baritone.active).toBe(false);
   expect(f.body.events.consume()).toBe("Since last time:\n1 navigation_stopped goal=mine 2 create:zinc_ore collected=5 x create:raw_zinc, 9 x minecraft:cobblestone counted=0 of 2 (only create:zinc_ore itself is counted; what it drops is not known) reason=no create:zinc_ore left within 8 blocks of where you started (0,64,0) nearest=40,64,0, 40 blocks from where you started you=0,64,0");
+});
+
+test("R09 a dense ore is counted in what it drops: Gary's mine 12 dense iron stops at 12 raw iron, and says what it counts", async () => {
+  const f = await fixture(); carry(f, { "minecraft:raw_iron": 10 });
+  const reply = toolText(await f.tools.call("mine", { block: "denseores:dense_iron_ore", count: 12, radius: 14 }));
+  expect(reply).toContain("Started #mine 12 denseores:dense_iron_ore, kept within 14 blocks of here. The count is kept in denseores:dense_iron_ore and minecraft:raw_iron (drop known from its name, like minecraft:iron_ore): what came into your inventory, not blocks broken.");
+  f.tick(1000); carry(f, { "minecraft:raw_iron": 21, "minecraft:cobblestone": 25 }); await f.body.poll();
+  expect(f.baritone.active).toBe(true);
+  f.tick(1000); carry(f, { "minecraft:raw_iron": 23, "minecraft:cobblestone": 25 }); await f.body.poll();
+  expect(f.baritone.active).toBe(false);
+  expect(f.body.events.consume()).toContain("arrived goal=mine 12 denseores:dense_iron_ore collected=13 x minecraft:raw_iron, 25 x minecraft:cobblestone");
+});
+
+test("R09 a modded block's loot table, when the knowledge export has it, decides what the count is kept in", async () => {
+  const f = await fakeFixture({ mineTargets: [[40, 64, 0]] });
+  const knowledge: Knowledge = {
+    findItems: () => [], recipesFor: () => [], usesOf: () => [], itemsInTag: () => [], searchGuides: () => [], close() {},
+    blockDrops: block => block === "create:zinc_ore" ? ["create:raw_zinc", "create:zinc_ore"] : [],
+  };
+  const tools = new Tools(f.body, knowledge);
+  try {
+    expect(toolText(await tools.call("mine", { block: "create:zinc_ore", count: 4, radius: 8 }))).toContain("The count is kept in create:zinc_ore and create:raw_zinc (drop known from its loot table)");
+    // Short of the count when the radius ends it: the event says what was counted and how that was known.
+    f.tick(500); carry(f, { "create:raw_zinc": 3 }); await f.body.poll(); await f.body.poll();
+    expect(f.body.events.consume()).toContain("counted=3 of 4 (counted in create:zinc_ore, create:raw_zinc; drop known from its loot table)");
+    expect(toolText(await f.tools.call("mine", { block: "quark:jasper", count: 4 }))).toContain("The count is kept in quark:jasper itself only: what it drops is not known");
+  } finally { tools.close(); }
 });
 
 test("N08 a mine job carried past its radius before Baritone said anything claims nothing about what is left", async () => {

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Events } from "./events.ts";
 import type { AlarmRequest } from "../../commons/src/resident-contracts-alarm.ts";
+import type { SightAnswer } from "../../commons/src/resident-sight.ts";
 
 /** Only the hub holds shared data. Failed mutations are never automatically retried. */
 export class CommonsClient {
@@ -43,8 +44,14 @@ export class CommonsClient {
     return this.request("alarm", input);
   }
 
+  /** Whether this resident can see `resident` now, as the hub's server observer says: true, false, or null when
+   * unknown. Bounded: an alarm's sight check never waits long on the hub. */
+  sight(resident: string, timeout = 2500): Promise<SightAnswer> {
+    return this.request(`sight?to=${encodeURIComponent(resident)}`, undefined, undefined, timeout);
+  }
+
   /** A single bounded long-poll; only reads retry, with cancellation on toolserver shutdown. */
-  poll(events: Events, receiveAlarm?: (fields: unknown) => Promise<void>): () => void {
+  poll(events: Events, receiveAlarm?: (fields: unknown) => Promise<unknown>): () => void {
     const controller = new AbortController();
     void (async () => {
       let after = 0;

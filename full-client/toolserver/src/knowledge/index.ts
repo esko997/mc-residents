@@ -60,6 +60,11 @@ export function openKnowledge(dbPath: string): Knowledge {
         WHERE guides MATCH ? ORDER BY rank LIMIT ?`)
         .all(match, boundedLimit(limit, 8)) as GuideHit[];
     },
+    blockDrops(blockId) {
+      try {
+        return (db.query("SELECT item FROM block_drops WHERE block = ? ORDER BY item").all(blockId) as { item: string }[]).map((row) => row.item);
+      } catch { return undefined; } // An export built before loot tables were indexed.
+    },
     close() { db.close(); },
   };
 }

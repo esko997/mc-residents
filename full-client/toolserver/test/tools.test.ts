@@ -231,8 +231,8 @@ describe("reflexes and interactions", () => {
     expect(sent.join(" ")).toBe(words);
   });
   test("write sign opens editor, types lines and clicks Done", async () => {
-    const f = await fixture(); f.state.hotbar = [{ slot: 0, count: 1, item: "minecraft:oak_sign" }]; f.state.lookingAt = { type: "block", block: "minecraft:stone" };
-    expect(text(await f.tools.call("write_sign", { lines: ["Gary", "lives here"] }))).toContain("editor closed (Done)");
+    const f = await fixture(); f.state.hotbar = [{ slot: 0, count: 1, item: "minecraft:oak_sign" }]; f.state.lookingAt = { type: "block", block: "minecraft:stone", blockPos: [3, 63, 0], face: "up" };
+    expect(text(await f.tools.call("write_sign", { lines: ["Gary", "lives here"] }))).toContain("Placed the sign at 3,64,0 on the up face of minecraft:stone at 3,63,0; entered 2 lines; editor closed (Done).");
     expect(f.requests.filter(r => r.path === "/gui" && r.body.action).map(r => r.body)).toEqual([{ action: "keys", text: "Gary" }, { action: "key", key: "ENTER" }, { action: "keys", text: "lives here" }, { action: "clickButton", index: 0 }]);
   });
   test("use reports what was in hand, what it was used on, and whether a screen opened", async () => {
@@ -926,13 +926,14 @@ describe("find_block", () => {
     expect(text(await f.tools.call("find_block", { block: "wheat", radius: 4 }))).toStartWith(
       "Nothing was searched: no chunk within 4 blocks of you (8,64,8) is loaded in your client (1 in that radius).\n\n");
   });
-  test("an id that names no block is Synapse's error; a malformed id or a radius or limit out of range never reaches it", async () => {
+  test("an id that names no block is Synapse's error; a malformed id, a radius out of range or a limit below 1 never reaches it", async () => {
     const f = await fixture({ blocks: { "minecraft:diamond_ore": [[1, 64, 0]] } });
     const item = await f.tools.call("find_block", { block: "diamond" });
     expect(item.isError).toBe(true);
     expect(text(item)).toStartWith("Error: Synapse: Unknown block id 'minecraft:diamond': no block is registered under it (an item that is not a block cannot be searched for).\n\n");
     expect(blockRequests(f)).toHaveLength(1);
-    for (const args of [{ block: "Diamond Ore" }, { block: "diamond_ore", radius: 97 }, { block: "diamond_ore", radius: 0 }, { block: "diamond_ore", limit: 17 }, { block: "diamond_ore", limit: 0 }, { block: "diamond_ore", near: true }]) {
+    // A limit above the cap is lowered, not refused (test/limits.test.ts).
+    for (const args of [{ block: "Diamond Ore" }, { block: "diamond_ore", radius: 97 }, { block: "diamond_ore", radius: 0 }, { block: "diamond_ore", limit: 0 }, { block: "diamond_ore", near: true }]) {
       expect((await f.tools.call("find_block", args)).isError).toBe(true);
     }
     expect(blockRequests(f)).toHaveLength(1);

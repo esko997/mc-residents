@@ -10,6 +10,7 @@ import { societyOperation } from "./resident-society.ts";
 import { knowledgeOperation } from "./resident-knowledge.ts";
 import { alarmRequestSchema } from "./resident-contracts-alarm.ts";
 import { AlarmRateLimitError, ResidentAlarms, type ResidentAlarmOptions } from "./resident-alarms.ts";
+import { ResidentSight, type ResidentSightOptions } from "./resident-sight.ts";
 
 const credentialSchema = z.array(z.object({ name: z.string().regex(/^\w{1,40}$/), role: z.enum(["resident", "caretaker"]), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict());
 type Credential = z.infer<typeof credentialSchema>[number];
@@ -26,9 +27,11 @@ export class ResidentApi {
   private stamp = "";
   private credentials: Credential[] = [];
   private alarms: ResidentAlarms;
-  constructor(private db: Database, private credentialsFile: string, private acceptNotes = true, options: ResidentAlarmOptions = {}) {
+  private sight: ResidentSight;
+  constructor(private db: Database, private credentialsFile: string, private acceptNotes = true, options: ResidentAlarmOptions = {}, sight: ResidentSightOptions = {}) {
     this.events = new ResidentEvents(db);
     this.alarms = new ResidentAlarms(db, this.events, options);
+    this.sight = new ResidentSight(sight);
   }
 
   private authenticate(request: Request): Credential | undefined {
@@ -96,6 +99,15 @@ export class ResidentApi {
         if (error instanceof z.ZodError || error instanceof SyntaxError) return failure(400, "invalid_request", "Invalid alarm arguments; identity is assigned by the hub.");
         return failure(503, "alarm_unavailable", "The hub could not record the alarm.");
       }
+    }
+    if (path === "sight" && request.method === "GET") {
+      if (who.role !== "resident") return failure(403, "forbidden", "Only residents may ask about their own sight.");
+      // Always the caller's own sight: no resident learns what another can see.
+      const asked = url.searchParams.get("to") ?? "";
+      const other = /^\w{1,16}$/.test(asked) && !url.searchParams.has("from")
+        ? this.credentials.find(c => c.role === "resident" && c.name.toLowerCase() === asked.toLowerCase()) : undefined;
+      if (!other || other.name.toLowerCase() === who.name.toLowerCase()) return failure(400, "invalid_request", "to must name another resident; sight is always from the caller.");
+      return response({ result: await this.sight.between(who.name, other.name) });
     }
     const [group, operation, extra] = path.split("/");
     if (request.method !== "POST" || !group || !operation || extra !== undefined || !Object.hasOwn(reads, group)) return failure(404, "not_found", "Resident API endpoint not found.");

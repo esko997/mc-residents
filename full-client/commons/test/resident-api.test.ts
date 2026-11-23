@@ -7,6 +7,8 @@ import { importSharedPlaces, sharedPlaces } from "../src/resident-places.ts";
 import { ResidentEvents } from "../src/resident-events.ts";
 import { createApp } from "../src/app.ts";
 import { tempHome } from "./helpers.ts";
+import type { observerGet } from "../src/observer.ts";
+import type { ResidentSightOptions } from "../src/resident-sight.ts";
 
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const close of cleanup.splice(0)) close(); });
@@ -118,4 +120,46 @@ test("app dispatch precedes URL-token auth and map reads hub places, never the r
   home.put("resident/shared/places.json", '{"places":[]}');
   const map = await app.fetch(new Request("http://local/dashboard-test/api/map"));
   expect((await map.json() as { places: { name: string }[] }).places.map(p => p.name)).toEqual(["hut"]);
+});
+
+/** A server observer that answers `/v1/sight` as the bridge does, recording each path asked; `hang` never answers. */
+function observer(visible: boolean | null, paths: string[], hang = false): ResidentSightOptions {
+  const get: typeof observerGet = async (_source, path) => {
+    paths.push(path);
+    if (hang) await Promise.withResolvers<never>().promise;
+    return { ok: true, receivedAt: Date.now(), data: { schema: 1, source: "server-observer", servedAtMs: Date.now(), state: "ok", sight: { visible, distance: visible === null ? null : 80.4, reason: visible === null ? "unloaded" : visible ? "clear" : "blocked" } } };
+  };
+  return { source: { url: "http://observer.invalid", tokenFile: "/nonexistent" }, get, timeoutMs: 150 };
+}
+const sight = (h: { url: string }, token: string, query: string) =>
+  fetch(`${h.url}resident-api/v1/sight?${query}`, { headers: { Authorization: `Bearer ${token}` } });
+
+test("sight: a resident asks only about its own sight to another credentialed resident", async () => {
+  const paths: string[] = [];
+  const h = residentHub({ sight: observer(true, paths) }); cleanup.push(() => h.close());
+  const gary = h.identity("Gary"); h.identity("Margo"); const caretaker = h.identity("Caretaker", "caretaker");
+  // Canonical names go to the bridge, which matches them case-sensitively; `from` is always the caller.
+  expect(await (await sight(h, gary.token, "to=margo")).json()).toEqual({ result: { visible: true, distance: 80.4, reason: "clear" } });
+  expect(paths).toEqual(["/v1/sight?from=Gary&to=Margo"]);
+  expect((await sight(h, caretaker.token, "to=Margo")).status).toBe(403);
+  for (const query of ["to=Gary", "to=Nobody", "to=Caretaker", "to=", "from=Margo&to=Gary", "to=a%2Fb"]) {
+    expect((await sight(h, gary.token, query)).status).toBe(400);
+  }
+  expect(paths).toHaveLength(1);
+  expect((await sight(h, "unknown", "to=Margo")).status).toBe(401);
+});
+
+test("sight: blocked is false; no observer, unknown or a slow bridge is null within the bound", async () => {
+  const cases: [ResidentSightOptions, boolean | null, RegExp][] = [
+    [observer(false, []), false, /blocked/], [observer(null, []), null, /unloaded/],
+    [{ source: null }, null, /not configured/], [observer(true, [], true), null, /did not answer in time/],
+  ];
+  for (const [options, visible, reason] of cases) {
+    const h = residentHub({ sight: options }); cleanup.push(() => h.close());
+    const gary = h.identity("Gary"); h.identity("Margo");
+    const started = performance.now();
+    const { result } = await (await sight(h, gary.token, "to=Margo")).json() as { result: { visible: boolean | null; reason: string } };
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(result.visible).toBe(visible); expect(result.reason).toMatch(reason);
+  }
 });
