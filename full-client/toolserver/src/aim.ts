@@ -43,6 +43,8 @@ export function holdReport(before: State, after: State | undefined, ticks: numbe
   const at = before.lookingAt, slot = before.selectedSlot;
   const hand = before.hotbar.find(s => s.slot === slot && nonempty(s));
   const head = `Held attack for ${hold ? hold.heldTicks : ticks} ticks with ${hand?.item ?? "an empty hand"}`;
+  // Synapse withholds a hold's first click when the crosshair moved off the hold's target before the first tick.
+  if (hold?.ended === "target" && hold.heldTicks === 0) return `Held attack on ${sightsText(at)}: no click was made. Before the hold's first tick something else came into your sights${after ? ` (now ${sightsText(after.lookingAt)})` : ""}, and a hold strikes only what it began on.`;
   if (at.type === "entity") return `${head} on ${at.entity}: a held attack hits a creature once, on its first tick, as in the game. To fight, attack once per swing (a sword is ready again after about 0.6 s, an axe after 1 s), or leave it to your body, which fights back when attacked.`;
   if (at.type !== "block" || !at.blockPos) return `${head} at nothing in reach: nothing was broken.`;
   const block = `${at.block} at ${xyz(at.blockPos)}`;

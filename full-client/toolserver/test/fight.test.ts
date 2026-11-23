@@ -140,4 +140,9 @@ test("with a Synapse that breaks without focus, a hold that left the block stand
   f.options.attackHold = { active: false, requestedTicks: 60, heldTicks: 23, target, progress: 0.98, ticksNeeded: 23, ended: "target" };
   f.options.onHold = state => { state.lookingAt = { type: "block", block: "minecraft:stone", blockPos: [0, 64, 3], face: "north" }; state.hotbar[0]!.durability = 58; };
   expect(text(await f.tools.call("attack", { hold_ticks: 60 }))).toStartWith("Held attack for 23 ticks with minecraft:wooden_pickaxe: minecraft:deepslate at 0,64,2 broke (minecraft:wooden_pickaxe durability 59 -> 58). Now in your sights: minecraft:stone at 0,64,3.");
+  // A pig stepped into the line before the hold's first tick: Synapse made no click, and the reply says so.
+  f.options.attackHold = { active: false, requestedTicks: 60, heldTicks: 0, target, progress: 0, ended: "target" };
+  f.options.onHold = state => { state.lookingAt = { type: "entity", entity: "minecraft:pig", entityId: 5 }; };
+  f.state.lookingAt = { type: "block", block: "minecraft:stone", blockPos: [0, 64, 3], face: "north" };
+  expect(text(await f.tools.call("attack", { hold_ticks: 60 }))).toStartWith("Held attack on minecraft:stone at 0,64,3: no click was made. Before the hold's first tick something else came into your sights (now minecraft:pig), and a hold strikes only what it began on.");
 });
