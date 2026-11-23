@@ -12,13 +12,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
  * The observer's whole configuration, parsed from {@code config/resident_observer.json}.
  * Validation is strict and all-or-nothing: an invalid file means the observer does not start,
  * which is always safe for the game. Pure (no Minecraft types) so it is unit-tested.
+ *
+ * <p>The config holds no subjects: residents and facilities come from Commons as the watch list
+ * ({@code PUT /v1/watch}). A 0.2 config that still lists {@code residents}/{@code facilities} is
+ * accepted and those keys are ignored ({@link #ignoredKeys}, logged once at start).
  */
 public record ObserverConfig(
         boolean enabled,
@@ -40,20 +43,16 @@ public record ObserverConfig(
         int failureTripCount,
         int stallSeconds,
         Recording recording,
-        List<ResidentSpec> residents,
-        List<FacilitySpec> facilities,
-        List<ConsumerSpec> consumers) {
+        List<ConsumerSpec> consumers,
+        List<String> ignoredKeys) {
 
-    public static final int MAX_RESIDENTS = 32;
-    public static final int MAX_FACILITIES = 128;
     public static final int MAX_CONSUMERS = 32;
 
     private static final Pattern NAME = Pattern.compile("^\\w{1,16}$");
     private static final Pattern CONSUMER_NAME = Pattern.compile("^[A-Za-z0-9_-]{1,32}$");
-    private static final Pattern FACILITY_ID = Pattern.compile("^[a-z0-9][a-z0-9_-]{0,47}$");
-    private static final Pattern RESOURCE_LOCATION = Pattern.compile("^[a-z0-9_.-]+:[a-z0-9_./-]+$");
     private static final Pattern SHA256_HEX = Pattern.compile("^[0-9a-f]{64}$");
-    private static final Set<String> SIDES = Set.of("down", "up", "north", "south", "west", "east");
+    /** Keys of 0.2 configs that 0.3 accepts and ignores: subjects now come from the watch list. */
+    static final List<String> SUBJECT_KEYS = List.of("residents", "facilities");
     private static final Set<String> KNOWN_KEYS = Set.of("enabled", "bind", "port", "intervalTicks", "tickBudgetMicros",
             "maxFacilitySlots", "maxItemKinds", "eventCapacity", "failureTripCount", "stallSeconds",
             "residents", "facilities", "consumers", "_comment", "allowNonLoopback", "allowedHosts",
@@ -63,25 +62,17 @@ public record ObserverConfig(
             "blockAggregateCells", "blockAggregateHours", "recordFlows", "flowCapacity", "flowReach",
             "maxPlayerFileBytes");
 
-    /**
-     * Declarative query and recorder limits (all optional; defaults need no config change). Only
-     * the lists of residents and facilities need a restart to change what the bridge may read.
-     */
+    /** Declarative query and recorder limits (all optional; defaults need no config change). */
     public record Recording(int queryRatePerMinute, int queryBurst, boolean recordBlocks, int blockDetailCapacity,
                             int blockDetailPerTick, int blockAggregateCells, int blockAggregateHours,
                             boolean recordFlows, int flowCapacity, int flowReach, int maxPlayerFileBytes) {
         public static final Recording DEFAULTS = new Recording(60, 30, true, 4096, 32, 4096, 48, true, 1024, 8, 4 << 20);
     }
 
-    public record ResidentSpec(String name, UUID uuid) {
-    }
-
-    /** A registered facility: one block position whose block entity is read when its chunks are loaded. */
-    public record FacilitySpec(String id, String label, String dimension, int x, int y, int z, String side,
-                               boolean library) {
-    }
-
-    /** One credential. {@code resident} is set only for a {@link Scope#SELF} consumer. */
+    /**
+     * One credential. {@code resident} is set only for a {@link Scope#SELF} consumer: the name of the
+     * watched resident it may read (it sees nothing while that name is not on the watch list).
+     */
     public record ConsumerSpec(String name, String tokenSha256, Set<Scope> scopes, String resident) {
         public ConsumerSpec {
             scopes = Set.copyOf(scopes);
@@ -94,9 +85,8 @@ public record ObserverConfig(
 
     public ObserverConfig {
         allowedHosts = Set.copyOf(allowedHosts);
-        residents = List.copyOf(residents);
-        facilities = List.copyOf(facilities);
         consumers = List.copyOf(consumers);
+        ignoredKeys = List.copyOf(ignoredKeys);
     }
 
     public static final class InvalidConfig extends Exception {
@@ -121,6 +111,10 @@ public record ObserverConfig(
                 // A typo such as "tickBudgetMicro" would otherwise silently keep a default.
                 throw new InvalidConfig("unknown key '" + e.getKey() + "'");
             }
+        }
+        List<String> ignored = new ArrayList<>();
+        for (String key : SUBJECT_KEYS) {
+            if (o.has(key)) ignored.add(key); // never read: not even validated, so an old list cannot stop the start
         }
 
         boolean enabled = bool(o, "enabled", true);
@@ -172,31 +166,13 @@ public record ObserverConfig(
                 integer(o, "flowReach", d.flowReach(), 1, 32),
                 integer(o, "maxPlayerFileBytes", d.maxPlayerFileBytes(), 64 << 10, 32 << 20));
 
-        List<ResidentSpec> residents = residents(array(o, "residents"));
-        List<FacilitySpec> facilities = facilities(array(o, "facilities"));
-        List<ConsumerSpec> consumers = consumers(array(o, "consumers"), residents);
+        List<ConsumerSpec> consumers = consumers(array(o, "consumers"));
         if (consumers.isEmpty()) {
             throw new InvalidConfig("at least one consumer is required (nobody could read the observer otherwise)");
         }
         return new ObserverConfig(enabled, bind, allowNonLoopback, hosts, sightDistance, requestQueue,
                 requestTimeout, bookPages, bookPageChars, bookChars,
-                port, interval, budget, slots, kinds, events, trip, stall, recording, residents, facilities, consumers);
-    }
-
-    public ResidentSpec resident(String name) {
-        for (ResidentSpec r : residents) {
-            if (r.name().equals(name)) {
-                return r;
-            }
-        }
-        return null;
-    }
-
-    public FacilitySpec facility(String id) {
-        for (FacilitySpec f : facilities) {
-            if (f.id().equals(id)) return f;
-        }
-        return null;
+                port, interval, budget, slots, kinds, events, trip, stall, recording, consumers, ignored);
     }
 
     /** Numeric-only parsing: never resolves operator-supplied names through DNS. */
@@ -231,94 +207,9 @@ public record ObserverConfig(
         return true;
     }
 
-    // === sections ===
+    // === consumers ===
 
-    private static List<ResidentSpec> residents(JsonArray arr) throws InvalidConfig {
-        if (arr.size() > MAX_RESIDENTS) {
-            throw new InvalidConfig("at most " + MAX_RESIDENTS + " residents");
-        }
-        List<ResidentSpec> out = new ArrayList<>();
-        Set<String> names = new HashSet<>();
-        Set<UUID> uuids = new HashSet<>();
-        for (int i = 0; i < arr.size(); i++) {
-            JsonObject r = object(arr.get(i), "residents[" + i + "]");
-            String name = required(r, "name", "residents[" + i + "]");
-            if (!NAME.matcher(name).matches()) {
-                throw new InvalidConfig("residents[" + i + "].name must be a Minecraft name (1-16 letters, digits, _)");
-            }
-            UUID uuid;
-            try {
-                uuid = UUID.fromString(required(r, "uuid", "residents[" + i + "]"));
-            } catch (IllegalArgumentException e) {
-                throw new InvalidConfig("residents[" + i + "].uuid is not a UUID");
-            }
-            if (!names.add(name.toLowerCase(Locale.ROOT)) || !uuids.add(uuid)) {
-                throw new InvalidConfig("resident '" + name + "' (or its UUID) is listed twice");
-            }
-            out.add(new ResidentSpec(name, uuid));
-        }
-        return out;
-    }
-
-    private static List<FacilitySpec> facilities(JsonArray arr) throws InvalidConfig {
-        if (arr.size() > MAX_FACILITIES) {
-            throw new InvalidConfig("at most " + MAX_FACILITIES + " facilities");
-        }
-        List<FacilitySpec> out = new ArrayList<>();
-        Set<String> ids = new HashSet<>();
-        Set<String> places = new HashSet<>();
-        for (int i = 0; i < arr.size(); i++) {
-            String where = "facilities[" + i + "]";
-            JsonObject f = object(arr.get(i), where);
-            for (String key : f.keySet()) {
-                if (!Set.of("id", "label", "dimension", "pos", "side", "library").contains(key)) {
-                    throw new InvalidConfig(where + ": unknown key '" + key + "'");
-                }
-            }
-            String id = required(f, "id", where);
-            if (!FACILITY_ID.matcher(id).matches()) {
-                throw new InvalidConfig(where + ".id must be 1-48 of a-z 0-9 _ - (starting with a letter or digit)");
-            }
-            String label = string(f, "label", id);
-            if (label.length() > 80) {
-                throw new InvalidConfig(where + ".label is longer than 80 characters");
-            }
-            String dimension = string(f, "dimension", "minecraft:overworld");
-            if (!RESOURCE_LOCATION.matcher(dimension).matches()) {
-                throw new InvalidConfig(where + ".dimension must look like minecraft:overworld");
-            }
-            JsonElement posEl = f.get("pos");
-            if (posEl == null || !posEl.isJsonArray() || posEl.getAsJsonArray().size() != 3) {
-                throw new InvalidConfig(where + ".pos must be [x, y, z]");
-            }
-            JsonArray pos = posEl.getAsJsonArray();
-            int x = coordinate(pos.get(0), where + ".pos[0]", 30_000_000);
-            int y = coordinate(pos.get(1), where + ".pos[1]", 2048);
-            int z = coordinate(pos.get(2), where + ".pos[2]", 30_000_000);
-            String side = null;
-            JsonElement sideEl = f.get("side");
-            if (sideEl != null && !sideEl.isJsonNull()) {
-                side = sideEl.isJsonPrimitive() ? sideEl.getAsString().toLowerCase(Locale.ROOT) : "";
-                if (!SIDES.contains(side)) {
-                    throw new InvalidConfig(where + ".side must be null or one of " + SIDES);
-                }
-            }
-            if (!ids.add(id)) {
-                throw new InvalidConfig("facility id '" + id + "' is listed twice");
-            }
-            if (!places.add(dimension + " " + x + " " + y + " " + z + " " + side)) {
-                throw new InvalidConfig(where + " repeats another facility's position and side");
-            }
-            boolean library = bool(f, "library", false);
-            if (library && side != null) {
-                throw new InvalidConfig(where + ": library shelves have no side");
-            }
-            out.add(new FacilitySpec(id, label, dimension, x, y, z, side, library));
-        }
-        return out;
-    }
-
-    private static List<ConsumerSpec> consumers(JsonArray arr, List<ResidentSpec> residents) throws InvalidConfig {
+    private static List<ConsumerSpec> consumers(JsonArray arr) throws InvalidConfig {
         if (arr.size() > MAX_CONSUMERS) {
             throw new InvalidConfig("at most " + MAX_CONSUMERS + " consumers");
         }
@@ -345,18 +236,21 @@ public record ObserverConfig(
             for (JsonElement s : scopeArr) {
                 Scope scope = s.isJsonPrimitive() ? Scope.byId(s.getAsString()) : null;
                 if (scope == null) {
-                    throw new InvalidConfig(where + ".scopes: unknown scope " + s + " (known: residents, facilities, library, status, self)");
+                    throw new InvalidConfig(where + ".scopes: unknown scope " + s
+                            + " (known: residents, facilities, library, status, watch, self)");
                 }
                 scopes.add(scope);
             }
             String resident = c.has("resident") && !c.get("resident").isJsonNull() ? required(c, "resident", where) : null;
             if (scopes.contains(Scope.SELF)) {
-                if (resident == null || residents.stream().noneMatch(r -> r.name().equals(resident))) {
-                    throw new InvalidConfig(where + ": scope 'self' needs \"resident\" naming a configured resident");
+                if (resident == null || !NAME.matcher(resident).matches()) {
+                    throw new InvalidConfig(where + ": scope 'self' needs \"resident\", a Minecraft name (1-16 letters, digits, _)");
                 }
-                if (scopes.contains(Scope.RESIDENTS) || scopes.contains(Scope.FACILITIES) || scopes.contains(Scope.LIBRARY)) {
-                    // A resident's own credential must not see other residents, remote stock or books.
-                    throw new InvalidConfig(where + ": a 'self' consumer cannot also hold 'residents', 'facilities' or 'library'");
+                if (scopes.contains(Scope.RESIDENTS) || scopes.contains(Scope.FACILITIES) || scopes.contains(Scope.LIBRARY)
+                        || scopes.contains(Scope.WATCH)) {
+                    // A resident's own credential must not see other residents, remote stock or books,
+                    // nor decide what the bridge watches.
+                    throw new InvalidConfig(where + ": a 'self' consumer cannot also hold 'residents', 'facilities', 'library' or 'watch'");
                 }
             } else if (resident != null) {
                 throw new InvalidConfig(where + ": \"resident\" is only allowed with scope 'self'");
@@ -431,14 +325,6 @@ public record ObserverConfig(
         int value = wholeNumber(el, key);
         if (value < min || value > max) {
             throw new InvalidConfig(key + " must be between " + min + " and " + max + ", got " + value);
-        }
-        return value;
-    }
-
-    private static int coordinate(JsonElement el, String where, int limit) throws InvalidConfig {
-        int value = wholeNumber(el, where);
-        if (Math.abs(value) > limit) {
-            throw new InvalidConfig(where + " is outside ±" + limit);
         }
         return value;
     }

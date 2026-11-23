@@ -141,7 +141,7 @@ class RecordersTest {
     void listenerTimeCountsInTheSamplersTickBudgetMetrics() {
         Fixtures.Clock clock = new Fixtures.Clock();
         Fixtures.FakeWorld world = new Fixtures.FakeWorld(clock);
-        Sampler s = Fixtures.sampler(Fixtures.config("\"tickBudgetMicros\":500,\"intervalTicks\":1,", 1), world, new java.util.ArrayList<>());
+        Sampler s = Fixtures.watched(Fixtures.config("\"tickBudgetMicros\":500,\"intervalTicks\":1,"), world, new java.util.ArrayList<>(), 1);
         world.readCostNanos = 200_000; // the facility read: 200 us of the tick itself
         s.onServerTick();
         assertEquals(200, s.status().maxTickMicros());
@@ -162,8 +162,8 @@ class RecordersTest {
 
     // === Flows ===
 
-    private static final ObserverConfig.FacilitySpec CHEST =
-            new ObserverConfig.FacilitySpec("pantry", "Pantry", "minecraft:overworld", 10, 64, 10, null, false);
+    private static final WatchList.FacilitySpec CHEST =
+            new WatchList.FacilitySpec("pantry", "Pantry", "minecraft:overworld", 10, 64, 10, null);
 
     private static Observations.Contents contents(boolean truncated, Observations.ItemCount... items) {
         return new Observations.Contents("minecraft:chest", 27, items.length, false, List.of(items), truncated, null, List.of(), 3);

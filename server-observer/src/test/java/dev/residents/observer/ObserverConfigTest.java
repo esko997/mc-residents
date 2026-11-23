@@ -4,10 +4,10 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,7 +16,7 @@ class ObserverConfigTest {
     private static final String HASH = "a".repeat(64);
 
     private static String minimal(String consumers) {
-        return "{\"residents\":[{\"name\":\"Gary\",\"uuid\":\"" + Fixtures.GARY + "\"}],\"consumers\":[" + consumers + "]}";
+        return "{\"consumers\":[" + consumers + "]}";
     }
 
     private static ObserverConfig.InvalidConfig rejects(String json) {
@@ -31,17 +31,37 @@ class ObserverConfigTest {
         assertEquals(25640, c.port());
         assertEquals(20, c.intervalTicks());
         assertEquals(500, c.tickBudgetMicros());
-        assertEquals(1, c.residents().size());
-        assertTrue(c.facilities().isEmpty());
+        assertTrue(c.ignoredKeys().isEmpty());
     }
 
     @Test
-    void theShippedExampleParses() throws Exception {
-        Path example = Path.of("config.example.json");
-        ObserverConfig c = ObserverConfig.parse(Files.readString(example));
-        assertEquals(2, c.residents().size());
-        assertEquals("commons-chest", c.facilities().get(0).id());
-        assertNull(c.facilities().get(0).side());
+    void theShippedExampleParsesAndListsNoSubjects() throws Exception {
+        ObserverConfig c = ObserverConfig.parse(Files.readString(Path.of("config.example.json")));
+        assertTrue(c.ignoredKeys().isEmpty(), "the example carries no residents or facilities");
+        assertTrue(c.consumers().get(0).has(Scope.WATCH), "the hub's entry can push the watch list");
+    }
+
+    /**
+     * A 0.2 config with residents and facilities (even invalid ones) still starts the bridge, and nothing from
+     * those lists is watched: subjects come only from Commons.
+     */
+    @Test
+    void anOldConfigsSubjectsAreIgnoredNeverRead() throws Exception {
+        String old = "{\"residents\":[{\"name\":\"Gary\",\"uuid\":\"" + Fixtures.GARY + "\"},{\"name\":\"bad name!\"}],"
+                + "\"facilities\":[{\"id\":\"pantry\",\"pos\":[0,64,0],\"library\":true},\"not even an object\"],"
+                + "\"consumers\":[{\"name\":\"commons\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"residents\",\"facilities\"]}]}";
+        ObserverConfig c = ObserverConfig.parse(old);
+        assertEquals(List.of("residents", "facilities"), c.ignoredKeys());
+
+        Fixtures.Clock clock = new Fixtures.Clock();
+        Fixtures.FakeWorld world = new Fixtures.FakeWorld(clock);
+        world.online.put(Fixtures.GARY, Fixtures.body(clock.ms, "minecraft:overworld", 1, false));
+        Sampler s = Fixtures.sampler(c, world, new java.util.ArrayList<>());
+        s.onServerTick();
+        assertTrue(s.snapshot().residents().isEmpty());
+        assertTrue(s.snapshot().facilities().isEmpty());
+        assertTrue(world.reads.isEmpty());
+        assertEquals(0, s.status().residentsWatched());
     }
 
     @Test
@@ -56,30 +76,25 @@ class ObserverConfigTest {
     @Test
     void lanRequiresExplicitOptInAndExactHostNames() throws Exception {
         ObserverConfig c = ObserverConfig.parse(Fixtures.configJson(
-                "\"bind\":\"0.0.0.0\",\"allowNonLoopback\":true,\"allowedHosts\":[\"POP-OS\",\"192.168.1.233\"],", 0));
+                "\"bind\":\"0.0.0.0\",\"allowNonLoopback\":true,\"allowedHosts\":[\"POP-OS\",\"192.168.1.233\"],"));
         assertTrue(c.allowNonLoopback());
         assertTrue(c.allowedHosts().contains("pop-os"));
         assertTrue(c.allowedHosts().contains("localhost"));
         for (String hosts : new String[]{"[\"*.example\"]", "[\"pop-os:25640\"]", "[\"http://pop-os\"]", "[\"\"]", "[1]"}) {
-            rejects(Fixtures.configJson("\"allowedHosts\":" + hosts + ",", 0));
+            rejects(Fixtures.configJson("\"allowedHosts\":" + hosts + ","));
         }
         for (String bind : new String[]{"localhost", "server.example", "999.1.2.3", "1.2.3", "fe80::1%eth0"}) {
-            rejects(Fixtures.configJson("\"bind\":\"" + bind + "\",\"allowNonLoopback\":true,", 0));
+            rejects(Fixtures.configJson("\"bind\":\"" + bind + "\",\"allowNonLoopback\":true,"));
         }
-        assertEquals("::", ObserverConfig.parse(Fixtures.configJson("\"bind\":\"::\",\"allowNonLoopback\":true,", 0)).bind());
+        assertEquals("::", ObserverConfig.parse(Fixtures.configJson("\"bind\":\"::\",\"allowNonLoopback\":true,")).bind());
     }
 
     @Test
-    void libraryIsExplicitAndNeverGrantedToSelf() throws Exception {
-        ObserverConfig c = ObserverConfig.parse(Fixtures.configJson("", 1).replace("\"pos\":[0,64,0]", "\"pos\":[0,64,0],\"library\":true"));
-        assertTrue(c.facility("f0").library());
-        assertFalse(Fixtures.config("", 1).facility("f0").library());
-        rejects(Fixtures.configJson("", 1).replace("\"pos\":[0,64,0]", "\"pos\":[0,64,0],\"library\":\"yes\""));
-        rejects(Fixtures.configJson("", 1).replace("\"pos\":[0,64,0]", "\"pos\":[0,64,0],\"library\":true,\"side\":\"up\""));
+    void bookLimitsAreRangeCheckedAndSelfNeverReadsTheLibrary() {
         rejects(minimal("{\"name\":\"g\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"self\",\"library\"],\"resident\":\"Gary\"}"));
         for (String setting : new String[]{"\"maxSightDistance\":513", "\"requestQueueCapacity\":0",
                 "\"requestTimeoutMs\":0", "\"maxBookPages\":101", "\"maxBookPageChars\":32768", "\"maxBookChars\":262145"}) {
-            rejects(Fixtures.configJson(setting + ",", 0));
+            rejects(Fixtures.configJson(setting + ","));
         }
     }
 
@@ -91,12 +106,15 @@ class ObserverConfigTest {
     }
 
     @Test
-    void aResidentCredentialCannotSeeOthersOrStock() {
+    void aResidentCredentialCannotSeeOthersStockOrChangeTheWatchList() throws Exception {
         rejects(minimal("{\"name\":\"g\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"self\",\"residents\"],\"resident\":\"Gary\"}"));
         rejects(minimal("{\"name\":\"g\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"self\",\"facilities\"],\"resident\":\"Gary\"}"));
-        // self must name a configured resident...
+        rejects(minimal("{\"name\":\"g\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"self\",\"watch\"],\"resident\":\"Gary\"}"));
+        // self must name a resident (a Minecraft name; whether it is watched is up to Commons)...
         rejects(minimal("{\"name\":\"g\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"self\"]}"));
-        rejects(minimal("{\"name\":\"g\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"self\"],\"resident\":\"Nobody\"}"));
+        rejects(minimal("{\"name\":\"g\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"self\"],\"resident\":\"not a name\"}"));
+        assertEquals("Piper", ObserverConfig.parse(minimal("{\"name\":\"g\",\"tokenSha256\":\"" + HASH
+                + "\",\"scopes\":[\"self\"],\"resident\":\"Piper\"}")).consumers().get(0).resident());
         // ...and a resident binding without self would be meaningless.
         rejects(minimal("{\"name\":\"g\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"status\"],\"resident\":\"Gary\"}"));
     }
@@ -111,20 +129,6 @@ class ObserverConfigTest {
         rejects(minimal("{\"name\":\"c\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"write\"]}"));
         rejects(minimal("{\"name\":\"c\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[]}"));
         rejects(minimal(""));
-    }
-
-    @Test
-    void facilitiesAreValidatedSpecifically() {
-        String consumers = "{\"name\":\"c\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"facilities\"]}";
-        String base = "{\"consumers\":[" + consumers + "],\"facilities\":[%s]}";
-        rejects(String.format(base, "{\"id\":\"Bad Id\",\"pos\":[0,64,0]}"));
-        rejects(String.format(base, "{\"id\":\"a\",\"pos\":[0,64]}"));
-        rejects(String.format(base, "{\"id\":\"a\",\"pos\":[0.5,64,0]}"));
-        rejects(String.format(base, "{\"id\":\"a\",\"pos\":[40000000,64,0]}"));
-        rejects(String.format(base, "{\"id\":\"a\",\"pos\":[0,64,0],\"dimension\":\"Overworld\"}"));
-        rejects(String.format(base, "{\"id\":\"a\",\"pos\":[0,64,0],\"side\":\"sideways\"}"));
-        rejects(String.format(base, "{\"id\":\"a\",\"pos\":[0,64,0]},{\"id\":\"a\",\"pos\":[1,64,0]}"));
-        rejects(String.format(base, "{\"id\":\"a\",\"pos\":[0,64,0]},{\"id\":\"b\",\"pos\":[0,64,0]}"));
     }
 
     @Test

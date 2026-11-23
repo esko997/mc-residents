@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 class TokenAuthTest {
 
-    private final ObserverConfig config = Fixtures.config("", 0);
+    private final ObserverConfig config = Fixtures.config("");
     private final TokenAuth auth = new TokenAuth(config.consumers());
 
     @Test

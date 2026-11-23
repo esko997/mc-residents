@@ -42,8 +42,8 @@ class QueryHttpTest {
     }
 
     private void start(String extra) throws IOException {
-        ObserverConfig config = Fixtures.config("\"intervalTicks\":1," + extra, 1);
-        sampler = Fixtures.sampler(config, fake, warnings);
+        ObserverConfig config = Fixtures.config("\"intervalTicks\":1," + extra);
+        sampler = Fixtures.watched(config, fake, warnings, 1);
         fake.online.put(Fixtures.GARY, Fixtures.body(clock.ms, "minecraft:overworld", 1, false));
         sampler.onServerTick();
         Files.createDirectories(world.resolve("stats"));

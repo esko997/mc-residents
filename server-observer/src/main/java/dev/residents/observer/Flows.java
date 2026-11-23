@@ -7,10 +7,10 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * Item flows in registered facilities, derived by comparing two consecutive observations of the
+ * Item flows in watched facilities, derived by comparing two consecutive observations of the
  * same container (the sampler's own reads; no extra world access). Pure and unit-tested.
  *
- * <p>Who was there is <b>evidence, not proof</b>: configured residents whose bodies were within
+ * <p>Who was there is <b>evidence, not proof</b>: watched residents whose bodies were within
  * {@code reach} blocks of the container when the change was detected, or at their previous sample.
  * Human players are never considered or reported, so a change with a resident nearby may still
  * have been made by a person, a hopper, a pipe or a machine.
@@ -56,7 +56,7 @@ public final class Flows {
      * when nothing an item count can show changed. {@code continuous}: {@code before} was the
      * immediately preceding read (false when the container was unreadable in between).
      */
-    public static Flow diff(ObserverConfig.FacilitySpec facility, Observations.Contents before, long beforeAtMs,
+    public static Flow diff(WatchList.FacilitySpec facility, Observations.Contents before, long beforeAtMs,
                             boolean continuous, Observations.Contents after, long nowMs, long gameTime,
                             List<Candidate> candidates, double reach, int maxDeltas) {
         if (before == null || after == null) return null;
@@ -99,7 +99,7 @@ public final class Flows {
     }
 
     /** Residents within reach of the block centre, nearest first, one entry per resident (its closest sample). */
-    static List<Nearby> nearby(ObserverConfig.FacilitySpec f, List<Candidate> candidates, double reach) {
+    static List<Nearby> nearby(WatchList.FacilitySpec f, List<Candidate> candidates, double reach) {
         double cx = f.x() + 0.5, cy = f.y() + 0.5, cz = f.z() + 0.5;
         Map<String, Nearby> best = new TreeMap<>();
         for (Candidate c : candidates) {

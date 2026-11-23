@@ -1,8 +1,14 @@
 package dev.residents.observer;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
@@ -10,10 +16,16 @@ import java.util.function.LongSupplier;
 /**
  * Runs on the server thread, once per server tick, and is the only code that reads the world.
  *
- * <p>Every {@code intervalTicks} a cycle starts: all configured residents are read (a UUID map
- * lookup each). Registered facilities are read round-robin across ticks while the tick's elapsed
- * observer time is under {@code tickBudgetMicros}; whatever does not fit continues next tick.
- * After any work an immutable {@link Observations.Snapshot} is published for request threads.
+ * <p>What it watches is the {@link WatchList} Commons pushes; it starts empty. A push is validated on the
+ * request thread, then swapped in whole at the start of the next tick, on the server thread, where every
+ * user of the list (resident reads, the facility round-robin, the flow tracker, block listeners) also runs,
+ * so none of them can see half of two lists. Request threads see the published list.
+ *
+ * <p>Every {@code intervalTicks} a cycle starts: all watched residents are read (a UUID map lookup each).
+ * Watched facilities are read round-robin across ticks while the tick's elapsed observer time is under
+ * {@code tickBudgetMicros}; whatever does not fit continues next tick. The shelf scan ({@link ShelfScan}),
+ * when wanted, gets the first quarter of the budget and whatever the facilities leave. After any work an
+ * immutable {@link Observations.Snapshot} is published for request threads.
  *
  * <p>Failure isolation: a facility read that throws becomes that facility's {@code ERROR} view.
  * A whole tick that throws counts as a failure; {@code failureTripCount} consecutive failures trip
@@ -25,6 +37,9 @@ public final class Sampler {
     public record State(String id, String detail) {
     }
 
+    private record PendingWatch(WatchList list, CompletableFuture<WatchList> applied) {
+    }
+
     private final ObserverConfig config;
     private final WorldAccess world;
     private final BridgeAccess bridge;
@@ -33,9 +48,15 @@ public final class Sampler {
     private final LongSupplier wallMs;
     private final EventLog events;
     private final Consumer<String> warn;
+    private final String bootId = UUID.randomUUID().toString();
 
-    private final Observations.Resident[] residents;
-    private final Observations.Facility[] facilities;
+    // Server thread: the list in use and the observations aligned with it.
+    private WatchList watch = WatchList.EMPTY;
+    private Observations.Resident[] residents = new Observations.Resident[0];
+    private Observations.Facility[] facilities = new Observations.Facility[0];
+    private final AtomicReference<PendingWatch> pendingWatch = new AtomicReference<>();
+    private volatile WatchList publishedWatch = WatchList.EMPTY;
+
     private int cursor;
     private int ticksIntoCycle;
     private long seq;
@@ -47,6 +68,7 @@ public final class Sampler {
     private int consecutiveFailures;
     private String lastError;
     private volatile boolean tripped;
+    private volatile boolean stopped;
     private long lastPublishAtMs;
     private final long startedAtMs;
 
@@ -57,6 +79,7 @@ public final class Sampler {
     private volatile long flowsRecorded;
     private int listenerFailures;
     private volatile String recorderProblem;
+    private final ShelfScan shelves = new ShelfScan();
 
     private final AtomicReference<Observations.Snapshot> snapshot = new AtomicReference<>();
     private final AtomicReference<Observations.Status> status = new AtomicReference<>();
@@ -73,18 +96,12 @@ public final class Sampler {
         this.nanos = nanos;
         this.wallMs = wallMs;
         this.warn = warn;
-        this.residents = new Observations.Resident[config.residents().size()];
-        this.facilities = new Observations.Facility[config.facilities().size()];
-        for (int i = 0; i < facilities.length; i++) {
-            facilities[i] = Observations.Facility.pending(config.facilities().get(i));
-        }
-        this.cursor = facilities.length; // "previous pass complete", so the first cycle starts at 0
         this.startedAtMs = wallMs.getAsLong();
         this.blocks = new BlockLog(config.recording(), config.tickBudgetMicros());
         this.flows = new SeqRing<>(config.recording().flowCapacity());
         this.heartbeatAtMs = startedAtMs;
         events.append("observer_started", startedAtMs, 0L, null, null,
-                config.residents().size() + " residents, " + config.facilities().size() + " facilities configured");
+                "boot " + bootId + "; watching nothing until Commons pushes the watch list");
         events.publish();
         publishStatus(0);
     }
@@ -97,18 +114,24 @@ public final class Sampler {
         heartbeatAtMs = now;
         if (tripped) {
             requests.rejectAll("tripped");
-            return;
-        }
-        if (paused) {
-            requests.rejectAll("paused");
-            publishStatus(0);
+            rejectPendingWatch("tripped");
             return;
         }
         long t0 = nanos.getAsLong();
+        if (paused) {
+            requests.rejectAll("paused");
+            try {
+                applyPendingWatch(now); // memory only, no world access: a list pushed while paused is not lost
+            } catch (Throwable t) {
+                failed(t, now);
+            }
+            publishStatus(0);
+            return;
+        }
         TickRequests.Ticket<?> eligible = requests.next();
         try {
             ticks++;
-            boolean worked = false;
+            boolean worked = applyPendingWatch(now);
             long gameTime = world.gameTime();
             if (ticksIntoCycle == 0) {
                 if (cursor < facilities.length) {
@@ -125,27 +148,17 @@ public final class Sampler {
 
             long budgetNanos = config.tickBudgetMicros() * 1000L;
             if (nanos.getAsLong() - t0 < budgetNanos) requests.runOne(eligible, bridge);
+            scan(t0, budgetNanos / 4, now);
             while (cursor < facilities.length && nanos.getAsLong() - t0 < budgetNanos) {
                 readFacility(cursor, now, gameTime);
                 cursor++;
                 worked = true;
             }
-            if (worked) {
-                snapshot.set(new Observations.Snapshot(++seq, now, gameTime,
-                        Arrays.asList(residents.clone()), Arrays.asList(facilities.clone())));
-                lastPublishAtMs = now;
-            }
+            scan(t0, budgetNanos, now);
+            if (worked) publishSnapshot(now, gameTime);
             consecutiveFailures = 0;
         } catch (Throwable t) {
-            consecutiveFailures++;
-            lastError = describe(t);
-            warn.accept("tick failed (" + consecutiveFailures + "/" + config.failureTripCount() + "): " + lastError);
-            if (consecutiveFailures >= config.failureTripCount()) {
-                tripped = true;
-                requests.rejectAll("tripped");
-                events.append("observer_tripped", now, 0L, null, null, lastError);
-                warn.accept("tripped after " + consecutiveFailures + " consecutive failures; observing stops until restart");
-            }
+            failed(t, now);
         } finally {
             // Recorder publication (ring copies, hour roll-over) runs before the measurement, and the
             // block listeners' time since the previous tick is added: the budget metrics cover all observer work.
@@ -161,11 +174,90 @@ public final class Sampler {
         }
     }
 
+    private void failed(Throwable t, long now) {
+        consecutiveFailures++;
+        lastError = describe(t);
+        warn.accept("tick failed (" + consecutiveFailures + "/" + config.failureTripCount() + "): " + lastError);
+        if (consecutiveFailures >= config.failureTripCount()) {
+            tripped = true;
+            requests.rejectAll("tripped");
+            rejectPendingWatch("tripped");
+            events.append("observer_tripped", now, 0L, null, null, lastError);
+            warn.accept("tripped after " + consecutiveFailures + " consecutive failures; observing stops until restart");
+        }
+    }
+
+    /** Shelf scan units while the tick's observer time is under {@code limitNanos} and a scan is wanted. */
+    private void scan(long t0, long limitNanos, long now) {
+        while (nanos.getAsLong() - t0 < limitNanos && shelves.wantsWork(now)) {
+            shelves.step(bridge, now, ticks, nanos);
+        }
+    }
+
+    /**
+     * Swaps in a pushed list, if any. Residents keep their observation when name and UUID are unchanged;
+     * a facility keeps its observation, history and flow baseline when its id, dimension, position and side
+     * are unchanged (a new label is taken over), otherwise it starts as pending. Removed facilities' observations
+     * and removed residents' observations and block hour cells are dropped. Returns whether a list was applied.
+     */
+    private boolean applyPendingWatch(long now) {
+        PendingWatch p = pendingWatch.getAndSet(null);
+        if (p == null) return false;
+        try {
+            WatchList next = p.list().appliedAt(now);
+            Map<WatchList.ResidentSpec, Observations.Resident> oldResidents = new HashMap<>(residents.length * 2);
+            for (Observations.Resident r : residents) {
+                if (r != null) oldResidents.put(new WatchList.ResidentSpec(r.name(), r.uuid()), r);
+            }
+            Observations.Resident[] nr = new Observations.Resident[next.residents().size()];
+            Set<String> names = new HashSet<>();
+            for (int i = 0; i < nr.length; i++) {
+                WatchList.ResidentSpec spec = next.residents().get(i);
+                nr[i] = oldResidents.get(spec);
+                names.add(spec.name());
+            }
+            Map<String, Observations.Facility> oldFacilities = new HashMap<>(facilities.length * 2);
+            for (Observations.Facility f : facilities) oldFacilities.put(f.spec().id(), f);
+            Observations.Facility[] nf = new Observations.Facility[next.facilities().size()];
+            for (int i = 0; i < nf.length; i++) {
+                WatchList.FacilitySpec spec = next.facilities().get(i);
+                Observations.Facility old = oldFacilities.get(spec.id());
+                nf[i] = old != null && old.spec().samePlace(spec) ? old.withSpec(spec) : Observations.Facility.pending(spec);
+            }
+            if (!names.containsAll(watch.byName().keySet())) blocks.retainResidents(names);
+            candidates = candidates.stream().filter(c -> names.contains(c.resident())).toList();
+            watch = next;
+            residents = nr;
+            facilities = nf;
+            // A new cycle starts with the next resident read (this tick unless paused): new residents are read before
+            // any snapshot can show them, and the new facilities are read from the start without counting as lag.
+            cursor = nf.length;
+            ticksIntoCycle = 0;
+            publishedWatch = next;
+            p.applied().complete(next);
+            return true;
+        } catch (Throwable t) {
+            p.applied().completeExceptionally(t);
+            throw t;
+        }
+    }
+
+    private void rejectPendingWatch(String reason) {
+        PendingWatch p = pendingWatch.getAndSet(null);
+        if (p != null) p.applied().completeExceptionally(new TickRequests.Unavailable(reason));
+    }
+
+    private void publishSnapshot(long now, long gameTime) {
+        snapshot.set(new Observations.Snapshot(++seq, now, gameTime,
+                Arrays.asList(residents.clone()), Arrays.asList(facilities.clone())));
+        lastPublishAtMs = now;
+    }
+
     private void readResidents(long now, long gameTime) {
-        List<ObserverConfig.ResidentSpec> specs = config.residents();
+        List<WatchList.ResidentSpec> specs = watch.residents();
         List<Flows.Candidate> near = new java.util.ArrayList<>(specs.size() * 2);
         for (int i = 0; i < specs.size(); i++) {
-            ObserverConfig.ResidentSpec spec = specs.get(i);
+            WatchList.ResidentSpec spec = specs.get(i);
             Observations.Resident prev = residents[i];
             Observations.Body body = world.readResident(spec, now, gameTime);
             Observations.Body lastSeen = body != null ? null
@@ -208,18 +300,15 @@ public final class Sampler {
 
     private void readFacility(int i, long now, long gameTime) {
         Observations.Facility prev = facilities[i];
-        ObserverConfig.FacilitySpec spec = prev.spec();
-        Observations.Facility fresh;
+        WatchList.FacilitySpec spec = prev.spec();
+        Observations.BlockRead read;
         try {
-            fresh = world.readFacility(spec, now, gameTime);
-            if (fresh == null) {
-                fresh = Observations.Facility.read(spec, Observations.FacilityStatus.ERROR,
-                        "reader returned nothing", now, gameTime, null);
-            }
+            read = world.read(spec.dimension(), spec.x(), spec.y(), spec.z(), spec.side());
+            if (read == null) read = new Observations.BlockRead(Observations.FacilityStatus.ERROR, "reader returned nothing", null, null);
         } catch (Throwable t) {
-            fresh = Observations.Facility.read(spec, Observations.FacilityStatus.ERROR, describe(t), now, gameTime, null);
+            read = new Observations.BlockRead(Observations.FacilityStatus.ERROR, describe(t), null, null);
         }
-        Observations.Facility cur = fresh.carryingFrom(prev);
+        Observations.Facility cur = Observations.Facility.read(spec, read, now, gameTime).carryingFrom(prev);
         facilities[i] = cur;
         if (cur.status() != prev.status()) {
             events.append("facility_status", now, gameTime, null, spec.id(),
@@ -245,6 +334,11 @@ public final class Sampler {
     /** True when listeners may record: not paused, not tripped, and the block recorder has not stopped itself. */
     public boolean recording() {
         return !paused && !tripped && recorderProblem == null && blocks.enabled();
+    }
+
+    /** Server thread: the list in use right now (listeners map a player UUID to a watched resident with it). */
+    public WatchList watching() {
+        return watch;
     }
 
     public BlockLog blocks() {
@@ -281,10 +375,12 @@ public final class Sampler {
     }
 
     private void publishStatus(long lastTickMicros) {
-        status.set(new Observations.Status(startedAtMs, lastPublishAtMs, ticks, lastTickMicros, maxTickMicros,
+        WatchList w = publishedWatch;
+        status.set(new Observations.Status(startedAtMs, bootId, lastPublishAtMs, ticks, lastTickMicros, maxTickMicros,
                 config.tickBudgetMicros(), overBudgetTicks, config.intervalTicks(), lagCycles, lagStreak,
                 consecutiveFailures, config.failureTripCount(), lastError, tripped, paused,
-                residents.length, facilities.length, recorderProblem));
+                w.revision(), w.appliedAtMs(), w.residents().size(), w.facilities().size(), recorderProblem,
+                shelves.metrics()));
     }
 
     static String describe(Throwable t) {
@@ -300,14 +396,43 @@ public final class Sampler {
         paused = value;
     }
 
+    /** Random per server start; Commons re-pushes the watch list when it changes. */
+    public String bootId() {
+        return bootId;
+    }
+
+    /** The watch list request threads use (the one the tick last applied). */
+    public WatchList watch() {
+        return publishedWatch;
+    }
+
+    /**
+     * Request thread: queue a validated list for the next tick. A list still waiting is replaced (its future
+     * fails with "superseded"). The future completes when the tick has swapped the list in.
+     */
+    CompletableFuture<WatchList> offerWatch(WatchList list) {
+        if (tripped || stopped) throw new TickRequests.Unavailable(tripped ? "tripped" : "stopped");
+        PendingWatch p = new PendingWatch(list, new CompletableFuture<>());
+        PendingWatch old = pendingWatch.getAndSet(p);
+        if (old != null) old.applied().completeExceptionally(new TickRequests.Unavailable("superseded"));
+        if (stopped) rejectPendingWatch("stopped");
+        return p.applied();
+    }
+
     /** HTTP threads may only enqueue. No game object escapes through these immutable results. */
     <T> TickRequests.Ticket<T> request(java.util.function.Function<BridgeAccess, T> read) {
         if (paused || tripped) throw new TickRequests.Unavailable(tripped ? "tripped" : "paused");
         return requests.submit(read);
     }
 
+    ShelfScan shelves() {
+        return shelves;
+    }
+
     public void stop() {
+        stopped = true;
         requests.close();
+        rejectPendingWatch("stopped");
     }
 
     public Observations.Snapshot snapshot() {

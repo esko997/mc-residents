@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /** Pure selected-book validation; never uses Minecraft's component deserializer/resolver. */
 final class BookText {
@@ -19,7 +20,10 @@ final class BookText {
     static final int MAX_AUTHOR_CHARS = 64;
     private static final int MAX_JSON_DEPTH = 32;
     private static final int MAX_JSON_NODES = 4096;
-    private static final Set<String> KINDS = Set.of("written", "writable", "enchanted", "plain");
+    /** Vanilla book kinds and their exact item ids; every other item on a shelf or lectern is kind "other". */
+    private static final java.util.Map<String, String> KINDS = java.util.Map.of("written", "minecraft:written_book",
+            "writable", "minecraft:writable_book", "enchanted", "minecraft:enchanted_book", "plain", "minecraft:book");
+    private static final Pattern ITEM_ID = Pattern.compile("^[a-z0-9_.-]+:[a-z0-9_./-]+$");
     private static final Set<String> STYLE_FIELDS = Set.of("bold", "italic", "underlined", "strikethrough",
             "obfuscated", "color", "font", "insertion", "clickEvent", "hoverEvent");
 
@@ -42,9 +46,19 @@ final class BookText {
 
     private BookText() { }
 
+    /**
+     * An item that is not a vanilla book (a knowledge book, a mod's guide book, an album): no metadata, no
+     * pages. Its hash uses the item id in the title's place, so different items do not share one hash.
+     */
+    static Selected other(int slot, String item) throws Invalid {
+        if (item == null || item.length() > MAX_TITLE_CHARS || !ITEM_ID.matcher(item).matches()) throw invalid("unknown item id");
+        return new Selected(new BridgeAccess.BookInfo(slot, "other", item, null, null, null, 0,
+                hash("other", item, null, null, List.of())), List.of());
+    }
+
     static Selected select(int slot, String kind, String title, String author, Integer generation,
                            List<String> rawPages, Limits limits) throws Invalid {
-        if (kind == null || !KINDS.contains(kind)) {
+        if (kind == null || !KINDS.containsKey(kind)) {
             throw invalid("unsupported book kind");
         }
         if (kind.equals("written")) {
@@ -78,7 +92,7 @@ final class BookText {
             pages.add(text);
         }
         String hash = hash(kind, title, author, generation, pages);
-        return new Selected(new BridgeAccess.BookInfo(slot, kind, title, author, generation, pages.size(), hash), pages);
+        return new Selected(new BridgeAccess.BookInfo(slot, kind, KINDS.get(kind), title, author, generation, pages.size(), hash), pages);
     }
 
     /**

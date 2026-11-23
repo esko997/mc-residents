@@ -32,17 +32,19 @@ import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 /**
- * Statistics and advancement progress of configured residents, read from the files the server
+ * Statistics and advancement progress of watched residents, read from the files the server
  * already writes ({@code <world>/stats/<uuid>.json}, {@code <world>/advancements/<uuid>.json}).
  * Runs on a request thread, never the server thread, so a large or slow file cannot cost a tick.
  *
- * <p>Paths are built only from configured UUIDs; symlinks are refused and size is capped before
+ * <p>Paths are built only from watched residents' UUIDs; symlinks are refused and size is capped before
  * reading. The server saves these files at its autosave (every ~5 minutes) and when a player logs
  * out, writing them in place: a read can catch a half-written file, which fails to parse and is
  * then answered from the previous good read as {@code stale}. Parsed files are cached by
  * modification time and size, so repeated queries cost a {@code stat} call.
  */
 public final class PlayerFiles {
+
+    static final int MAX_CACHED = 2 * WatchList.MAX_RESIDENTS;
 
     /** The vanilla statistic types. Mods add their own counters under {@code minecraft:custom}. */
     public static final List<String> STAT_TYPES = List.of("minecraft:custom", "minecraft:mined", "minecraft:crafted",
@@ -132,7 +134,7 @@ public final class PlayerFiles {
 
     // === stats ===
 
-    public StatsResult stats(ObserverConfig.ResidentSpec resident, List<String> types, int limit) {
+    public StatsResult stats(WatchList.ResidentSpec resident, List<String> types, int limit) {
         Read<ParsedStats> read = read(statsDir, resident.uuid(), "stats", PlayerFiles::parseStats);
         if (read.value() == null) {
             return new StatsResult(resident.name(), read.status(), read.reason(), read.savedAtMs(), null, List.of(), 0);
@@ -178,7 +180,7 @@ public final class PlayerFiles {
     // === advancements ===
 
     /** {@code include}: all | done | progress (started, not done). Recipe unlocks ({@code ns:recipes/...}) only when asked. */
-    public AdvancementsResult advancements(ObserverConfig.ResidentSpec resident, String include, boolean recipes,
+    public AdvancementsResult advancements(WatchList.ResidentSpec resident, String include, boolean recipes,
                                            int offset, int limit) {
         Read<List<Adv>> read = read(advancementsDir, resident.uuid(), "advancements", PlayerFiles::parseAdvancements);
         if (read.value() == null) {
@@ -280,6 +282,8 @@ public final class PlayerFiles {
         try {
             String text = new String(readBounded(file), StandardCharsets.UTF_8);
             T value = parse.apply(JsonParser.parseString(text).getAsJsonObject());
+            // Watched residents come and go with Commons pushes: keep at most two files per possible resident.
+            if (cache.size() >= MAX_CACHED && !cache.containsKey(key)) cache.clear();
             cache.put(key, new Cached(modified, attrs.size(), value));
             return new Read<>("observed", null, modified, value);
         } catch (IOException | RuntimeException e) {

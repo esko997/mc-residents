@@ -15,6 +15,8 @@ java {
 
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
+    // Makes ChunkMap#getChunks public so the shelf scan can list loaded chunks (see the file for why it is safe).
+    accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
     // No run configurations: this mod is only ever installed into a staging/real server copy.
 }
 

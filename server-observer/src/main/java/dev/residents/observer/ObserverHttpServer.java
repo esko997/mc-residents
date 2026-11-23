@@ -6,14 +6,22 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ExecutionException;
@@ -28,9 +36,10 @@ import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 /**
- * GET-only HTTP front of the bridge. Handlers serialize immutable observations or enqueue
- * bounded tick reads, never touching game objects. Long polls and tick waits use separate
- * bounded pools, so they cannot consume the normal snapshot/status handler pool.
+ * HTTP front of the bridge. Handlers serialize immutable observations or enqueue bounded tick reads,
+ * never touching game objects. Long polls and tick waits use separate bounded pools, so they cannot
+ * consume the normal snapshot/status handler pool. Every endpoint is GET except {@code PUT /v1/watch},
+ * which replaces the bridge's in-memory watch list (never the world).
  */
 public final class ObserverHttpServer {
 
@@ -43,9 +52,15 @@ public final class ObserverHttpServer {
     }
 
     public static final int MAX_EVENT_PAGE = 500;
+    public static final int MAX_SHELF_PAGE = 200;
     static final int HANDLER_THREADS = 2;
     static final int HANDLER_QUEUE = 16;
+    /** Watch pushes: a token bucket per consumer, separate from the query budget. */
+    static final int WATCH_BURST = 10;
+    static final int WATCH_PER_MINUTE = 30;
     private static final Set<String> LOOPBACK_HOSTS = Set.of("127.0.0.1", "localhost", "[::1]");
+    private static final Set<String> TICK_PATHS = Set.of("/v1/sight", "/v1/library/shelf", "/v1/library/book",
+            "/v1/library/shelves", "/v1/block");
 
     private final HttpServer server;
     private final ExecutorService executor;
@@ -60,6 +75,7 @@ public final class ObserverHttpServer {
     private final ExecutorService fileWaiters = waitingExecutor("files", 1);
     private final QueryService queries;
     private final RateLimiter limiter;
+    private final RateLimiter watchLimiter;
 
     private ObserverHttpServer(HttpServer server, ExecutorService executor, Sampler sampler, TokenAuth auth,
                                LongSupplier wallMs, Consumer<String> warn, ObserverConfig config, PlayerFiles files) {
@@ -72,6 +88,7 @@ public final class ObserverHttpServer {
         this.config = config;
         this.queries = new QueryService(sampler, files);
         this.limiter = new RateLimiter(config.recording().queryRatePerMinute(), config.recording().queryBurst(), System::nanoTime);
+        this.watchLimiter = new RateLimiter(WATCH_PER_MINUTE, WATCH_BURST, System::nanoTime);
     }
 
     /** Binds {@code config.bind():config.port()} (port 0 picks a free port, for tests) and starts serving. */
@@ -116,7 +133,7 @@ public final class ObserverHttpServer {
      * memory without limit. When threads and queue are full, the exchange runs on the server's
      * dispatcher thread (CallerRunsPolicy): accepting new connections pauses until a handler
      * finishes. That is backpressure, not dropping; handlers are short (no world access, no blocking
-     * besides writing a bounded response).
+     * besides reading a bounded body and writing a bounded response).
      */
     static ThreadPoolExecutor boundedExecutor(int threads, int queueCapacity) {
         AtomicInteger n = new AtomicInteger(1);
@@ -140,28 +157,28 @@ public final class ObserverHttpServer {
     }
 
     private void handle(HttpExchange exchange) {
-        int status;
-        JsonObject body;
+        Response response;
         try {
             Headers h = exchange.getRequestHeaders();
             ObserverConfig.ConsumerSpec consumer;
+            String path = exchange.getRequestURI().getPath();
+            String method = exchange.getRequestMethod();
             if (h.get("Host") == null || h.get("Host").size() != 1
                     || !hostAllowed(h.getFirst("Host"), config.allowedHosts())) {
-                status = 403;
-                body = error("forbidden", "Host is not in the configured exact hostname allowlist.");
+                response = new Response(403, error("forbidden", "Host is not in the configured exact hostname allowlist."));
             } else if (h.getFirst("Origin") != null || isBrowserSite(h.getFirst("Sec-Fetch-Site"))) {
-                status = 403;
-                body = error("forbidden", "Browser requests are not accepted.");
+                response = new Response(403, error("forbidden", "Browser requests are not accepted."));
             } else if ((consumer = auth.authenticate(h.getFirst("Authorization"))) == null) {
-                status = 401;
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
-                body = error("unauthorized", "Missing or unknown bearer token.");
-            } else if (!"GET".equals(exchange.getRequestMethod())) {
-                status = 405;
-                exchange.getResponseHeaders().set("Allow", "GET");
-                body = error("method_not_allowed", "The observer is read-only; only GET is accepted.");
+                response = new Response(401, error("unauthorized", "Missing or unknown bearer token."));
+            } else if ("PUT".equals(method) && path.equals("/v1/watch")) {
+                response = putWatch(exchange, consumer);
+                if (response == null) return; // answered from the tick-wait pool
+            } else if (!"GET".equals(method)) {
+                exchange.getResponseHeaders().set("Allow", path.equals("/v1/watch") ? "GET, PUT" : "GET");
+                response = new Response(405, error("method_not_allowed",
+                        "Only GET is accepted here" + (path.equals("/v1/watch") ? ", and PUT." : "; the bridge never changes the world.")));
             } else {
-                String path = exchange.getRequestURI().getPath();
                 String query = exchange.getRequestURI().getRawQuery();
                 if (path.equals("/v1/query")) {
                     handleQuery(exchange, consumer, query);
@@ -170,45 +187,43 @@ public final class ObserverHttpServer {
                 ExecutorService waiting = null;
                 if (path.equals("/v1/events") && queryNumber(query, "wait", 0, 25) > 0) {
                     if (!readsEvents(consumer)) {
-                        send(exchange, 403, error("forbidden", "This token has no event scope."));
+                        send(exchange, forbidden("events"));
                         return;
                     }
                     waiting = eventWaiters;
-                } else if (path.equals("/v1/sight") || path.equals("/v1/library/shelf") || path.equals("/v1/library/book")) {
-                    Scope required = path.equals("/v1/sight") ? Scope.RESIDENTS : Scope.LIBRARY;
+                } else if (TICK_PATHS.contains(path)) {
+                    Scope required = path.equals("/v1/sight") ? Scope.RESIDENTS
+                            : path.equals("/v1/block") ? Scope.FACILITIES : Scope.LIBRARY;
                     if (!consumer.has(required)) {
-                        send(exchange, 403, error("forbidden", "This token has no " + required.id() + " scope."));
+                        send(exchange, forbidden(required.id()));
                         return;
                     }
                     waiting = tickWaiters;
                 }
                 if (waiting != null) {
                     try {
-                        waiting.execute(() -> {
-                            Response r = routeSafely(consumer, path, query);
-                            send(exchange, r.status, r.body);
-                        });
+                        waiting.execute(() -> send(exchange, routeSafely(consumer, path, query)));
                     } catch (RejectedExecutionException e) {
-                        send(exchange, 503, error("busy", "The bounded request wait pool is full; retry later."));
+                        send(exchange, new Response(503, error("busy", "The bounded request wait pool is full; retry later.")));
                     }
                     return;
                 }
-                Response r = routeSafely(consumer, path, query);
-                status = r.status;
-                body = r.body;
+                response = routeSafely(consumer, path, query);
             }
         } catch (IllegalArgumentException e) {
-            status = 400;
-            body = error("bad_request", "Invalid query parameters.");
+            response = new Response(400, error("bad_request", "Invalid query parameters."));
         } catch (Throwable t) {
             warn.accept("request failed: " + Sampler.describe(t));
-            status = 500;
-            body = error("internal", "The observer failed to answer; see the server log.");
+            response = new Response(500, error("internal", "The observer failed to answer; see the server log."));
         }
-        send(exchange, status, body);
+        send(exchange, response);
     }
 
-    private record Response(int status, JsonObject body) {
+    /** {@code retryAfter}: seconds for a Retry-After header, or 0 for none. */
+    private record Response(int status, JsonObject body, long retryAfter) {
+        Response(int status, JsonObject body) {
+            this(status, body, 0);
+        }
     }
 
     private Response routeSafely(ObserverConfig.ConsumerSpec consumer, String path, String query) {
@@ -238,9 +253,7 @@ public final class ObserverHttpServer {
                 return new Response(200, JsonViews.snapshot(consumer, sampler.snapshot(), state, now, heartbeat));
             }
             case "/v1/events" -> {
-                if (!readsEvents(consumer)) {
-                    return new Response(403, error("forbidden", "This token has no event scope."));
-                }
+                if (!readsEvents(consumer)) return forbidden("events");
                 long after = queryNumber(query, "after", 0, Long.MAX_VALUE);
                 int limit = (int) queryNumber(query, "limit", 100, MAX_EVENT_PAGE);
                 int wait = (int) queryNumber(query, "wait", 0, 25);
@@ -265,32 +278,64 @@ public final class ObserverHttpServer {
             }
             case "/v1/sight" -> {
                 if (!consumer.has(Scope.RESIDENTS)) return forbidden("residents");
-                ObserverConfig.ResidentSpec from = config.resident(queryValue(query, "from", ""));
-                ObserverConfig.ResidentSpec to = config.resident(queryValue(query, "to", ""));
+                Map<String, String> p = strictParams(query, "from", "to");
+                WatchList watch = sampler.watch();
+                WatchList.ResidentSpec from = watch.resident(p.get("from"));
+                WatchList.ResidentSpec to = watch.resident(p.get("to"));
                 if (from == null || to == null) {
-                    return new Response(400, error("bad_request", "from and to must name configured residents."));
+                    return new Response(400, error("bad_request", "from and to must name watched residents"
+                            + (watch.revision() == null ? " (Commons has not pushed a watch list since the server started)." : ".")));
                 }
                 return tickRead(consumer, "sight", bridge -> bridge.sight(from, to));
             }
-            case "/v1/library/shelf", "/v1/library/book" -> {
+            case "/v1/block" -> {
+                if (!consumer.has(Scope.FACILITIES)) return forbidden("facilities");
+                Map<String, String> p = strictParams(query, "dimension", "pos");
+                Positions.At at = Positions.parse(p.get("dimension"), p.get("pos"));
+                Observations.BlockRead read;
+                try {
+                    read = awaitTick(bridge -> {
+                        try {
+                            return bridge.block(at.dimension(), at.x(), at.y(), at.z());
+                        } catch (RuntimeException e) { // a modded capability's failure is this read's answer, not a tick failure
+                            return new Observations.BlockRead(Observations.FacilityStatus.ERROR, Sampler.describe(e), null, null);
+                        }
+                    });
+                } catch (QueryVocabulary.Refused e) {
+                    return new Response(e.status, error(e.code, e.getMessage()));
+                }
+                now = wallMs.getAsLong();
+                return new Response(200, JsonViews.block(consumer, at, read, sampler.state(now), now, sampler.heartbeatAtMs()));
+            }
+            case "/v1/library/shelf" -> {
                 if (!consumer.has(Scope.LIBRARY)) return forbidden("library");
-                ObserverConfig.FacilitySpec facility = config.facility(queryValue(query, "facility", ""));
-                if (facility == null || !facility.library()) {
-                    return new Response(404, error("not_found", "No registered library shelf with that id."));
-                }
-                if (path.equals("/v1/library/shelf")) {
-                    return tickRead(consumer, "shelf", bridge -> bridge.shelf(facility));
-                }
-                int slot = (int) queryNumber(query, "slot", -1, 5);
-                if (slot < 0) throw new IllegalArgumentException();
-                return tickRead(consumer, "book", bridge -> bridge.book(facility, slot));
+                Map<String, String> p = strictParams(query, "dimension", "pos");
+                Positions.At at = Positions.parse(p.get("dimension"), p.get("pos"));
+                return tickRead(consumer, "shelf", bridge -> Library.shelf(at, place(bridge, at, false)));
+            }
+            case "/v1/library/book" -> {
+                if (!consumer.has(Scope.LIBRARY)) return forbidden("library");
+                Map<String, String> p = strictParams(query, "dimension", "pos", "slot");
+                Positions.At at = Positions.parse(p.get("dimension"), p.get("pos"));
+                String rawSlot = p.get("slot");
+                if (rawSlot == null || !rawSlot.matches("[0-5]")) throw new IllegalArgumentException("slot");
+                int slot = Integer.parseInt(rawSlot);
+                return tickRead(consumer, "book", bridge -> Library.book(at, slot, place(bridge, at, true)));
+            }
+            case "/v1/library/shelves" -> {
+                if (!consumer.has(Scope.LIBRARY)) return forbidden("library");
+                return shelves(consumer, query);
+            }
+            case "/v1/watch" -> {
+                if (!consumer.has(Scope.STATUS) && !consumer.has(Scope.WATCH)) return forbidden("status");
+                return new Response(200, JsonViews.watch(consumer, sampler.watch(), sampler.bootId(), state, now, heartbeat));
             }
             case "/v1/queries" -> {
                 if (!consumer.has(Scope.RESIDENTS) && !consumer.has(Scope.FACILITIES) && !consumer.has(Scope.SELF)) {
                     return new Response(403, error("forbidden", "This token has no residents, facilities or self scope."));
                 }
                 JsonObject o = JsonViews.header(consumer, state, now, heartbeat);
-                o.add("queries", QueryVocabulary.describe(consumer, config));
+                o.add("queries", QueryVocabulary.describe(consumer, config, sampler.watch()));
                 return new Response(200, o);
             }
             case "/v1/status" -> {
@@ -305,32 +350,160 @@ public final class ObserverHttpServer {
         }
     }
 
+    /**
+     * Tick thread: what stands at a position; an unexpected failure is that read's {@code error}, not a tick failure.
+     * {@code pages}: a book read needs page text; a shelf read needs only each book's metadata, so it uses the scan's
+     * memo (books seen unchanged are not decoded again; new ones are, all six at most, in this one read).
+     */
+    private static BridgeAccess.Place place(BridgeAccess bridge, Positions.At at, boolean pages) {
+        try {
+            return pages ? bridge.place(at.dimension(), at.x(), at.y(), at.z())
+                    : bridge.scanPlace(at.dimension(), at.x(), at.y(), at.z(), Library.SHELF_SLOTS).place();
+        } catch (RuntimeException e) {
+            return new BridgeAccess.Place(BridgeAccess.Where.LOADED, null, BridgeAccess.Holder.NONE, List.of(),
+                    "read failed: " + Sampler.describe(e));
+        }
+    }
+
+    /**
+     * {@code GET /v1/library/shelves}: a page of the latest scan if it is at most {@link ShelfScan#MAX_AGE_MS}
+     * old. Otherwise the request asks for a scan and waits (on the tick-wait pool) up to the request timeout;
+     * a scan still running then answers 503 {@code scanning} with Retry-After. Age counts from the scan's end.
+     */
+    private Response shelves(ObserverConfig.ConsumerSpec consumer, String query) {
+        Map<String, String> p = strictParams(query, "after", "limit");
+        String rawLimit = p.get("limit");
+        if (rawLimit != null && !rawLimit.matches("[0-9]{1,3}")) throw new IllegalArgumentException("limit");
+        int limit = rawLimit == null ? 100 : Integer.parseInt(rawLimit);
+        if (limit < 1 || limit > MAX_SHELF_PAGE) throw new IllegalArgumentException("limit");
+        Library.Item after = p.get("after") == null ? null : Library.fromCursor(p.get("after"));
+        ShelfScan scan = sampler.shelves();
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.requestTimeoutMs());
+        ShelfScan.Index index;
+        while (true) {
+            long now = wallMs.getAsLong();
+            scan.demand(now);
+            index = scan.fresh(now);
+            String state = sampler.state(now).id();
+            if (index != null) break;
+            if (state.equals("paused") || state.equals("tripped")) {
+                return new Response(503, error(state, "The observer is " + state + "; shelves are not scanned."));
+            }
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) {
+                return new Response(503, error("scanning", "No shelf scan finished in the last " + ShelfScan.MAX_AGE_MS / 1000
+                        + " s; one is running. Retry shortly."), 2);
+            }
+            if (Thread.currentThread().isInterrupted()) return new Response(503, error("stopped", "The observer is stopping."));
+            LockSupport.parkNanos(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(50)));
+        }
+        long now = wallMs.getAsLong();
+        return new Response(200, JsonViews.shelves(consumer, index, Library.page(index.items(), after, limit),
+                sampler.state(now), now, sampler.heartbeatAtMs()));
+    }
+
     private static Response forbidden(String scope) {
         return new Response(403, error("forbidden", "This token has no " + scope + " scope."));
     }
 
     private <T> Response tickRead(ObserverConfig.ConsumerSpec consumer, String key, Function<BridgeAccess, T> read) {
-        TickRequests.Ticket<T> ticket = null;
+        T value;
         try {
-            ticket = sampler.request(read);
-            T value = ticket.result.get(config.requestTimeoutMs(), TimeUnit.MILLISECONDS);
-            long now = wallMs.getAsLong();
-            return new Response(200, JsonViews.bridge(consumer, key, value, sampler.state(now), now, sampler.heartbeatAtMs()));
+            value = awaitTick(read);
+        } catch (QueryVocabulary.Refused e) {
+            return new Response(e.status, error(e.code, e.getMessage()));
+        }
+        long now = wallMs.getAsLong();
+        return new Response(200, JsonViews.bridge(consumer, key, value, sampler.state(now), now, sampler.heartbeatAtMs()));
+    }
+
+    // === PUT /v1/watch ===
+
+    /**
+     * Scope, content type, size, rate, then strict parsing on this handler thread; the swap itself happens at
+     * the next tick, awaited on the tick-wait pool. Returns null when the reply is sent from that pool.
+     */
+    private Response putWatch(HttpExchange exchange, ObserverConfig.ConsumerSpec consumer) throws IOException {
+        if (!consumer.has(Scope.WATCH)) return forbidden("watch");
+        if (!jsonContentType(exchange.getRequestHeaders().getFirst("Content-Type"))) {
+            return new Response(415, error("unsupported_media_type", "The watch list must be sent as application/json (UTF-8)."));
+        }
+        String length = exchange.getRequestHeaders().getFirst("Content-Length");
+        if (length != null && (!length.matches("[0-9]{1,12}") || Long.parseLong(length) > WatchList.MAX_BODY_BYTES)) {
+            return new Response(413, error("too_large", "The watch list may be at most " + WatchList.MAX_BODY_BYTES + " bytes."));
+        }
+        long retryAfter = watchLimiter.acquire(consumer.name(), 1);
+        if (retryAfter > 0) {
+            return new Response(429, error("rate_limited", "Watch pushes are limited; retry after " + retryAfter + " s."), retryAfter);
+        }
+        byte[] bytes;
+        try (InputStream in = exchange.getRequestBody()) {
+            bytes = in.readNBytes(WatchList.MAX_BODY_BYTES + 1);
+        }
+        if (bytes.length > WatchList.MAX_BODY_BYTES) {
+            return new Response(413, error("too_large", "The watch list may be at most " + WatchList.MAX_BODY_BYTES + " bytes."));
+        }
+        WatchList list;
+        try {
+            list = WatchList.parse(utf8(bytes));
+        } catch (WatchList.Invalid e) {
+            return new Response(400, error("bad_request", "Watch list refused, nothing changed: " + e.getMessage()));
+        }
+        CompletableFuture<WatchList> applied;
+        try {
+            applied = sampler.offerWatch(list);
         } catch (TickRequests.Unavailable e) {
-            return new Response(503, error(e.code, "The tick reader is " + e.code + "."));
+            return new Response(503, error(e.code, "The observer is " + e.code + "; the watch list was not taken."));
+        }
+        try {
+            tickWaiters.execute(() -> send(exchange, awaitWatch(consumer, applied)));
+        } catch (RejectedExecutionException e) {
+            // The list stays queued and is applied at the next tick; only the wait for it is refused.
+            return new Response(202, JsonViews.watch(consumer, sampler.watch(), sampler.bootId(),
+                    sampler.state(wallMs.getAsLong()), wallMs.getAsLong(), sampler.heartbeatAtMs()));
+        }
+        return null;
+    }
+
+    private Response awaitWatch(ObserverConfig.ConsumerSpec consumer, CompletableFuture<WatchList> applied) {
+        try {
+            WatchList list = applied.get(config.requestTimeoutMs(), TimeUnit.MILLISECONDS);
+            long now = wallMs.getAsLong();
+            return new Response(200, JsonViews.watch(consumer, list, sampler.bootId(), sampler.state(now), now, sampler.heartbeatAtMs()));
         } catch (TimeoutException e) {
-            return new Response(504, error("timeout", "No tick result within the configured request timeout."));
+            return new Response(504, error("timeout", "Taken but not applied within the request timeout; it is applied at the "
+                    + "next tick unless a newer list replaces it. Check GET /v1/watch."));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new Response(503, error("stopped", "The observer is stopping."));
         } catch (ExecutionException e) {
-            if (e.getCause() instanceof TickRequests.Unavailable unavailable) {
-                return new Response(unavailable.code.equals("timeout") ? 504 : 503,
-                        error(unavailable.code, "The tick reader is " + unavailable.code + "."));
+            if (e.getCause() instanceof TickRequests.Unavailable u) {
+                return u.code.equals("superseded")
+                        ? new Response(409, error("superseded", "A newer watch list arrived before this one was applied."))
+                        : new Response(503, error(u.code, "The observer is " + u.code + "; the watch list was not applied."));
             }
-            return new Response(500, error("read_failed", "The tick read failed; see the server log."));
-        } finally {
-            if (ticket != null) ticket.cancel();
+            return new Response(500, error("apply_failed", "Applying the watch list failed; see the server log."));
+        }
+    }
+
+    static boolean jsonContentType(String header) {
+        if (header == null) return false;
+        String[] parts = header.split(";");
+        if (!parts[0].strip().equalsIgnoreCase("application/json")) return false;
+        for (int i = 1; i < parts.length; i++) {
+            String param = parts[i].strip().toLowerCase(Locale.ROOT);
+            if (param.startsWith("charset=") && !param.equals("charset=utf-8") && !param.equals("charset=\"utf-8\"")) return false;
+        }
+        return true;
+    }
+
+    /** Strict UTF-8: malformed bytes are refused, never replaced. */
+    private static String utf8(byte[] bytes) throws WatchList.Invalid {
+        try {
+            return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString();
+        } catch (CharacterCodingException e) {
+            throw new WatchList.Invalid("the body is not valid UTF-8");
         }
     }
 
@@ -339,23 +512,22 @@ public final class ObserverHttpServer {
     private void handleQuery(HttpExchange exchange, ObserverConfig.ConsumerSpec consumer, String rawQuery) {
         QueryVocabulary.Request request;
         try {
-            request = QueryVocabulary.parse(rawQuery, consumer, config);
+            request = QueryVocabulary.parse(rawQuery, consumer, sampler.watch());
         } catch (QueryVocabulary.Refused e) {
             queries.countRefused();
             limiter.acquire(consumer.name(), 1); // refused requests still spend the caller's budget
-            send(exchange, e.status, error(e.code, e.getMessage()));
+            send(exchange, new Response(e.status, error(e.code, e.getMessage())));
             return;
         }
         String state = sampler.state(wallMs.getAsLong()).id();
         if (state.equals("paused") || state.equals("tripped")) {
-            send(exchange, 503, error(state, "The observer is " + state + "; queries are off."));
+            send(exchange, new Response(503, error(state, "The observer is " + state + "; queries are off.")));
             return;
         }
         long retryAfter = limiter.acquire(consumer.name(), request.kind().cost);
         if (retryAfter > 0) {
             queries.countRateLimited();
-            exchange.getResponseHeaders().set("Retry-After", Long.toString(retryAfter));
-            send(exchange, 429, error("rate_limited", "Query rate limit reached; retry after " + retryAfter + " s."));
+            send(exchange, new Response(429, error("rate_limited", "Query rate limit reached; retry after " + retryAfter + " s."), retryAfter));
             return;
         }
         ExecutorService pool = switch (request.kind().exec) {
@@ -363,7 +535,7 @@ public final class ObserverHttpServer {
             case FILE -> fileWaiters;
             case RING, CATALOG -> null;
         };
-        Runnable work = () -> answerQuery(exchange, consumer, request);
+        Runnable work = () -> send(exchange, answerQuery(consumer, request));
         if (pool == null) {
             work.run();
             return;
@@ -371,36 +543,31 @@ public final class ObserverHttpServer {
         try {
             pool.execute(work);
         } catch (RejectedExecutionException e) {
-            send(exchange, 503, error("busy", "The bounded query pool is full; retry later."));
+            send(exchange, new Response(503, error("busy", "The bounded query pool is full; retry later.")));
         }
     }
 
-    private void answerQuery(HttpExchange exchange, ObserverConfig.ConsumerSpec consumer, QueryVocabulary.Request request) {
-        int status = 200;
-        JsonObject body;
+    private Response answerQuery(ObserverConfig.ConsumerSpec consumer, QueryVocabulary.Request request) {
         try {
             JsonObject query = queries.answer(request, this::awaitTick);
             long now = wallMs.getAsLong();
-            body = JsonViews.header(consumer, sampler.state(now), now, sampler.heartbeatAtMs());
+            JsonObject body = JsonViews.header(consumer, sampler.state(now), now, sampler.heartbeatAtMs());
             body.add("query", query);
             String text = JsonViews.toJson(body);
             if (text.length() > QueryService.MAX_REPLY_BYTES / 2 && text.getBytes(StandardCharsets.UTF_8).length > QueryService.MAX_REPLY_BYTES) {
                 queries.countTooLarge();
-                status = 413;
-                body = error("too_large", "The reply would exceed " + QueryService.MAX_REPLY_BYTES + " bytes; lower limit.");
+                return new Response(413, error("too_large", "The reply would exceed " + QueryService.MAX_REPLY_BYTES + " bytes; lower limit."));
             }
+            return new Response(200, body);
         } catch (QueryVocabulary.Refused e) {
-            status = e.status;
-            body = error(e.code, e.getMessage());
+            return new Response(e.status, error(e.code, e.getMessage()));
         } catch (Throwable t) {
             warn.accept("query failed: " + Sampler.describe(t));
-            status = 500;
-            body = error("internal", "The query failed; see the server log.");
+            return new Response(500, error("internal", "The query failed; see the server log."));
         }
-        send(exchange, status, body);
     }
 
-    /** {@link QueryService.TickReader}: the same bounded queue, timeout and failure policy as sight/library reads. */
+    /** The bounded tick queue, its timeout and failure policy, for every tick-thread read. Failures are {@link QueryVocabulary.Refused}. */
     private <T> T awaitTick(Function<BridgeAccess, T> job) {
         TickRequests.Ticket<T> ticket = null;
         try {
@@ -434,14 +601,15 @@ public final class ObserverHttpServer {
         return o;
     }
 
-    private void send(HttpExchange exchange, int status, JsonObject body) {
+    private void send(HttpExchange exchange, Response r) {
         try {
-            byte[] bytes = JsonViews.toJson(body).getBytes(StandardCharsets.UTF_8);
+            byte[] bytes = JsonViews.toJson(r.body()).getBytes(StandardCharsets.UTF_8);
             Headers out = exchange.getResponseHeaders();
             out.set("Content-Type", "application/json; charset=utf-8");
             out.set("Cache-Control", "no-store");
             out.set("X-Content-Type-Options", "nosniff");
-            exchange.sendResponseHeaders(status, bytes.length);
+            if (r.retryAfter() > 0) out.set("Retry-After", Long.toString(r.retryAfter()));
+            exchange.sendResponseHeaders(r.status(), bytes.length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(bytes);
             }
@@ -509,6 +677,24 @@ public final class ObserverHttpServer {
             if (k.equals(key)) found = value;
         }
         return found == null ? fallback : found;
+    }
+
+    /** Like {@link #queryValue}, and any parameter not in {@code allowed} is refused (so a removed form fails loudly). */
+    static Map<String, String> strictParams(String rawQuery, String... allowed) {
+        Map<String, String> out = new HashMap<>();
+        if (rawQuery == null || rawQuery.isEmpty()) return out;
+        if (rawQuery.length() > 2048) throw new IllegalArgumentException();
+        String[] parts = rawQuery.split("&", -1);
+        if (parts.length > 8) throw new IllegalArgumentException();
+        List<String> names = List.of(allowed);
+        for (String part : parts) {
+            int eq = part.indexOf('=');
+            String k = URLDecoder.decode(eq < 0 ? part : part.substring(0, eq), StandardCharsets.UTF_8);
+            if (!names.contains(k)) throw new IllegalArgumentException("unknown parameter");
+            String value = URLDecoder.decode(eq < 0 ? "" : part.substring(eq + 1), StandardCharsets.UTF_8);
+            if (out.put(k, value) != null) throw new IllegalArgumentException("repeated parameter");
+        }
+        return out;
     }
 
     static long queryNumber(String query, String key, long fallback, long max) {

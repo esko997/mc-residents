@@ -25,9 +25,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Resident Observer: a read-only, server-side view of configured residents and registered
- * facilities for Commons and the caretaker. Dedicated server only; registers nothing clients
- * need. Does nothing at all unless {@code config/resident_observer.json} exists and is valid.
+ * Resident Observer: a server-side view, for Commons and the caretaker, of the residents and facilities
+ * Commons asks it to watch, and of any position, shelf or book in loaded chunks. Never changes the world.
+ * Dedicated server only; registers nothing clients need. Does nothing at all unless
+ * {@code config/resident_observer.json} exists and is valid.
  */
 @Mod(ResidentObserverMod.MODID)
 public final class ResidentObserverMod {
@@ -82,13 +83,23 @@ public final class ResidentObserverMod {
             LOGGER.info("[resident_observer] disabled in {}.", file);
             return;
         }
+        if (!config.ignoredKeys().isEmpty()) {
+            LOGGER.warn("[resident_observer] {} in {} {} ignored since 0.3.0: Commons pushes the watch list (PUT /v1/watch); "
+                            + "remove {} from the file.", String.join(" and ", config.ignoredKeys()), file,
+                    config.ignoredKeys().size() == 1 ? "is" : "are", config.ignoredKeys().size() == 1 ? "it" : "them");
+        }
         try {
             EventLog events = new EventLog(config.eventCapacity());
             MinecraftWorldAccess world = new MinecraftWorldAccess(event.getServer(),
                     config.maxFacilitySlots(), config.maxItemKinds());
-            Sampler sampler = new Sampler(config, world, new MinecraftBridgeAccess(event.getServer(), config),
+            Sampler sampler = new Sampler(config, world, new MinecraftBridgeAccess(event.getServer(), config, world),
                     events, System::nanoTime, System::currentTimeMillis,
                     msg -> LOGGER.warn("[resident_observer] {}", msg));
+            try {
+                warmUp(); // server thread, at startup: the first read in a tick does not pay our class loading
+            } catch (Throwable t) {
+                LOGGER.warn("[resident_observer] warm-up failed (reads still work): {}", t.toString());
+            }
             Path pause = dir.resolve(PAUSE_FILE);
             sampler.setPaused(Files.exists(pause));
             AtomicReference<AdvancementCatalog> catalog = new AtomicReference<>(catalog(event.getServer()));
@@ -104,18 +115,37 @@ public final class ResidentObserverMod {
             });
             // File checks run here, never on the server thread.
             watcher.scheduleWithFixedDelay(() -> sampler.setPaused(Files.exists(pause)), 0, 5, TimeUnit.SECONDS);
-            running = new Running(sampler, http, watcher, new MinecraftBlockListener(event.getServer(), sampler, config), catalog);
+            running = new Running(sampler, http, watcher, new MinecraftBlockListener(event.getServer(), sampler), catalog);
             LOGGER.info("[resident_observer] advancement catalog: {} entries in {} us{}; block recording {}, flow recording {}.",
                     catalog.get().entries().size(), catalog.get().buildMicros(),
                     catalog.get().problem() == null ? "" : " (" + catalog.get().problem() + ")",
                     config.recording().recordBlocks() ? "on" : "off", config.recording().recordFlows() ? "on" : "off");
-            LOGGER.info("[resident_observer] serving {} residents and {} facilities on {}:{} for {} consumers "
-                            + "(interval {} ticks, budget {} us). Tokens are stored as hashes only.",
-                    config.residents().size(), config.facilities().size(), config.bind(), http.port(),
-                    config.consumers().size(), config.intervalTicks(), config.tickBudgetMicros());
+            LOGGER.info("[resident_observer] 0.3: serving on {}:{} for {} consumers (interval {} ticks, budget {} us), boot {}; "
+                            + "watching nothing until Commons pushes the watch list. Tokens are stored as hashes only.",
+                    config.bind(), http.port(), config.consumers().size(), config.intervalTicks(), config.tickBudgetMicros(),
+                    sampler.bootId());
         } catch (Throwable t) {
             LOGGER.error("[resident_observer] failed to start; the game is unaffected: {}", t.toString());
         }
+    }
+
+    /**
+     * Server start: runs the pure steps of a shelf read and of a facility read once on made-up values (no world
+     * access), so our class loading happens here rather than inside the first tick that does such a read.
+     */
+    private static void warmUp() throws BookText.Invalid {
+        Library.warmUp();
+        WatchList.FacilitySpec spec = new WatchList.FacilitySpec("warm-up", "warm-up", "minecraft:overworld", 0, 0, 0, null);
+        ItemTally tally = new ItemTally(4);
+        tally.add("minecraft:bread", 2, false);
+        Observations.Contents empty = new Observations.Contents("minecraft:chest", 27, 0, false,
+                java.util.List.of(), false, null, java.util.List.of(), 0);
+        Observations.Contents bread = new Observations.Contents("minecraft:chest", 27, tally.usedSlots(), false,
+                tally.items(), tally.truncated(), null, java.util.List.of(), 0);
+        Observations.Facility f = Observations.Facility.read(spec,
+                new Observations.BlockRead(Observations.FacilityStatus.OBSERVED, null, "minecraft:chest", bread), 0L, 0L)
+                .carryingFrom(Observations.Facility.pending(spec));
+        Flows.diff(spec, empty, 0L, true, f.contents(), 1L, 0L, java.util.List.of(), 8, 64);
     }
 
     /** Server thread, outside the tick sampler. A failure leaves an empty catalog with the reason; the game is unaffected. */

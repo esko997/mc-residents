@@ -18,7 +18,7 @@ import java.util.Set;
  * parameters from that kind's fixed schema; nothing else is interpreted (no expressions, paths or
  * code). Validation is strict and done here, before any work: unknown kinds or parameters are
  * refused, numbers outside their range are clamped (and reported as clamped), subjects are limited
- * to configured residents and registered facilities, and scopes are checked. Pure and unit-tested.
+ * to watched residents and watched facilities, and scopes are checked. Pure and unit-tested.
  *
  * <p>Adding a read is one {@link Kind} constant here plus its executor in {@link QueryService}.
  */
@@ -69,12 +69,12 @@ public final class QueryVocabulary {
 
     static Param resident(boolean required) {
         return new Param("resident", Type.RESIDENT, required, 0, 0, 0, List.of(),
-                "a configured resident name (case-sensitive)" + (required ? "" : "; absent: every resident the token may read"));
+                "a watched resident name (case-sensitive)" + (required ? "" : "; absent: every resident the token may read"));
     }
 
     static Param facility() {
         return new Param("facility", Type.FACILITY, false, 0, 0, 0, List.of(),
-                "a registered facility id; absent: every registered facility");
+                "a watched facility id; absent: every watched facility");
     }
 
     private static final String AFTER = "cursor: entries with a larger seq (use nextAfter from the last reply)";
@@ -108,7 +108,7 @@ public final class QueryVocabulary {
                 integer("offset", 0, 65_536, 0, "skip this many matching cells"),
                 integer("limit", 1, 1000, 500, "cells per reply")),
         FLOWS("flows", Access.FACILITIES, Exec.RING, 1,
-                "Item count changes in registered facilities between two observations, with the residents within reach at the time (evidence, not proof).",
+                "Item count changes in watched facilities between two observations, with the residents within reach at the time (evidence, not proof).",
                 facility(),
                 integer("after", 0, Long.MAX_VALUE, 0, AFTER),
                 integer("limit", 1, 500, 200, "flows per reply"));
@@ -168,12 +168,12 @@ public final class QueryVocabulary {
             return (List<String>) values.get(name);
         }
 
-        public ObserverConfig.ResidentSpec resident() {
-            return (ObserverConfig.ResidentSpec) values.get("resident");
+        public WatchList.ResidentSpec resident() {
+            return (WatchList.ResidentSpec) values.get("resident");
         }
 
-        public ObserverConfig.FacilitySpec facility() {
-            return (ObserverConfig.FacilitySpec) values.get("facility");
+        public WatchList.FacilitySpec facility() {
+            return (WatchList.FacilitySpec) values.get("facility");
         }
 
         /** Effective parameters as plain JSON (subjects by name/id), echoed in every reply. */
@@ -183,8 +183,8 @@ public final class QueryVocabulary {
                 if (v == null) o.add(k, com.google.gson.JsonNull.INSTANCE);
                 else if (v instanceof Long n) o.addProperty(k, n);
                 else if (v instanceof String s) o.addProperty(k, s);
-                else if (v instanceof ObserverConfig.ResidentSpec r) o.addProperty(k, r.name());
-                else if (v instanceof ObserverConfig.FacilitySpec f) o.addProperty(k, f.id());
+                else if (v instanceof WatchList.ResidentSpec r) o.addProperty(k, r.name());
+                else if (v instanceof WatchList.FacilitySpec f) o.addProperty(k, f.id());
                 else if (v instanceof List<?> l) {
                     JsonArray a = new JsonArray();
                     l.forEach(x -> a.add(String.valueOf(x)));
@@ -221,7 +221,7 @@ public final class QueryVocabulary {
         return out;
     }
 
-    public static Request parse(String rawQuery, ObserverConfig.ConsumerSpec consumer, ObserverConfig config) {
+    public static Request parse(String rawQuery, ObserverConfig.ConsumerSpec consumer, WatchList watch) {
         Map<String, String> given = pairs(rawQuery);
         String kindId = given.remove("kind");
         if (kindId == null || kindId.isEmpty()) throw new Refused(400, "bad_request", "kind is required; see /v1/queries.");
@@ -273,14 +273,16 @@ public final class QueryVocabulary {
                     values.put(p.name(), List.copyOf(v));
                 }
                 case RESIDENT -> {
-                    ObserverConfig.ResidentSpec r;
+                    WatchList.ResidentSpec r;
                     if (raw == null || raw.isEmpty()) {
-                        r = selfOnly ? config.resident(consumer.resident()) : null;
+                        r = selfOnly ? watch.resident(consumer.resident()) : null;
+                        // A self token whose resident is not watched (yet) must never fall back to "every resident".
+                        if (r == null && selfOnly) throw new Refused(404, "unknown_subject", "This token's resident is not watched.");
                         if (r == null && p.required()) throw new Refused(400, "bad_request", "resident is required.");
                     } else {
-                        r = config.resident(raw);
-                        // Unknown and unconfigured (human, spectator) names look the same: nothing is revealed.
-                        if (r == null) throw new Refused(404, "unknown_subject", "Not a configured resident.");
+                        r = watch.resident(raw);
+                        // Unknown and unwatched (human, spectator) names look the same: nothing is revealed.
+                        if (r == null) throw new Refused(404, "unknown_subject", "Not a watched resident.");
                         if (selfOnly && !r.name().equals(consumer.resident())) {
                             throw new Refused(403, "forbidden", "A self token reads only its own resident.");
                         }
@@ -288,10 +290,10 @@ public final class QueryVocabulary {
                     values.put(p.name(), r);
                 }
                 case FACILITY -> {
-                    ObserverConfig.FacilitySpec f = null;
+                    WatchList.FacilitySpec f = null;
                     if (raw != null && !raw.isEmpty()) {
-                        f = config.facility(raw);
-                        if (f == null) throw new Refused(404, "unknown_subject", "Not a registered facility.");
+                        f = watch.facility(raw);
+                        if (f == null) throw new Refused(404, "unknown_subject", "Not a watched facility.");
                     }
                     values.put(p.name(), f);
                 }
@@ -301,7 +303,7 @@ public final class QueryVocabulary {
     }
 
     /** {@code GET /v1/queries}: the kinds this consumer may use, their parameters, limits and subjects. */
-    public static JsonObject describe(ObserverConfig.ConsumerSpec consumer, ObserverConfig config) {
+    public static JsonObject describe(ObserverConfig.ConsumerSpec consumer, ObserverConfig config, WatchList watch) {
         JsonObject o = new JsonObject();
         o.addProperty("vocabularyVersion", VERSION);
         JsonArray kinds = new JsonArray();
@@ -338,12 +340,12 @@ public final class QueryVocabulary {
         o.add("kinds", kinds);
         JsonObject subjects = new JsonObject();
         JsonArray residents = new JsonArray();
-        for (ObserverConfig.ResidentSpec r : config.residents()) {
+        for (WatchList.ResidentSpec r : watch.residents()) {
             if (consumer.has(Scope.RESIDENTS) || r.name().equals(consumer.resident())) residents.add(r.name());
         }
         subjects.add("residents", residents);
         JsonArray facilities = new JsonArray();
-        if (consumer.has(Scope.FACILITIES)) config.facilities().forEach(f -> facilities.add(f.id()));
+        if (consumer.has(Scope.FACILITIES)) watch.facilities().forEach(f -> facilities.add(f.id()));
         subjects.add("facilities", facilities);
         o.add("subjects", subjects);
         ObserverConfig.Recording r = config.recording();

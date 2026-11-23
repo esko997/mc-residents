@@ -113,6 +113,7 @@ public final class JsonViews {
         }
         JsonObject s = new JsonObject();
         s.addProperty("startedAtMs", st.startedAtMs());
+        s.addProperty("bootId", st.bootId());
         s.addProperty("lastPublishAtMs", st.lastPublishAtMs());
         s.addProperty("ticks", st.ticks());
         s.addProperty("lastTickMicros", st.lastTickMicros());
@@ -127,10 +128,52 @@ public final class JsonViews {
         s.addProperty("lastError", st.lastError());
         s.addProperty("tripped", st.tripped());
         s.addProperty("paused", st.paused());
-        s.addProperty("residentsConfigured", st.residentsConfigured());
-        s.addProperty("facilitiesConfigured", st.facilitiesConfigured());
+        s.addProperty("watchRevision", st.watchRevision());
+        s.addProperty("watchAppliedAtMs", st.watchAppliedAtMs());
+        s.addProperty("residentsWatched", st.residentsWatched());
+        s.addProperty("facilitiesWatched", st.facilitiesWatched());
         s.addProperty("eventsDropped", events.dropped());
+        s.add("library", GSON.toJsonTree(st.library()));
         o.add("status", s);
+        return o;
+    }
+
+    /** {@code watch:{revision, residents, facilities, appliedAtMs, bootId}} */
+    static JsonObject watch(ObserverConfig.ConsumerSpec consumer, WatchList list, String bootId,
+                            Sampler.State state, long nowMs, long heartbeatAtMs) {
+        JsonObject o = header(consumer, state, nowMs, heartbeatAtMs);
+        o.add("watch", list.toJson(bootId));
+        return o;
+    }
+
+    /** {@code block:{dimension,pos,status,reason,block,contents}}: a facility's status vocabulary and contents shape. */
+    static JsonObject block(ObserverConfig.ConsumerSpec consumer, Positions.At at, Observations.BlockRead r,
+                            Sampler.State state, long nowMs, long heartbeatAtMs) {
+        JsonObject o = header(consumer, state, nowMs, heartbeatAtMs);
+        JsonObject b = new JsonObject();
+        b.addProperty("dimension", at.dimension());
+        b.add("pos", Positions.json(at.x(), at.y(), at.z()));
+        b.addProperty("status", r.status().id());
+        b.addProperty("reason", r.detail());
+        b.addProperty("block", r.block());
+        b.add("contents", r.contents() == null ? JsonNull.INSTANCE : contents(r.contents()));
+        o.add("block", b);
+        return o;
+    }
+
+    /** {@code shelves:{items, next, loadedOnly, scannedAtMs, completedAtMs, truncated, total}} */
+    static JsonObject shelves(ObserverConfig.ConsumerSpec consumer, ShelfScan.Index index, Library.Page page,
+                              Sampler.State state, long nowMs, long heartbeatAtMs) {
+        JsonObject o = header(consumer, state, nowMs, heartbeatAtMs);
+        JsonObject s = new JsonObject();
+        s.add("items", GSON.toJsonTree(page.items()));
+        s.addProperty("next", page.next());
+        s.addProperty("loadedOnly", true);
+        s.addProperty("scannedAtMs", index.scannedAtMs());
+        s.addProperty("completedAtMs", index.completedAtMs());
+        s.addProperty("truncated", index.truncated());
+        s.addProperty("total", index.items().size());
+        o.add("shelves", s);
         return o;
     }
 
@@ -189,7 +232,7 @@ public final class JsonViews {
     }
 
     private static JsonObject facility(Observations.Facility f) {
-        ObserverConfig.FacilitySpec spec = f.spec();
+        WatchList.FacilitySpec spec = f.spec();
         JsonObject o = new JsonObject();
         o.addProperty("id", spec.id());
         o.addProperty("label", spec.label());

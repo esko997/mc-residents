@@ -25,7 +25,7 @@ class ObserverHttpServerTest {
 
     private final Fixtures.Clock clock = new Fixtures.Clock();
     private final Fixtures.FakeWorld world = new Fixtures.FakeWorld(clock);
-    private final ObserverConfig config = Fixtures.config("\"intervalTicks\":1,", 1);
+    private final ObserverConfig config = Fixtures.config("\"intervalTicks\":1,");
     private final List<String> warnings = new ArrayList<>();
     private Sampler sampler;
     private ObserverHttpServer server;
@@ -35,7 +35,7 @@ class ObserverHttpServerTest {
 
     @BeforeEach
     void start() throws IOException {
-        sampler = Fixtures.sampler(config, world, warnings);
+        sampler = Fixtures.watched(config, world, warnings, 1);
         world.online.put(Fixtures.GARY, Fixtures.body(clock.ms, "minecraft:overworld", 1, false));
         sampler.onServerTick();
         server = ObserverHttpServer.start(config, 0, sampler, () -> clock.ms, warnings::add);
@@ -193,7 +193,7 @@ class ObserverHttpServerTest {
         assertFalse(ObserverHttpServer.hostAllowed("pop-os.evil:25640", java.util.Set.of("pop-os")));
         assertFalse(ObserverHttpServer.hostAllowed("pop-os@evil", java.util.Set.of("pop-os")));
         server.stop();
-        ObserverConfig lan = Fixtures.config("\"allowedHosts\":[\"pop-os\",\"192.168.1.233\"],", 0);
+        ObserverConfig lan = Fixtures.config("\"allowedHosts\":[\"pop-os\",\"192.168.1.233\"],");
         sampler = Fixtures.sampler(lan, world, warnings);
         server = ObserverHttpServer.start(lan, 0, sampler, () -> clock.ms, warnings::add);
         assertEquals(401, request("GET", "/v1/status", "Host: pop-os:25640").status());
@@ -204,17 +204,21 @@ class ObserverHttpServerTest {
     void bridgeScopesQueriesRegistrationPauseAndTimeoutAreEnforced() throws Exception {
         assertEquals(401, request("GET", "/v1/sight?from=Gary&to=Margo").status());
         assertEquals(403, request("GET", "/v1/sight?from=Gary&to=Margo", bearer(Fixtures.GARY_TOKEN)).status());
-        assertEquals(403, request("GET", "/v1/library/shelf?facility=f0", bearer(Fixtures.GARY_TOKEN)).status());
+        assertEquals(403, request("GET", "/v1/library/shelf?dimension=minecraft:overworld&pos=0,64,0", bearer(Fixtures.GARY_TOKEN)).status());
+        assertEquals(403, request("GET", "/v1/block?dimension=minecraft:overworld&pos=0,64,0", bearer(Fixtures.GARY_TOKEN)).status());
         assertEquals(400, request("GET", "/v1/sight?from=Gary&to=Nobody", bearer(Fixtures.COMMONS_TOKEN)).status());
         assertEquals(400, request("GET", "/v1/sight?from=Gary&from=Margo&to=Gary", bearer(Fixtures.COMMONS_TOKEN)).status());
-        assertEquals(404, request("GET", "/v1/library/shelf?facility=f0", bearer(Fixtures.COMMONS_TOKEN)).status(),
-                "an ordinary registered facility must not grant book access");
+        assertEquals(400, request("GET", "/v1/library/shelf?facility=f0", bearer(Fixtures.COMMONS_TOKEN)).status(),
+                "the removed facility= form is refused, not silently ignored");
+        assertEquals(400, request("GET", "/v1/library/shelf?dimension=minecraft:overworld&pos=0,64,0&facility=f0",
+                bearer(Fixtures.COMMONS_TOKEN)).status());
         sampler.setPaused(true);
         assertEquals(503, request("GET", "/v1/sight?from=Gary&to=Margo", bearer(Fixtures.COMMONS_TOKEN)).status());
         assertEquals(0, world.bridgeReads);
         server.stop();
-        ObserverConfig fast = Fixtures.config("\"requestTimeoutMs\":100,", 0);
-        sampler = Fixtures.sampler(fast, world, warnings);
+        ObserverConfig fast = Fixtures.config("\"requestTimeoutMs\":100,");
+        sampler = Fixtures.watched(fast, world, warnings, 0);
+        sampler.onServerTick(); // applies the list; no tick runs after this
         server = ObserverHttpServer.start(fast, 0, sampler, () -> clock.ms, warnings::add);
         assertEquals(504, request("GET", "/v1/sight?from=Gary&to=Margo", bearer(Fixtures.COMMONS_TOKEN)).status());
         sampler.onServerTick();
@@ -222,14 +226,14 @@ class ObserverHttpServerTest {
     }
 
     @Test
-    void sightAndLibraryResultsComeFromTicksNotHttpThreads() throws Exception {
-        server.stop();
-        ObserverConfig library = ObserverConfig.parse(Fixtures.configJson("", 1)
-                .replace("\"pos\":[0,64,0]", "\"pos\":[0,64,0],\"library\":true"));
-        sampler = Fixtures.sampler(library, world, warnings);
-        server = ObserverHttpServer.start(library, 0, sampler, () -> clock.ms, warnings::add);
-        assertEquals(400, request("GET", "/v1/library/book?facility=f0&slot=6", bearer(Fixtures.COMMONS_TOKEN)).status());
-        assertEquals(400, request("GET", "/v1/library/book?facility=f0", bearer(Fixtures.COMMONS_TOKEN)).status());
+    void sightBlockAndLibraryResultsComeFromTicksNotHttpThreads() throws Exception {
+        String at = "dimension=minecraft:overworld&pos=4,66,-1";
+        world.places.put(Fixtures.FakeWorld.key(Fixtures.OVERWORLD, 4, 66, -1), Fixtures.shelf(Fixtures.written(2, "Bread", "Knead")));
+        for (String bad : new String[]{at + "&slot=6", at, "dimension=minecraft:overworld&pos=4,66&slot=0",
+                "dimension=Overworld&pos=4,66,-1&slot=0", "dimension=minecraft:overworld&pos=40000000,66,-1&slot=0",
+                "dimension=minecraft:overworld&pos=4.5,66,-1&slot=0"}) {
+            assertEquals(400, request("GET", "/v1/library/book?" + bad, bearer(Fixtures.COMMONS_TOKEN)).status(), bad);
+        }
         world.sightResult = new BridgeAccess.Sight(null, 42.0, "unloaded");
         java.util.concurrent.ScheduledExecutorService ticks = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
                 r -> new Thread(r, "test-server-tick"));
@@ -239,11 +243,32 @@ class ObserverHttpServerTest {
             assertEquals(200, sight.status());
             assertTrue(sight.body().getAsJsonObject("sight").get("visible").isJsonNull());
             assertEquals("unloaded", sight.body().getAsJsonObject("sight").get("reason").getAsString());
-            Reply shelf = request("GET", "/v1/library/shelf?facility=f0", bearer(Fixtures.COMMONS_TOKEN));
-            assertEquals("observed", shelf.body().getAsJsonObject("shelf").get("status").getAsString());
-            Reply book = request("GET", "/v1/library/book?facility=f0&slot=0", bearer(Fixtures.COMMONS_TOKEN));
-            assertEquals("empty", book.body().getAsJsonObject("book").get("status").getAsString());
+            JsonObject shelf = request("GET", "/v1/library/shelf?" + at, bearer(Fixtures.COMMONS_TOKEN)).body().getAsJsonObject("shelf");
+            assertEquals("observed", shelf.get("status").getAsString());
+            assertEquals("minecraft:chiseled_bookshelf", shelf.get("block").getAsString());
+            assertEquals("[4,66,-1]", shelf.get("pos").toString());
+            assertEquals("Bread", shelf.getAsJsonArray("slots").get(0).getAsJsonObject().get("title").getAsString());
+            JsonObject book = request("GET", "/v1/library/book?" + at + "&slot=2", bearer(Fixtures.COMMONS_TOKEN)).body().getAsJsonObject("book");
+            assertEquals("observed", book.get("status").getAsString());
+            assertEquals("Knead", book.getAsJsonArray("pages").get(0).getAsString());
+            assertEquals("empty", request("GET", "/v1/library/book?" + at + "&slot=0", bearer(Fixtures.COMMONS_TOKEN))
+                    .body().getAsJsonObject("book").get("status").getAsString());
+            JsonObject air = request("GET", "/v1/library/shelf?dimension=minecraft:overworld&pos=9,9,9", bearer(Fixtures.COMMONS_TOKEN))
+                    .body().getAsJsonObject("shelf");
+            assertEquals("no_shelf", air.get("status").getAsString());
+            assertEquals("minecraft:air", air.get("block").getAsString());
+            JsonObject block = request("GET", "/v1/block?dimension=minecraft:overworld&pos=0,64,0", bearer(Fixtures.COMMONS_TOKEN))
+                    .body().getAsJsonObject("block");
+            assertEquals("observed", block.get("status").getAsString());
+            assertEquals("minecraft:cobblestone", block.getAsJsonObject("contents").getAsJsonArray("items").get(0)
+                    .getAsJsonObject().get("item").getAsString());
+            world.throwing.add("f1");
+            JsonObject broken = request("GET", "/v1/block?dimension=minecraft:overworld&pos=3,64,0", bearer(Fixtures.COMMONS_TOKEN))
+                    .body().getAsJsonObject("block");
+            assertEquals("error", broken.get("status").getAsString(), "a throwing capability is that read's answer");
+            assertTrue(broken.get("contents").isJsonNull());
             assertEquals("test-server-tick", world.bridgeThread.getName());
+            assertEquals(0, sampler.status().consecutiveFailures(), "no tick failed");
         } finally {
             ticks.shutdownNow();
             assertTrue(ticks.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));

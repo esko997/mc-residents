@@ -8,16 +8,18 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BridgeAccessTest {
-    @Test void shelfAndBookResultsCopyTheirLists() {
-        BridgeAccess.BookInfo info = new BridgeAccess.BookInfo(0, "writable", null, null, null, 1, "hash");
-        List<BridgeAccess.BookInfo> slots = new ArrayList<>(List.of(info));
+    @Test void placesAndRepliesCopyTheirLists() {
+        BridgeAccess.Slot slot = Fixtures.written(0, "Bread", "Knead");
+        List<BridgeAccess.Slot> slots = new ArrayList<>(List.of(slot));
+        BridgeAccess.Place place = new BridgeAccess.Place(BridgeAccess.Where.LOADED, "minecraft:lectern",
+                BridgeAccess.Holder.LECTERN, slots, null);
         List<String> pages = new ArrayList<>(List.of("text"));
-        BridgeAccess.Shelf shelf = new BridgeAccess.Shelf("library", "observed", null, slots);
-        BridgeAccess.BookResult book = new BridgeAccess.BookResult("library", "observed", null, info, pages);
+        Library.BookReply book = new Library.BookReply(Fixtures.OVERWORLD, List.of(1, 2, 3), "minecraft:lectern", "observed",
+                null, slot.book().info(), pages);
         slots.clear(); pages.clear();
-        assertEquals(List.of(info), shelf.slots());
+        assertEquals(List.of(slot), place.slots());
         assertEquals(List.of("text"), book.pages());
-        assertThrows(UnsupportedOperationException.class, () -> shelf.slots().clear());
+        assertThrows(UnsupportedOperationException.class, () -> place.slots().clear());
         assertThrows(UnsupportedOperationException.class, () -> book.pages().clear());
     }
 

@@ -35,7 +35,7 @@ import java.util.List;
  * or adds a ticket. {@code Level#getBlockEntity}/{@code getBlockState} are deliberately avoided:
  * on the server thread they load the chunk. Because some capability implementations look at
  * neighbouring blocks (a vanilla double chest asks for its other half through the level), a
- * facility is only read when its whole 3×3 chunk neighbourhood is loaded.
+ * position is only read when its whole 3×3 chunk neighbourhood is loaded.
  */
 public final class MinecraftWorldAccess implements WorldAccess {
 
@@ -57,7 +57,7 @@ public final class MinecraftWorldAccess implements WorldAccess {
     }
 
     @Override
-    public Observations.Body readResident(ObserverConfig.ResidentSpec resident, long nowMs, long gameTime) {
+    public Observations.Body readResident(WatchList.ResidentSpec resident, long nowMs, long gameTime) {
         ServerPlayer p = server.getPlayerList().getPlayer(resident.uuid());
         if (p == null) {
             return null;
@@ -74,22 +74,25 @@ public final class MinecraftWorldAccess implements WorldAccess {
                 p.experienceLevel);
     }
 
+    /** The level for a dimension id, or null when the server has no such level. Never creates one. */
+    static ServerLevel level(MinecraftServer server, String dimension) {
+        ResourceLocation id = ResourceLocation.tryParse(dimension);
+        return id == null ? null : server.getLevel(ResourceKey.create(Registries.DIMENSION, id));
+    }
+
     @Override
-    public Observations.Facility readFacility(ObserverConfig.FacilitySpec f, long nowMs, long gameTime) {
-        ResourceLocation dimension = ResourceLocation.tryParse(f.dimension());
-        ServerLevel level = dimension == null ? null
-                : server.getLevel(ResourceKey.create(Registries.DIMENSION, dimension));
+    public Observations.BlockRead read(String dimension, int x, int y, int z, String sideName) {
+        ServerLevel level = level(server, dimension);
         if (level == null) {
-            return result(f, Observations.FacilityStatus.NO_LEVEL, "dimension " + f.dimension() + " does not exist here",
-                    nowMs, gameTime, null);
+            return result(Observations.FacilityStatus.NO_LEVEL, "dimension " + dimension + " does not exist here", null, null);
         }
-        if (level.isOutsideBuildHeight(f.y())) {
-            return result(f, Observations.FacilityStatus.NO_BLOCK_ENTITY, "y " + f.y() + " is outside the build height",
-                    nowMs, gameTime, null);
+        if (level.isOutsideBuildHeight(y)) {
+            return result(Observations.FacilityStatus.NO_BLOCK_ENTITY, "y " + y + " is outside the build height",
+                    "minecraft:void_air", null);
         }
 
-        int cx = SectionPos.blockToSectionCoord(f.x());
-        int cz = SectionPos.blockToSectionCoord(f.z());
+        int cx = SectionPos.blockToSectionCoord(x);
+        int cz = SectionPos.blockToSectionCoord(z);
         ServerChunkCache chunks = level.getChunkSource();
         LevelChunk chunk = null;
         for (int dx = -1; dx <= 1; dx++) {
@@ -97,9 +100,9 @@ public final class MinecraftWorldAccess implements WorldAccess {
                 LevelChunk c = chunks.getChunkNow(cx + dx, cz + dz);
                 if (c == null) {
                     String which = dx == 0 && dz == 0 ? "its chunk" : "neighbouring chunk";
-                    return result(f, Observations.FacilityStatus.UNLOADED,
+                    return result(Observations.FacilityStatus.UNLOADED,
                             which + " " + (cx + dx) + "," + (cz + dz) + " is not loaded (the observer never loads chunks)",
-                            nowMs, gameTime, null);
+                            null, null);
                 }
                 if (dx == 0 && dz == 0) {
                     chunk = c;
@@ -107,26 +110,26 @@ public final class MinecraftWorldAccess implements WorldAccess {
             }
         }
 
-        BlockPos pos = new BlockPos(f.x(), f.y(), f.z());
+        BlockPos pos = new BlockPos(x, y, z);
         BlockState state = chunk.getBlockState(pos);
         String block = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
         BlockEntity be = chunk.getBlockEntity(pos, LevelChunk.EntityCreationType.CHECK);
         if (be == null || be.isRemoved()) {
-            return result(f, Observations.FacilityStatus.NO_BLOCK_ENTITY, "the block there is " + block + " (no block entity)",
-                    nowMs, gameTime, null);
+            return result(Observations.FacilityStatus.NO_BLOCK_ENTITY, "the block there is " + block + " (no block entity)",
+                    block, null);
         }
 
         long t0 = System.nanoTime();
-        Direction side = f.side() == null ? null : Direction.byName(f.side());
+        Direction side = sideName == null ? null : Direction.byName(sideName);
         IItemHandler items = be.getCapability(ForgeCapabilities.ITEM_HANDLER, side).resolve().orElse(null);
         IEnergyStorage energy = be.getCapability(ForgeCapabilities.ENERGY, side).resolve().orElse(null);
         IFluidHandler fluids = be.getCapability(ForgeCapabilities.FLUID_HANDLER, side).resolve().orElse(null);
         if (items == null && energy == null && fluids == null) {
             ResourceLocation type = BlockEntityType.getKey(be.getType());
-            return result(f, Observations.FacilityStatus.UNSUPPORTED, (type == null ? block : type.toString())
-                            + " exposes no item, energy or fluid capability" + (side == null ? "" : " on side " + f.side())
+            return result(Observations.FacilityStatus.UNSUPPORTED, (type == null ? block : type.toString())
+                            + " exposes no item, energy or fluid capability" + (side == null ? "" : " on side " + sideName)
                             + "; mod-specific reading is not implemented",
-                    nowMs, gameTime, null);
+                    block, null);
         }
 
         ItemTally tally = new ItemTally(maxItemKinds);
@@ -158,11 +161,11 @@ public final class MinecraftWorldAccess implements WorldAccess {
         long micros = (System.nanoTime() - t0) / 1000L;
         Observations.Contents contents = new Observations.Contents(block, slots, tally.usedSlots(), slotsTruncated,
                 tally.items(), tally.truncated(), power, tanks, micros);
-        return result(f, Observations.FacilityStatus.OBSERVED, null, nowMs, gameTime, contents);
+        return result(Observations.FacilityStatus.OBSERVED, null, block, contents);
     }
 
-    private static Observations.Facility result(ObserverConfig.FacilitySpec f, Observations.FacilityStatus status,
-                                                String detail, long nowMs, long gameTime, Observations.Contents contents) {
-        return Observations.Facility.read(f, status, detail, nowMs, gameTime, contents);
+    private static Observations.BlockRead result(Observations.FacilityStatus status, String detail, String block,
+                                                 Observations.Contents contents) {
+        return new Observations.BlockRead(status, detail, block, contents);
     }
 }
