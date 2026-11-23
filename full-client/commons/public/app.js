@@ -1,6 +1,6 @@
 "use strict";
 import { coverOf, dimensionName as dimensionLabel, equivalent, heightColour, heightDomain, mapDimensions, mergeMapTrail, nearestIndex, passedPlaces, profileSeries, SEA_LEVEL, splitByHeight } from "./map-trails.js";
-import { buildGrid, decodeSection, defaultCut, faces as dioramaFaces, paint as paintDiorama, pick as pickDiorama } from "./diorama.js";
+import { buildGrid, decodeSection, defaultCut, DEFAULT_LEVELS, faces as dioramaFaces, levelRange, LEVELS, paint as paintDiorama, pick as pickDiorama, sliceWindow, STEP_SHARE } from "./diorama.js";
 import { createLiveView } from "./live-view.js";
 import { createRunControls } from "./run-control.js";
 import { createServerRecord } from "./server-record.js";
@@ -1112,14 +1112,18 @@ function drawProfile() {
 // Read only while this tab is open (the refresh loop loads the active panel only); the host asks
 // the client at most every ten seconds whoever is looking. Sections are kept here by revision and
 // sent back as `have`, so an unchanged section comes as {same:true}.
-const DIO_KEY = "commons.diorama";
-const dio = { who: (() => { try { return localStorage.getItem(DIO_KEY); } catch { return null; } })(),
-  reply: null, problem: "", decoded: new Map(), dimension: null, colours: null, grid: null, list: null, listCut: null,
+const DIO_KEY = "commons.diorama", DIO_LEVELS_KEY = "commons.diorama.levels", DIO_CUTAWAY_KEY = "commons.diorama.cutaway";
+const dioStored = key => { try { return localStorage.getItem(key); } catch { return null; } };
+const dioStore = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
+const dio = { who: dioStored(DIO_KEY),
+  levels: LEVELS.includes(Number(dioStored(DIO_LEVELS_KEY))) ? Number(dioStored(DIO_LEVELS_KEY)) : DEFAULT_LEVELS,
+  cutaway: ["auto", "on", "off"].includes(dioStored(DIO_CUTAWAY_KEY)) ? dioStored(DIO_CUTAWAY_KEY) : "auto",
+  reply: null, problem: "", decoded: new Map(), dimension: null, colours: null, grid: null, list: null, listKey: null, win: null,
   cut: null, userCut: false, geometry: null, canvas: $("#dio") };
 function dioCut(view) {
-  // World y of the highest layer shown; null shows the whole window.
+  // World y of the highest layer shown; null shows up to the top of the levels.
   const cut = dio.userCut ? dio.cut : defaultCut(view);
-  return cut === null || cut >= view.maxY ? null : Math.max(view.minY, cut);
+  return cut === null || cut >= levelRange(view, dio.levels)[1] ? null : cut;
 }
 async function loadDiorama() {
   dio.colours ??= await get("api/block-colours").catch(() => ({ colours: {}, builtAt: null, problem: "the colour table could not be read" }));
@@ -1128,9 +1132,9 @@ async function loadDiorama() {
     dio.who = (residents.find(resident => resident.status === "online" && !resident.hostUnreachable) ?? residents[0])?.name ?? null;
   }
   segmented($("#dio-who"), residents.map(resident => ({ value: resident.name, label: resident.name, who: resident.name })), dio.who, value => {
-    dio.who = value; dio.reply = null; dio.grid = null; dio.decoded.clear(); dio.dimension = null; dio.userCut = false;
+    dio.who = value; dio.reply = null; dio.grid = null; dio.win = null; dio.decoded.clear(); dio.dimension = null; dio.userCut = false;
     $("#dio-readout").textContent = "Move over or tap the blocks for their coordinates and name.";
-    try { localStorage.setItem(DIO_KEY, value); } catch { /* private mode */ }
+    dioStore(DIO_KEY, value);
     renderDiorama(); refresh("diorama");
   });
   if (!dio.who) { renderDiorama(); return; }
@@ -1163,6 +1167,7 @@ async function loadDiorama() {
 function renderDiorama() {
   const reply = dio.reply, view = reply?.view, status = $("#dio-status");
   const cutInput = $("#dio-cut");
+  dio.win = view && dio.grid ? sliceWindow(dio.grid, view, { levels: dio.levels, cut: dioCut(view), cutaway: dio.cutaway }) : null;
   if (!dio.who) status.textContent = "No resident to show.";
   else if (dio.problem) status.textContent = `${dio.who}: ${dio.problem}`;
   else if (!reply) status.textContent = `Reading what ${dio.who}'s client holds…`;
@@ -1176,14 +1181,20 @@ function renderDiorama() {
         view ? `showing what it held at ${stamp(reply.asOf)} (${ago(reply.asOf)}): ${where}` : "nothing read from it yet"];
     if (view?.missing.length) parts.push(`${view.missing.length} of ${view.missing.length + view.chunks.length} chunks not loaded by the client (hatched)`);
     if (view && view.sections.length === 0 && !view.missing.length) parts.push("the window lies outside the world's height");
+    const win = dio.win, share = win?.hidden == null ? "" : `${Math.round(win.hidden * 100)}%`;
+    if (win?.open) parts.push(dio.cutaway === "on" ? "cutaway on" : `cutaway opened: blocks would cover ${share} of ${reply.resident}`);
+    else if (win?.hidden >= STEP_SHARE) parts.push(dio.cutaway === "off" ? `cutaway off: blocks cover ${share} of ${reply.resident} (dashed outline)`
+      : `cutaway shut: blocks cover only ${share} of ${reply.resident}`);
     if (dio.colours?.problem) parts.push(`colours from the built-in list: ${dio.colours.problem}`);
     status.textContent = `${parts.join(" · ")}.`;
   }
   cutInput.disabled = !view;
+  for (const button of $("#dio-levels").querySelectorAll("button")) button.setAttribute("aria-pressed", String(Number(button.dataset.levels) === dio.levels));
+  for (const button of $("#dio-cutaway").querySelectorAll("button")) button.setAttribute("aria-pressed", String(button.dataset.cutaway === dio.cutaway));
   if (view) {
-    const cut = dioCut(view);
-    cutInput.min = String(view.minY); cutInput.max = String(view.maxY); cutInput.value = String(cut ?? view.maxY);
-    $("#dio-cut-value").textContent = cut === null ? `none (top y ${view.maxY})` : `y ${cut}`;
+    const [low, high] = levelRange(view, dio.levels), cut = dioCut(view);
+    cutInput.min = String(low); cutInput.max = String(high); cutInput.value = String(cut ?? high);
+    $("#dio-cut-value").textContent = cut === null ? `none (top y ${high})` : `y ${Math.max(low, cut)}`;
     $("#dio-cut-reset").setAttribute("aria-pressed", String(!dio.userCut));
     $("#dio-cut-none").setAttribute("aria-pressed", String(dio.userCut && cut === null));
   } else $("#dio-cut-value").textContent = "";
@@ -1196,17 +1207,17 @@ function drawDiorama() {
   if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); }
   const ctx = canvas.getContext("2d");
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  const view = dio.reply?.view;
-  if (!view || !dio.grid) {
+  const view = dio.reply?.view, win = dio.win;
+  if (!view || !dio.grid || !win) {
     ctx.fillStyle = "#14171b"; ctx.fillRect(0, 0, width, height);
     ctx.fillStyle = css("--lichen"); ctx.font = `13px ${css("--data")}`; ctx.textAlign = "center";
     ctx.fillText(dio.who ? "No blocks to draw." : "No resident.", width / 2, height / 2); ctx.textAlign = "start";
     dio.geometry = null;
     return;
   }
-  const cut = dioCut(view), gridCut = (cut ?? view.maxY) - view.minY;
-  if (!dio.list || dio.listCut !== gridCut) { dio.list = dioramaFaces(dio.grid, gridCut); dio.listCut = gridCut; }
-  dio.geometry = paintDiorama(ctx, dio.grid, dio.list, { width, height, cut: gridCut, players: view.players,
+  const key = [win.top, win.bottom, win.open ? [win.open.x, win.open.y, win.open.z].join() : "-"].join("/");
+  if (!dio.list || dio.listKey !== key) { dio.list = dioramaFaces(dio.grid, win); dio.listKey = key; }
+  dio.geometry = paintDiorama(ctx, dio.grid, dio.list, { width, height, win, players: view.players,
     colour: canvasColour(dio.reply.resident), ink: css("--parchment") });
 }
 {
@@ -1214,18 +1225,31 @@ function drawDiorama() {
   $("#dio-cut").addEventListener("input", () => {
     const view = dio.reply?.view;
     if (!view) return;
-    dio.userCut = true; dio.cut = Number($("#dio-cut").value) >= view.maxY ? null : Number($("#dio-cut").value);
+    const value = Number($("#dio-cut").value);
+    dio.userCut = true; dio.cut = value >= levelRange(view, dio.levels)[1] ? null : value;
     renderDiorama();
   });
   $("#dio-cut-reset").onclick = () => { dio.userCut = false; renderDiorama(); };
   $("#dio-cut-none").onclick = () => { dio.userCut = true; dio.cut = null; renderDiorama(); };
+  $("#dio-levels").onclick = event => {
+    const levels = Number(event.target.closest("button")?.dataset.levels);
+    if (!LEVELS.includes(levels)) return;
+    dio.levels = levels; dioStore(DIO_LEVELS_KEY, String(levels)); renderDiorama();
+  };
+  $("#dio-cutaway").onclick = event => {
+    const mode = event.target.closest("button")?.dataset.cutaway;
+    if (!mode) return;
+    dio.cutaway = mode; dioStore(DIO_CUTAWAY_KEY, mode); renderDiorama();
+  };
   const readout = event => {
-    const view = dio.reply?.view;
-    if (!view || !dio.geometry) return;
-    const box = canvas.getBoundingClientRect(), hit = pickDiorama(dio.grid, dio.geometry, (dioCut(view) ?? view.maxY) - view.minY, event.clientX - box.left, event.clientY - box.top);
-    $("#dio-readout").textContent = hit
-      ? `x ${hit.x + dio.grid.minX}, y ${hit.y + dio.grid.minY}, z ${hit.z + dio.grid.minZ} · ${hit.id.replace(/^minecraft:/, "")}`
-      : `Slab x ${dio.grid.minX} to ${dio.grid.minX + dio.grid.side - 1}, z ${dio.grid.minZ} to ${dio.grid.minZ + dio.grid.side - 1}, y ${view.minY} to ${view.maxY}.`;
+    const view = dio.reply?.view, grid = dio.grid;
+    if (!view || !grid || !dio.geometry || !dio.win) return;
+    const box = canvas.getBoundingClientRect(), hit = pickDiorama(grid, dio.win, dio.geometry, event.clientX - box.left, event.clientY - box.top);
+    const at = (x, y, z) => `x ${x}, y ${y}, z ${z}`;
+    $("#dio-readout").textContent = hit?.player
+      ? `${hit.player.name}, feet at ${at(...[hit.player.x, hit.player.y, hit.player.z].map(v => Math.round(v * 10) / 10))}`
+      : hit ? `${at(hit.x + grid.minX, hit.y + grid.minY, hit.z + grid.minZ)} · ${hit.id.replace(/^minecraft:/, "")}`
+      : `Slab x ${grid.minX} to ${grid.minX + grid.side - 1}, z ${grid.minZ} to ${grid.minZ + grid.side - 1}, y ${dio.win.bottom + grid.minY} to ${dio.win.top + grid.minY} shown.`;
   };
   canvas.addEventListener("pointermove", readout);
   canvas.addEventListener("pointerdown", readout);

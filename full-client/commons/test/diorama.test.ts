@@ -28,18 +28,18 @@ function section(x: number, y: number, z: number, ores: number[] = [], air = fal
   const indices = Array.from({ length: 4096 }, (_, i) => ores.includes(i) ? 1 : 0);
   return { y, rev: rev(x, y, z, ores), palette: ["minecraft:stone", "minecraft:diamond_ore"], bits: 1, data: deflateSync(pack(indices, 1)).toString("base64") };
 }
-/** GET /chunks data around (8, 70, 8): 3x3 columns, sections 3..5; one column missing, one ore. */
+/** GET /chunks data around (8, 70, 8) as the host asks for it (±32): 3x3 columns, sections 2..6; one column missing, one ore. */
 function chunks(options: { ores?: number[]; missing?: boolean } = {}) {
   const columns = [], missing: number[][] = [];
   for (let z = -1; z <= 1; z++) for (let x = -1; x <= 1; x++) {
     if (options.missing && x === 1 && z === 1) { missing.push([x, z]); continue; }
-    columns.push({ x, z, sections: [3, 4, 5].map(y => section(x, y, z, x === 0 && z === 0 && y === 4 ? options.ores ?? [] : [], y === 5)) });
+    columns.push({ x, z, sections: [2, 3, 4, 5, 6].map(y => section(x, y, z, x === 0 && z === 0 && y === 4 ? options.ores ?? [] : [], y >= 5)) });
   }
   return {
-    dimension: "minecraft:overworld", origin: [8, 70, 8], radius: 1, minY: 48, maxY: 95, levelMinY: -64, levelMaxY: 319,
+    dimension: "minecraft:overworld", origin: [8, 70, 8], radius: 1, minY: 32, maxY: 111, levelMinY: -64, levelMaxY: 319,
     hasSkyLight: true, hasCeiling: false, skyLight: 0, chunks: columns, missing,
     players: [{ name: "Wren", x: 8.5, y: 70, z: 8.5, self: true }, { name: "spesk01", x: 12, y: 71, z: 3 }],
-    counts: { sectionsSent: 27, sectionsSame: 0, dataChars: 100 }, timing: { clientThreadMicros: 300, encodeMicros: 9000, totalMicros: 9600 },
+    counts: { sectionsSent: 45, sectionsSame: 0, dataChars: 100 }, timing: { clientThreadMicros: 300, encodeMicros: 9000, totalMicros: 9600 },
   };
 }
 /** Answers `same` for revisions the request lists in `have`, as Synapse does. */
@@ -51,16 +51,16 @@ const honouringHave = (data: ReturnType<typeof chunks>) => (url: URL) => {
 describe("Synapse /chunks replies are validated before anything keeps them", () => {
   test("a well-formed reply is flattened to sections with their columns", () => {
     const view = fromSynapse(chunks({ ores: [5], missing: true }))!;
-    expect(view).toMatchObject({ dimension: "overworld", origin: [8, 70, 8], minY: 48, maxY: 95, skyLight: 0, missing: [[1, 1]] });
+    expect(view).toMatchObject({ dimension: "overworld", origin: [8, 70, 8], minY: 32, maxY: 111, skyLight: 0, missing: [[1, 1]] });
     expect(view.chunks).toHaveLength(8);
-    expect(view.sections).toHaveLength(24);
+    expect(view.sections).toHaveLength(40);
     expect(view.sections.find(s => s.x === 0 && s.z === 0 && s.y === 4)).toMatchObject({ bits: 1, palette: ["minecraft:stone", "minecraft:diamond_ore"] });
     expect(view.players.map(p => p.name)).toEqual(["Wren", "spesk01"]);
   });
 
   test("bits that do not fit the palette, data of the wrong length, odd ids and oversized windows are refused", () => {
     const tamper = (change: (data: ReturnType<typeof chunks>) => void) => { const data = chunks({ ores: [5] }); change(data); return fromSynapse(data); };
-    const centre = (data: ReturnType<typeof chunks>) => data.chunks[4].sections[1] as Record<string, unknown>;
+    const centre = (data: ReturnType<typeof chunks>) => data.chunks[4].sections.find(s => s.y === 4) as Record<string, unknown>;
     expect(tamper(d => { centre(d).bits = 2; })).toBeUndefined();
     expect(tamper(d => { centre(d).data = deflateSync(new Uint8Array(100)).toString("base64"); })).toBeUndefined();
     expect(tamper(d => { centre(d).data = "not base64!"; })).toBeUndefined();
@@ -92,7 +92,8 @@ describe("the per-resident cache reads the client only when asked, at most every
     const { reader, asked, advance } = cache(() => honouringHave(data)(new URL(`http://x${asked.at(-1)}`)));
     expect(asked).toEqual([]);
     const [a, b] = await Promise.all([reader.read(resident, new Set()), reader.read(resident, new Set())]);
-    expect(asked).toEqual(["/chunks?radius=1&below=16&above=16"]);
+    // ±32 around the feet, Synapse's cap: five sections a column, so the page can show up to ±32 levels.
+    expect(asked).toEqual(["/chunks?radius=1&below=32&above=32"]);
     expect(a).toEqual(b);
     expect(a).toMatchObject({ status: "ok", asOf: clock, checkedAt: clock, timing: { clientThreadMicros: 300 } });
     advance(MIN_REFRESH_MS - 1);
@@ -101,7 +102,7 @@ describe("the per-resident cache reads the client only when asked, at most every
     // The next read lists what this host holds; the client answers `same`, and the host fills them in.
     advance(1);
     const again = await reader.read(resident, new Set());
-    expect(new URLSearchParams(asked[1].split("?")[1]).get("have")!.split(",")).toHaveLength(27);
+    expect(new URLSearchParams(asked[1].split("?")[1]).get("have")!.split(",")).toHaveLength(45);
     expect(again.view!.sections.every(s => "palette" in s)).toBe(true);
     expect(again.view!.sections).toEqual(a.view!.sections);
   });
@@ -122,7 +123,7 @@ describe("the per-resident cache reads the client only when asked, at most every
     answer = "offline"; advance(MIN_REFRESH_MS);
     const offline = await reader.read(resident, new Set());
     expect(offline).toMatchObject({ status: "offline", asOf: clock, checkedAt: clock + MIN_REFRESH_MS });
-    expect(offline.view?.sections).toHaveLength(27);
+    expect(offline.view?.sections).toHaveLength(45);
     answer = { nonsense: true }; advance(MIN_REFRESH_MS);
     const broken = await reader.read(resident, new Set());
     expect(broken.status).toBe("error");

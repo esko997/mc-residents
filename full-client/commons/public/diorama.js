@@ -3,6 +3,11 @@
 // helpers are exported for the tests; `paint` draws on a 2D canvas, viewed from the south-east
 // and above, faces sorted back to front. No world data is invented: columns the client did
 // not hold are drawn as hatched gaps.
+//
+// What is drawn is a *window* of the grid, in grid coordinates: layers `bottom`..`top` (the
+// levels around the feet and the cut) minus an optional `open` corner (the cutaway that keeps
+// the resident visible). faces(), pick() and covered() all see the grid through the same
+// window, so the readout names what is drawn.
 
 /** Air never draws; the other ids here get special treatment by kind. */
 const AIR = new Set(["minecraft:air", "minecraft:cave_air", "minecraft:void_air"]);
@@ -85,11 +90,12 @@ export async function decodeSection(section) {
 
 /**
  * Where to cut by default: in a dimension with a ceiling (the Nether) always, three blocks over
- * the feet; underground (no sky light at the feet in a dimension that has sky) two over; else none.
+ * the feet; underground (no sky light at the feet in a dimension that has sky) at head height,
+ * so a 1 × 2 tunnel is open from above; else none.
  */
 export function defaultCut(view) {
   if (view.hasCeiling) return view.origin[1] + 3;
-  if (view.hasSkyLight && view.skyLight === 0) return view.origin[1] + 2;
+  if (view.hasSkyLight && view.skyLight === 0) return view.origin[1] + 1;
   return null;
 }
 
@@ -105,7 +111,9 @@ export function buildGrid(view, decoded, table = {}) {
   for (const { x: cx, y: sy, z: cz } of view.sections) {
     const entry = decoded.get(`${cx},${sy},${cz}`);
     if (!entry) continue;
+    // Every air id (cave_air, void_air too) is cell 0, so nothing downstream can draw, name or count it.
     const map = entry.palette.map(id => {
+      if (blockKind(id) === "air") return 0;
       if (!byId.has(id)) { byId.set(id, kinds.length); kinds.push({ id, kind: blockKind(id), rgb: blockColour(id, table) }); }
       return byId.get(id);
     });
@@ -121,17 +129,65 @@ export function buildGrid(view, decoded, table = {}) {
   return { side, height, minX, minZ, minY: view.minY, kinds, cells, missing };
 }
 
+/** Levels shown above and below the feet (the page's choices). The host reads ±32. */
+export const LEVELS = [4, 8, 16, 32];
+export const DEFAULT_LEVELS = 16;
+/**
+ * Share of the resident's figure that must be covered before the automatic cutaway opens: half,
+ * or a quarter when the view is cut at most two blocks over the feet, where the opening is only
+ * a step (a 1 × 2 tunnel under the head-height cut covers 45 %; so does a two-block rise beside
+ * someone on a hillside, where opening the quarter would carve a large piece of the hill).
+ */
+export const HIDDEN_SHARE = .5, STEP_SHARE = .25;
+
+/** World heights [low, high] shown for ±levels around the feet, within what was read. */
+export function levelRange(view, levels) {
+  const feet = view.origin[1];
+  return [Math.max(view.minY, feet - levels), Math.min(view.maxY, feet + levels)];
+}
+
+/**
+ * The cutaway's corner in grid coordinates: everything at x >= open.x, z >= open.z and
+ * y >= open.y (the feet's layer, up to the window's top) is left out, so the resident stands in
+ * the inner corner of an opened quarter, floor at the feet, walls behind. The corner lies one
+ * block beyond floor(position − 0.6) to the west and north: the least that keeps every wall off
+ * the figure, which is drawn taller than the body (tests check every position in a block).
+ */
+export function opening(grid, player) {
+  return { x: Math.floor(player.x - grid.minX - .6) - 1, y: Math.floor(player.y - grid.minY), z: Math.floor(player.z - grid.minZ - .6) - 1 };
+}
+
+/** A window clamped to the grid. */
+function clampWindow(grid, { top = grid.height - 1, bottom = 0, open = null } = {}) {
+  return { top: Math.min(top, grid.height - 1), bottom: Math.max(0, bottom), open };
+}
+
+/** The kind number drawn at a grid cell through a window: 0 outside it, in the opening, or air. */
+function shownAt(grid, win) {
+  const { side, kinds, cells } = grid, { top, bottom, open } = win;
+  return (x, y, z) => {
+    if (x < 0 || z < 0 || x >= side || z >= side || y < bottom || y > top) return 0;
+    const k = cells[(y * side + z) * side + x];
+    // Thin things on the opened floor (a torch, a rail) stay: they hide nothing.
+    if (k && open && x >= open.x && z >= open.z && y >= open.y && !(y === open.y && kinds[k].kind === "thin")) return 0;
+    return k;
+  };
+}
+
 /**
  * The visible faces from the south-east above, back to front: [x, y, z, face, kind, cut] in grid
- * coordinates; face 0 top, 1 east (+x), 2 south (+z), 3 a thin block's floor marker. `cut` is the
- * highest grid y shown. A top face there is a cut surface (painted darker) when something above
- * it was removed by the cut, or always at the top of the window, where the data ends.
+ * coordinates; face 0 top, 1 east (+x), 2 south (+z), 3 a thin block's floor marker. `win` is
+ * { top, bottom, open } (see the head of this file). A face is a cut surface (painted darker)
+ * when the block in front of it is in the data but not drawn (above the cut or in the opening),
+ * and the top of the data is always one.
  */
-export function faces(grid, cut = grid.height - 1) {
-  const { side, height, kinds, cells } = grid, list = [], top = Math.min(cut, height - 1);
-  const kindAt = (x, y, z) => x < 0 || z < 0 || x >= side || z >= side || y < 0 || y > top ? "air" : kinds[cells[(y * side + z) * side + x]].kind;
-  for (let y = 0; y <= top; y++) for (let z = 0; z < side; z++) for (let x = 0; x < side; x++) {
-    const k = cells[(y * side + z) * side + x], kind = kinds[k].kind;
+export function faces(grid, win = {}) {
+  const { side, height, kinds, cells } = grid, { top, bottom, open } = clampWindow(grid, win), list = [];
+  const at = shownAt(grid, { top, bottom, open }), kindAt = (x, y, z) => kinds[at(x, y, z)].kind;
+  const held = (x, y, z) => x >= 0 && z >= 0 && x < side && z < side && y >= 0 && y < height && cells[(y * side + z) * side + x] !== 0;
+  const cutBy = (x, y, z) => y >= height || (held(x, y, z) && !at(x, y, z));
+  for (let y = bottom; y <= top; y++) for (let z = 0; z < side; z++) for (let x = 0; x < side; x++) {
+    const k = at(x, y, z), kind = kinds[k].kind;
     if (kind === "air") continue;
     if (kind === "thin") { list.push([x, y, z, 3, k, false]); continue; }
     const above = kindAt(x, y + 1, z), east = kindAt(x + 1, y, z), south = kindAt(x, y, z + 1);
@@ -141,44 +197,114 @@ export function faces(grid, cut = grid.height - 1) {
       if (south !== kind && south !== "solid") list.push([x, y, z, 2, k, false]);
       continue;
     }
-    if (above !== "solid") list.push([x, y, z, 0, k, y === top && (top === height - 1 || cells[((y + 1) * side + z) * side + x] !== 0)]);
-    if (east !== "solid") list.push([x, y, z, 1, k, false]);
-    if (south !== "solid") list.push([x, y, z, 2, k, false]);
+    if (above !== "solid") list.push([x, y, z, 0, k, cutBy(x, y + 1, z)]);
+    if (east !== "solid") list.push([x, y, z, 1, k, cutBy(x + 1, y, z)]);
+    if (south !== "solid") list.push([x, y, z, 2, k, cutBy(x, y, z + 1)]);
   }
   // A unit cube can only hide cubes with a smaller x + y + z.
   list.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
   return list;
 }
 
-/** Screen geometry for a grid in a box: tile size and the projection. */
-export function layout(grid, width, height, cut) {
-  const span = Math.min(cut, grid.height - 1) + 2;
+/** Screen geometry for a grid window in a box: tile size and the projection. */
+export function layout(grid, width, height, win = {}) {
+  const { top, bottom } = clampWindow(grid, win), span = top - bottom + 2;
   const tile = Math.max(2, Math.min(28, (width - 24) / grid.side, (height - 28) / (grid.side / 2 + span / 2)));
-  const ox = width / 2, oy = 14 + span * tile / 2;
+  const ox = width / 2, oy = 14 + (top + 2) * tile / 2;
   return { tile, project: (x, y, z) => [ox + (x - z) * tile / 2, oy + (x + z) * tile / 4 - y * tile / 2] };
 }
 
-/** The highest block under a screen point whose top face is visible there, in grid coordinates, or null. */
-export function pick(grid, geometry, cut, sx, sy) {
-  const { tile, project } = geometry, [ox, oy] = project(0, 0, 0);
-  for (let y = Math.min(cut, grid.height - 1); y >= 0; y--) {
-    // Invert the projection on the plane of this block's top face (y + 1).
-    const u = (sx - ox) / (tile / 2), v = (sy - oy + (y + 1) * tile / 2) / (tile / 4);
-    const x = Math.floor((u + v) / 2), z = Math.floor((v - u) / 2);
-    if (x < 0 || z < 0 || x >= grid.side || z >= grid.side) continue;
-    const k = grid.cells[(y * grid.side + z) * grid.side + x];
-    if (k && grid.kinds[k].kind !== "air") return { x, y, z, id: grid.kinds[k].id };
+/**
+ * Walks the line of sight through the grid point [px, py, pz] from the viewer's side (direction
+ * −1, −1, −1, the order the painter covers things in) and returns the first drawn cell that
+ * `stop(x, y, z, k, line)` accepts, as { x, y, z, k }, or null. `line(y)` gives the line's x
+ * and z at height y, for thin blocks' markers.
+ */
+function march(grid, win, [px, py, pz], stop) {
+  const { top, bottom } = win, at = shownAt(grid, win);
+  const y0 = top + 1, x0 = px + y0 - py, z0 = pz + y0 - py;
+  const line = y => [x0 - (y0 - y), z0 - (y0 - y)];
+  let cx = Math.ceil(x0) - 1, cy = top, cz = Math.ceil(z0) - 1, tx = x0 - cx, ty = 1, tz = z0 - cz;
+  while (cy >= bottom && cx >= 0 && cz >= 0) {
+    if (cx < grid.side && cz < grid.side) {
+      const k = at(cx, cy, cz);
+      if (k && stop(cx, cy, cz, k, line)) return { x: cx, y: cy, z: cz, k };
+    }
+    if (tx <= ty && tx <= tz) { cx--; tx++; } else if (ty <= tz) { cy--; ty++; } else { cz--; tz++; }
   }
   return null;
 }
 
+/** Whether the line of sight crosses a thin block's floor marker (painted at y + .12, the middle half). */
+function onMarker(x, y, z, line) {
+  const [lx, lz] = line(y + .12);
+  return lx - x >= .25 && lx - x <= .75 && lz - z >= .25 && lz - z <= .75;
+}
+
+/** A player's figure on screen: 0.6 tiles wide and 1.6 tall, standing on the projected feet. */
+export function figureBox(geometry, gx, gy, gz) {
+  const { tile, project } = geometry, [sx, sy] = project(gx, gy, gz);
+  return [sx - tile * .3, sy - tile * 1.6, sx + tile * .3, sy];
+}
+
 /**
- * Paints the slab. `players` are { name, x, y, z, self } in world coordinates; `colour` is the
- * resident's CSS colour. Returns the geometry (for `pick`).
+ * How much of a player's figure the drawn blocks cover, 0..1: the share of points on it where a
+ * solid or liquid face painted after the figure (x + y + z above the feet cell's) lies on the line
+ * of sight. A figure point (a, b) in tiles maps to the grid point (gx + a, gy + 2b, gz − a).
  */
-export function paint(ctx, grid, list, { width, height, cut, players = [], colour = "#58c2b4", ink = "#ece4d2" }) {
+export function covered(grid, win, player, columns = 5, rows = 8) {
+  const w = clampWindow(grid, win), gx = player.x - grid.minX, gy = player.y - grid.minY, gz = player.z - grid.minZ;
+  const sum = Math.floor(gx) + Math.floor(gy) + Math.floor(gz), { kinds } = grid;
+  let hidden = 0;
+  for (let i = 0; i < columns; i++) for (let j = 0; j < rows; j++) {
+    const a = -.3 + .6 * (i + .5) / columns, b = 1.6 * (j + .5) / rows;
+    const hit = march(grid, w, [gx + a, gy + 2 * b, gz - a], (x, y, z, k) => x + y + z <= sum || kinds[k].kind === "solid" || kinds[k].kind === "liquid");
+    if (hit && hit.x + hit.y + hit.z > sum) hidden++;
+  }
+  return hidden / (columns * rows);
+}
+
+/**
+ * The window to draw: levels around the feet, the cut (world y, null for none) and the cutaway
+ * mode ("auto" opens when the resident would be hidden, see HIDDEN_SHARE; "on"; "off").
+ * Returns { top, bottom, open, hidden } in grid coordinates; `hidden` is the share of the
+ * resident's figure the blocks would cover without an opening (null when it is not drawn).
+ */
+export function sliceWindow(grid, view, { levels = DEFAULT_LEVELS, cut = null, cutaway = "auto" } = {}) {
+  const [low, high] = levelRange(view, levels), top = (cut === null ? high : Math.max(low, Math.min(high, cut))) - grid.minY;
+  const win = { top, bottom: low - grid.minY, open: null, hidden: null };
+  const self = view.players.find(p => p.self);
+  const gy = self ? self.y - grid.minY : NaN;
+  if (!self || !(gy >= win.bottom && gy <= top + 1)) return win;
+  win.hidden = covered(grid, win, self);
+  const enough = top - Math.floor(gy) <= 2 ? STEP_SHARE : HIDDEN_SHARE;
+  if (cutaway === "on" || (cutaway === "auto" && win.hidden >= enough)) win.open = opening(grid, self);
+  return win;
+}
+
+/**
+ * What is drawn under a screen point: a player's figure ({ player }) or the nearest drawn block
+ * ({ x, y, z, id } in grid coordinates), or null. `geometry` is what `paint` returned.
+ */
+export function pick(grid, win, geometry, sx, sy) {
+  const { tile, project } = geometry, [ox, oy] = project(0, 0, 0), w = clampWindow(grid, win);
+  // The screen point is the line x − z = u, x + z − 2y = v.
+  const u = (sx - ox) / (tile / 2), v = (sy - oy) / (tile / 4);
+  const hit = march(grid, w, [(u + v) / 2, 0, (v - u) / 2], (x, y, z, k, line) => grid.kinds[k].kind !== "thin" || onMarker(x, y, z, line));
+  // A figure is painted over faces up to its own x + y + z and under the rest.
+  const figure = (geometry.figures ?? []).filter(f => sx >= f.box[0] && sx <= f.box[2] && sy >= f.box[1] && sy <= f.box[3]
+    && (!hit || hit.x + hit.y + hit.z <= f.sum)).sort((a, b) => b.sum - a.sum)[0];
+  if (figure) return { player: figure.player };
+  return hit && { x: hit.x, y: hit.y, z: hit.z, id: grid.kinds[hit.k].id };
+}
+
+/**
+ * Paints the slab through a window. `players` are { name, x, y, z, self } in world coordinates;
+ * `colour` is the resident's CSS colour. Returns the geometry (for `pick`), with the figures drawn.
+ */
+export function paint(ctx, grid, list, { width, height, win = {}, players = [], colour = "#58c2b4", ink = "#ece4d2" }) {
   ctx.fillStyle = "#14171b"; ctx.fillRect(0, 0, width, height);
-  const geometry = layout(grid, width, height, cut), { tile, project } = geometry;
+  const { top, bottom } = clampWindow(grid, win), geometry = layout(grid, width, height, { top, bottom }), { tile, project } = geometry;
   const quad = (points, fill, seal) => {
     ctx.beginPath(); ctx.moveTo(...project(...points[0]));
     for (let i = 1; i < points.length; i++) ctx.lineTo(...project(...points[i]));
@@ -188,26 +314,29 @@ export function paint(ctx, grid, list, { width, height, cut, players = [], colou
   };
   // Columns the client did not hold: a hatched floor, nothing invented.
   for (const [x, z] of grid.missing) {
-    quad([[x, 0, z], [x + 16, 0, z], [x + 16, 0, z + 16], [x, 0, z + 16]], "rgba(229,100,90,.10)", false);
+    const y = bottom;
+    quad([[x, y, z], [x + 16, y, z], [x + 16, y, z + 16], [x, y, z + 16]], "rgba(229,100,90,.10)", false);
     ctx.strokeStyle = "rgba(229,100,90,.45)"; ctx.lineWidth = 1;
     for (let d = 2; d < 32; d += 4) {
-      ctx.beginPath(); ctx.moveTo(...project(x + Math.max(0, d - 16), 0, z + Math.min(16, d))); ctx.lineTo(...project(x + Math.min(16, d), 0, z + Math.max(0, d - 16))); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(...project(x + Math.max(0, d - 16), y, z + Math.min(16, d))); ctx.lineTo(...project(x + Math.min(16, d), y, z + Math.max(0, d - 16))); ctx.stroke();
     }
   }
+  // Players below the levels shown are left out; above the cut only their outline is drawn.
   const marks = players.map(p => ({ ...p, gx: p.x - grid.minX, gy: p.y - grid.minY, gz: p.z - grid.minZ }))
-    .filter(p => p.gx >= 0 && p.gz >= 0 && p.gx < grid.side && p.gz < grid.side)
+    .filter(p => p.gx >= 0 && p.gz >= 0 && p.gx < grid.side && p.gz < grid.side && p.gy >= bottom)
     .map(p => ({ ...p, sum: Math.floor(p.gx) + Math.floor(p.gy) + Math.floor(p.gz), drawn: false }));
-  const figure = (p, alpha) => {
-    const [sx, sy] = project(p.gx, p.gy, p.gz);
-    ctx.globalAlpha = alpha; ctx.fillStyle = p.self ? colour : ink; ctx.strokeStyle = "#14171b"; ctx.lineWidth = 1.5;
-    ctx.fillRect(sx - tile * .3, sy - tile * 1.6, tile * .6, tile * 1.6); ctx.strokeRect(sx - tile * .3, sy - tile * 1.6, tile * .6, tile * 1.6);
-    ctx.globalAlpha = 1;
+  geometry.figures = [];
+  const figure = p => {
+    const box = figureBox(geometry, p.gx, p.gy, p.gz);
+    ctx.fillStyle = p.self ? colour : ink; ctx.strokeStyle = "#14171b"; ctx.lineWidth = 1.5;
+    ctx.fillRect(box[0], box[1], box[2] - box[0], box[3] - box[1]); ctx.strokeRect(box[0], box[1], box[2] - box[0], box[3] - box[1]);
+    p.drawn = true;
+    geometry.figures.push({ box, sum: p.sum, player: { name: p.name, x: p.x, y: p.y, z: p.z, ...(p.self ? { self: true } : {}) } });
   };
-  const cutTop = Math.min(cut, grid.height - 1);
   for (const [x, y, z, face, k, cutFace] of list) {
-    for (const p of marks) if (!p.drawn && p.gy <= cutTop + 1 && x + y + z > p.sum) { figure(p, 1); p.drawn = true; }
+    for (const p of marks) if (!p.drawn && p.gy <= top + 1 && x + y + z > p.sum) figure(p);
     const { kind, rgb: [r, g, b] } = grid.kinds[k];
-    const shade = face === 0 || face === 3 ? (cutFace ? .55 : 1) : face === 1 ? .78 : .62;
+    const shade = (face === 0 || face === 3 ? 1 : face === 1 ? .78 : .62) * (cutFace ? (face === 0 ? .55 : .7) : 1);
     const alpha = kind === "liquid" ? .72 : kind === "glass" ? .4 : 1;
     const fill = `rgba(${Math.round(r * shade)},${Math.round(g * shade)},${Math.round(b * shade)},${alpha})`, seal = alpha === 1;
     if (face === 0) quad([[x, y + 1, z], [x + 1, y + 1, z], [x + 1, y + 1, z + 1], [x, y + 1, z + 1]], fill, seal);
@@ -215,7 +344,7 @@ export function paint(ctx, grid, list, { width, height, cut, players = [], colou
     else if (face === 2) quad([[x, y, z + 1], [x + 1, y, z + 1], [x + 1, y + 1, z + 1], [x, y + 1, z + 1]], fill, seal);
     else quad([[x + .25, y + .12, z + .25], [x + .75, y + .12, z + .25], [x + .75, y + .12, z + .75], [x + .25, y + .12, z + .75]], fill, false);
   }
-  for (const p of marks) if (!p.drawn && p.gy <= cutTop + 1) figure(p, 1);
+  for (const p of marks) if (!p.drawn && p.gy <= top + 1) figure(p);
   // Everyone in the slab is outlined on top, so rock never hides where they are.
   ctx.font = "bold 12px system-ui, sans-serif"; ctx.textBaseline = "alphabetic";
   for (const p of marks) {

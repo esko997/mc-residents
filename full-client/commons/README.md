@@ -724,11 +724,11 @@ after API note submission. Preserve the place-picture cache beside the database.
   Files are private, read by opaque hash IDs through the authenticated dashboard,
   and separate from resident-authored notes.
 - **Diorama**: the blocks around one resident as an isometric slab (see
-  [docs/map-3d.md](docs/map-3d.md)): 3 × 3 chunks (48 × 48 blocks) and the three
-  16-block sections around the feet (about 16 below to 16 above), from the
-  resident's **own client** through Synapse `GET /chunks`, which reads only chunks
-  the client already holds (it never loads one or asks the server). Ores and
-  everything else are shown as they are.
+  [docs/map-3d.md](docs/map-3d.md)): 3 × 3 chunks (48 × 48 blocks) and the five
+  16-block sections around the feet (at least 32 below to 32 above), from the
+  resident's **own client** through Synapse `GET /chunks?below=32&above=32`, which
+  reads only chunks the client already holds (it never loads one or asks the
+  server). Ores and everything else are shown as they are.
   - **Read only while watched.** Nothing polls: a host asks a resident's client
     only when a dashboard requests `GET diorama` (the page does every 15 s while
     the tab is open and the page visible), and at most every 10 s per resident
@@ -739,13 +739,28 @@ after API note submission. Preserve the place-picture cache beside the database.
     client is offline or refuses, the last view stays with its own time and the
     reason. Columns the client had not loaded are hatched and counted; nothing is
     drawn there.
-  - **Cut.** Underground (sky light 0 at the feet in a dimension with sky) the cut
-    starts two blocks above the feet; in the Nether (a ceiling) always, three above;
-    on the surface and in the End there is none. The slider moves it; *Default cut*
-    and *No cut* reset it. Darker tops are cut surfaces (and the slab's top, where
-    the data ends). Dashed outlines mark the resident and every other non-spectator
-    player the client sees in the slab, through rock. Tap or hover for a block's
-    coordinates and id; a compass shows north (−z).
+  - **Levels** (±4, ±8, ±16, ±32; default ±16, remembered per browser) shows that
+    many blocks below and above the feet. **Cut** removes everything above a height
+    within those levels: underground (sky light 0 at the feet in a dimension with
+    sky) it starts at head height, the feet + 1, so a 1 × 2 tunnel is open from above;
+    in the Nether (a ceiling) always, three above; on the surface and in the End
+    there is none. The slider moves it within the levels; *Default cut* and *No cut*
+    reset it. Darker tops are cut surfaces (and the slab's top, where the data ends).
+  - **Cutaway** (*Auto*, *On*, *Off*; default Auto, remembered per browser) opens
+    the quarter of the slab between the viewer and the resident from the feet's
+    layer up, like a dollhouse with two walls taken off: the resident stands in its
+    inner corner. Auto opens it when blocks would cover half of the resident's
+    figure, or a quarter when the cut is at most two blocks over the feet and the
+    opening is only a step (`HIDDEN_SHARE`, `STEP_SHARE`, measured along the line of
+    sight), so it follows the resident on every refresh and stays shut on open
+    ground and beside a small rise on a hillside. Walls and
+    floor the opening exposes are drawn darker; real tunnel and room surfaces keep
+    their light. Torches and rails on the opened floor stay.
+  - Dashed outlines mark the resident and every other non-spectator player the
+    client sees in the slab, through rock. Tap or hover for what is drawn there:
+    a player's name and feet, or a block's coordinates and id (found along the
+    same line of sight the painter uses, so cut and opened blocks are never named);
+    a compass shows north (−z).
   - **Colours** come from `GET block-colours`: the host's table built at deploy
     from the modpack's jars (`scripts/build-block-colours.ts`, the average colour
     of each block's top or all-side texture, biome-tinted ones with plains colours,

@@ -12,9 +12,12 @@ const noise = (x: number, y: number, z: number) => {
 };
 /** The cave: a chamber around (110, 96, -207) and a tunnel running west to east at y 95..97. */
 export const DEMO_CAVE: [number, number, number] = [110, 96, -207];
+/** A 1 x 2 mine tunnel running north from the cave's tunnel at x 118, floor at y 94 (feet 94..95). */
+export const DEMO_TUNNEL: [number, number, number] = [118, 94, -222];
 function cave(x: number, y: number, z: number) {
   const [cx, cy, cz] = DEMO_CAVE;
   if ((x - cx) ** 2 / 20 + (y - cy) ** 2 / 6 + (z - cz) ** 2 / 14 <= 1) return true;
+  if (x === DEMO_TUNNEL[0] && (y === DEMO_TUNNEL[1] || y === DEMO_TUNNEL[1] + 1) && z >= cz - 26 && z <= cz) return true;
   return y >= 95 && y <= 97 && Math.abs(z - cz - Math.round(2 * Math.sin(x / 7))) <= 1 && x > cx - 30 && x < cx + 26;
 }
 function tree(x: number, y: number, z: number) {
@@ -58,9 +61,9 @@ function section(cx: number, sy: number, cz: number) {
   return value;
 }
 
-/** The `data` of GET /chunks for a body at `pos` (3 x 3 chunks, y +-16), honouring `have`. */
-export function demoChunks(pos: { x: number; y: number; z: number }, have: Set<string>, players: { name: string; x: number; y: number; z: number }[], missingCorner = false) {
-  const x = Math.floor(pos.x), y = Math.floor(pos.y), z = Math.floor(pos.z), low = (y - 16) >> 4, high = (y + 16) >> 4;
+/** The `data` of GET /chunks for a body at `pos` (3 x 3 chunks, `below`/`above` widened to sections), honouring `have`. */
+export function demoChunks(pos: { x: number; y: number; z: number }, have: Set<string>, players: { name: string; x: number; y: number; z: number }[], missingCorner = false, below = 16, above = 16) {
+  const x = Math.floor(pos.x), y = Math.floor(pos.y), z = Math.floor(pos.z), low = (y - below) >> 4, high = (y + above) >> 4;
   const chunks = [], missing: number[][] = [];
   for (let cz = (z >> 4) - 1; cz <= (z >> 4) + 1; cz++) for (let cx = (x >> 4) - 1; cx <= (x >> 4) + 1; cx++) {
     // A column the client has not loaded, to show how that looks.
