@@ -116,10 +116,13 @@ public final class Observations {
     public record Event(long seq, String type, long atMs, long gameTime, String resident, String facility, String detail) {
     }
 
-    /** Observer health, published alongside snapshots. {@code lagStreak}: cycles in a row that began before the previous facility pass finished. */
+    /**
+     * Observer health, published alongside snapshots. {@code lagStreak}: cycles in a row that began before the
+     * previous facility pass finished. {@code recorderProblem}: non-null once block recording stopped itself.
+     */
     public record Status(long startedAtMs, long lastPublishAtMs, long ticks, long lastTickMicros, long maxTickMicros,
                          int budgetMicros, long overBudgetTicks, int intervalTicks, long lagCycles, int lagStreak,
                          int consecutiveFailures, int failureTripCount, String lastError, boolean tripped,
-                         boolean paused, int residentsConfigured, int facilitiesConfigured) {
+                         boolean paused, int residentsConfigured, int facilitiesConfigured, String recorderProblem) {
     }
 }

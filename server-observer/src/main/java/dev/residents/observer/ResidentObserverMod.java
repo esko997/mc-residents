@@ -3,9 +3,13 @@ package dev.residents.observer;
 import com.mojang.logging.LogUtils;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.event.OnDatapackSyncEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
+import net.minecraft.world.level.storage.LevelResource;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.loading.FMLPaths;
@@ -18,6 +22,7 @@ import java.nio.file.Path;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Resident Observer: a read-only, server-side view of configured residents and registered
@@ -35,7 +40,8 @@ public final class ResidentObserverMod {
     /** Owned by the server thread (lifecycle and tick events). */
     private Running running;
 
-    private record Running(Sampler sampler, ObserverHttpServer http, ScheduledExecutorService pauseWatcher) {
+    private record Running(Sampler sampler, ObserverHttpServer http, ScheduledExecutorService pauseWatcher,
+                           MinecraftBlockListener blocks, AtomicReference<AdvancementCatalog> catalog) {
         void stop() {
             pauseWatcher.shutdownNow();
             http.stop();
@@ -49,6 +55,10 @@ public final class ResidentObserverMod {
         MinecraftForge.EVENT_BUS.addListener(this::onServerStarted);
         MinecraftForge.EVENT_BUS.addListener(this::onServerStopping);
         MinecraftForge.EVENT_BUS.addListener(this::onServerTick);
+        // Lowest priority, cancelled events excluded: only changes every other handler let through.
+        MinecraftForge.EVENT_BUS.addListener(EventPriority.LOWEST, false, BlockEvent.BreakEvent.class, this::onBlockBreak);
+        MinecraftForge.EVENT_BUS.addListener(EventPriority.LOWEST, false, BlockEvent.EntityPlaceEvent.class, this::onBlockPlace);
+        MinecraftForge.EVENT_BUS.addListener(this::onDatapackSync);
     }
 
     private void onServerStarted(ServerStartedEvent event) {
@@ -81,7 +91,11 @@ public final class ResidentObserverMod {
                     msg -> LOGGER.warn("[resident_observer] {}", msg));
             Path pause = dir.resolve(PAUSE_FILE);
             sampler.setPaused(Files.exists(pause));
-            ObserverHttpServer http = ObserverHttpServer.start(config, config.port(), sampler, System::currentTimeMillis,
+            AtomicReference<AdvancementCatalog> catalog = new AtomicReference<>(catalog(event.getServer()));
+            PlayerFiles files = new PlayerFiles(event.getServer().getWorldPath(LevelResource.PLAYER_STATS_DIR),
+                    event.getServer().getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR),
+                    config.recording().maxPlayerFileBytes(), catalog::get);
+            ObserverHttpServer http = ObserverHttpServer.start(config, config.port(), sampler, files, System::currentTimeMillis,
                     msg -> LOGGER.warn("[resident_observer] {}", msg));
             ScheduledExecutorService watcher = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "resident-observer-pause-watch");
@@ -90,13 +104,52 @@ public final class ResidentObserverMod {
             });
             // File checks run here, never on the server thread.
             watcher.scheduleWithFixedDelay(() -> sampler.setPaused(Files.exists(pause)), 0, 5, TimeUnit.SECONDS);
-            running = new Running(sampler, http, watcher);
+            running = new Running(sampler, http, watcher, new MinecraftBlockListener(event.getServer(), sampler, config), catalog);
+            LOGGER.info("[resident_observer] advancement catalog: {} entries in {} us{}; block recording {}, flow recording {}.",
+                    catalog.get().entries().size(), catalog.get().buildMicros(),
+                    catalog.get().problem() == null ? "" : " (" + catalog.get().problem() + ")",
+                    config.recording().recordBlocks() ? "on" : "off", config.recording().recordFlows() ? "on" : "off");
             LOGGER.info("[resident_observer] serving {} residents and {} facilities on {}:{} for {} consumers "
                             + "(interval {} ticks, budget {} us). Tokens are stored as hashes only.",
                     config.residents().size(), config.facilities().size(), config.bind(), http.port(),
                     config.consumers().size(), config.intervalTicks(), config.tickBudgetMicros());
         } catch (Throwable t) {
             LOGGER.error("[resident_observer] failed to start; the game is unaffected: {}", t.toString());
+        }
+    }
+
+    /** Server thread, outside the tick sampler. A failure leaves an empty catalog with the reason; the game is unaffected. */
+    private static AdvancementCatalog catalog(net.minecraft.server.MinecraftServer server) {
+        try {
+            return MinecraftAdvancements.build(server, System.currentTimeMillis());
+        } catch (Throwable t) {
+            LOGGER.warn("[resident_observer] advancement catalog unavailable: {}", t.toString());
+            return AdvancementCatalog.unavailable(Sampler.describe(t), System.currentTimeMillis());
+        }
+    }
+
+    private void onDatapackSync(OnDatapackSyncEvent event) {
+        Running r = running;
+        if (r != null && event.getPlayer() == null) r.catalog().set(catalog(event.getPlayerList().getServer()));
+    }
+
+    private void onBlockBreak(BlockEvent.BreakEvent event) {
+        Running r = running;
+        if (r == null) return;
+        try {
+            r.blocks().onBreak(event);
+        } catch (Throwable t) {
+            LOGGER.error("[resident_observer] unexpected block listener failure: {}", t.toString());
+        }
+    }
+
+    private void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
+        Running r = running;
+        if (r == null) return;
+        try {
+            r.blocks().onPlace(event);
+        } catch (Throwable t) {
+            LOGGER.error("[resident_observer] unexpected block listener failure: {}", t.toString());
         }
     }
 

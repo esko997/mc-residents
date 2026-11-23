@@ -56,9 +56,13 @@ public final class ObserverHttpServer {
     private final ObserverConfig config;
     private final ExecutorService eventWaiters = waitingExecutor("events", 4);
     private final ExecutorService tickWaiters = waitingExecutor("tick", 4);
+    /** Player-file queries: one at a time, no queue, so a large file cannot occupy the normal handlers. */
+    private final ExecutorService fileWaiters = waitingExecutor("files", 1);
+    private final QueryService queries;
+    private final RateLimiter limiter;
 
     private ObserverHttpServer(HttpServer server, ExecutorService executor, Sampler sampler, TokenAuth auth,
-                               LongSupplier wallMs, Consumer<String> warn, ObserverConfig config) {
+                               LongSupplier wallMs, Consumer<String> warn, ObserverConfig config, PlayerFiles files) {
         this.server = server;
         this.executor = executor;
         this.sampler = sampler;
@@ -66,18 +70,27 @@ public final class ObserverHttpServer {
         this.wallMs = wallMs;
         this.warn = warn;
         this.config = config;
+        this.queries = new QueryService(sampler, files);
+        this.limiter = new RateLimiter(config.recording().queryRatePerMinute(), config.recording().queryBurst(), System::nanoTime);
     }
 
     /** Binds {@code config.bind():config.port()} (port 0 picks a free port, for tests) and starts serving. */
     public static ObserverHttpServer start(ObserverConfig config, int port, Sampler sampler, LongSupplier wallMs,
                                            Consumer<String> warn) throws IOException {
+        return start(config, port, sampler, null, wallMs, warn);
+    }
+
+    /** As above; {@code files} serves the player-file query kinds (null: those kinds answer 503). */
+    public static ObserverHttpServer start(ObserverConfig config, int port, Sampler sampler, PlayerFiles files,
+                                           LongSupplier wallMs, Consumer<String> warn) throws IOException {
         InetAddress address = InetAddress.getByName(config.bind()); // a literal: no DNS lookup
         if (!address.isLoopbackAddress() && !config.allowNonLoopback()) {
             throw new IOException("non-loopback bind requires allowNonLoopback=true");
         }
         HttpServer http = HttpServer.create(new InetSocketAddress(address, port), 16);
         ExecutorService pool = boundedExecutor(HANDLER_THREADS, HANDLER_QUEUE);
-        ObserverHttpServer s = new ObserverHttpServer(http, pool, sampler, new TokenAuth(config.consumers()), wallMs, warn, config);
+        ObserverHttpServer s = new ObserverHttpServer(http, pool, sampler, new TokenAuth(config.consumers()), wallMs, warn,
+                config, files);
         http.createContext("/", s::handle);
         http.setExecutor(pool);
         http.start();
@@ -92,6 +105,7 @@ public final class ObserverHttpServer {
         sampler.stop();
         eventWaiters.shutdownNow();
         tickWaiters.shutdownNow();
+        fileWaiters.shutdownNow();
         server.stop(0);
         executor.shutdownNow();
     }
@@ -149,6 +163,10 @@ public final class ObserverHttpServer {
             } else {
                 String path = exchange.getRequestURI().getPath();
                 String query = exchange.getRequestURI().getRawQuery();
+                if (path.equals("/v1/query")) {
+                    handleQuery(exchange, consumer, query);
+                    return;
+                }
                 ExecutorService waiting = null;
                 if (path.equals("/v1/events") && queryNumber(query, "wait", 0, 25) > 0) {
                     if (!readsEvents(consumer)) {
@@ -267,9 +285,19 @@ public final class ObserverHttpServer {
                 if (slot < 0) throw new IllegalArgumentException();
                 return tickRead(consumer, "book", bridge -> bridge.book(facility, slot));
             }
+            case "/v1/queries" -> {
+                if (!consumer.has(Scope.RESIDENTS) && !consumer.has(Scope.FACILITIES) && !consumer.has(Scope.SELF)) {
+                    return new Response(403, error("forbidden", "This token has no residents, facilities or self scope."));
+                }
+                JsonObject o = JsonViews.header(consumer, state, now, heartbeat);
+                o.add("queries", QueryVocabulary.describe(consumer, config));
+                return new Response(200, o);
+            }
             case "/v1/status" -> {
                 if (!consumer.has(Scope.STATUS)) return forbidden("status");
-                return new Response(200, JsonViews.status(consumer, sampler.status(), sampler.events(), state, now, heartbeat));
+                JsonObject o = JsonViews.status(consumer, sampler.status(), sampler.events(), state, now, heartbeat);
+                o.add("queries", queries.metrics());
+                return new Response(200, o);
             }
             default -> {
                 return new Response(404, error("not_found", "Unknown observer endpoint."));
@@ -301,6 +329,95 @@ public final class ObserverHttpServer {
                         error(unavailable.code, "The tick reader is " + unavailable.code + "."));
             }
             return new Response(500, error("read_failed", "The tick read failed; see the server log."));
+        } finally {
+            if (ticket != null) ticket.cancel();
+        }
+    }
+
+    // === /v1/query: validate, rate-limit, then run on the pool its kind needs ===
+
+    private void handleQuery(HttpExchange exchange, ObserverConfig.ConsumerSpec consumer, String rawQuery) {
+        QueryVocabulary.Request request;
+        try {
+            request = QueryVocabulary.parse(rawQuery, consumer, config);
+        } catch (QueryVocabulary.Refused e) {
+            queries.countRefused();
+            limiter.acquire(consumer.name(), 1); // refused requests still spend the caller's budget
+            send(exchange, e.status, error(e.code, e.getMessage()));
+            return;
+        }
+        String state = sampler.state(wallMs.getAsLong()).id();
+        if (state.equals("paused") || state.equals("tripped")) {
+            send(exchange, 503, error(state, "The observer is " + state + "; queries are off."));
+            return;
+        }
+        long retryAfter = limiter.acquire(consumer.name(), request.kind().cost);
+        if (retryAfter > 0) {
+            queries.countRateLimited();
+            exchange.getResponseHeaders().set("Retry-After", Long.toString(retryAfter));
+            send(exchange, 429, error("rate_limited", "Query rate limit reached; retry after " + retryAfter + " s."));
+            return;
+        }
+        ExecutorService pool = switch (request.kind().exec) {
+            case TICK -> tickWaiters;
+            case FILE -> fileWaiters;
+            case RING, CATALOG -> null;
+        };
+        Runnable work = () -> answerQuery(exchange, consumer, request);
+        if (pool == null) {
+            work.run();
+            return;
+        }
+        try {
+            pool.execute(work);
+        } catch (RejectedExecutionException e) {
+            send(exchange, 503, error("busy", "The bounded query pool is full; retry later."));
+        }
+    }
+
+    private void answerQuery(HttpExchange exchange, ObserverConfig.ConsumerSpec consumer, QueryVocabulary.Request request) {
+        int status = 200;
+        JsonObject body;
+        try {
+            JsonObject query = queries.answer(request, this::awaitTick);
+            long now = wallMs.getAsLong();
+            body = JsonViews.header(consumer, sampler.state(now), now, sampler.heartbeatAtMs());
+            body.add("query", query);
+            String text = JsonViews.toJson(body);
+            if (text.length() > QueryService.MAX_REPLY_BYTES / 2 && text.getBytes(StandardCharsets.UTF_8).length > QueryService.MAX_REPLY_BYTES) {
+                queries.countTooLarge();
+                status = 413;
+                body = error("too_large", "The reply would exceed " + QueryService.MAX_REPLY_BYTES + " bytes; lower limit.");
+            }
+        } catch (QueryVocabulary.Refused e) {
+            status = e.status;
+            body = error(e.code, e.getMessage());
+        } catch (Throwable t) {
+            warn.accept("query failed: " + Sampler.describe(t));
+            status = 500;
+            body = error("internal", "The query failed; see the server log.");
+        }
+        send(exchange, status, body);
+    }
+
+    /** {@link QueryService.TickReader}: the same bounded queue, timeout and failure policy as sight/library reads. */
+    private <T> T awaitTick(Function<BridgeAccess, T> job) {
+        TickRequests.Ticket<T> ticket = null;
+        try {
+            ticket = sampler.request(job);
+            return ticket.result.get(config.requestTimeoutMs(), TimeUnit.MILLISECONDS);
+        } catch (TickRequests.Unavailable e) {
+            throw new QueryVocabulary.Refused(e.code.equals("timeout") ? 504 : 503, e.code, "The tick reader is " + e.code + ".");
+        } catch (TimeoutException e) {
+            throw new QueryVocabulary.Refused(504, "timeout", "No tick result within the configured request timeout.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new QueryVocabulary.Refused(503, "stopped", "The observer is stopping.");
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof TickRequests.Unavailable u) {
+                throw new QueryVocabulary.Refused(u.code.equals("timeout") ? 504 : 503, u.code, "The tick reader is " + u.code + ".");
+            }
+            throw new QueryVocabulary.Refused(500, "read_failed", "The tick read failed; see the server log.");
         } finally {
             if (ticket != null) ticket.cancel();
         }

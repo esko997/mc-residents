@@ -39,6 +39,7 @@ public record ObserverConfig(
         int eventCapacity,
         int failureTripCount,
         int stallSeconds,
+        Recording recording,
         List<ResidentSpec> residents,
         List<FacilitySpec> facilities,
         List<ConsumerSpec> consumers) {
@@ -57,7 +58,20 @@ public record ObserverConfig(
             "maxFacilitySlots", "maxItemKinds", "eventCapacity", "failureTripCount", "stallSeconds",
             "residents", "facilities", "consumers", "_comment", "allowNonLoopback", "allowedHosts",
             "maxSightDistance", "requestQueueCapacity", "requestTimeoutMs",
-            "maxBookPages", "maxBookPageChars", "maxBookChars");
+            "maxBookPages", "maxBookPageChars", "maxBookChars",
+            "queryRatePerMinute", "queryBurst", "recordBlocks", "blockDetailCapacity", "blockDetailPerTick",
+            "blockAggregateCells", "blockAggregateHours", "recordFlows", "flowCapacity", "flowReach",
+            "maxPlayerFileBytes");
+
+    /**
+     * Declarative query and recorder limits (all optional; defaults need no config change). Only
+     * the lists of residents and facilities need a restart to change what the bridge may read.
+     */
+    public record Recording(int queryRatePerMinute, int queryBurst, boolean recordBlocks, int blockDetailCapacity,
+                            int blockDetailPerTick, int blockAggregateCells, int blockAggregateHours,
+                            boolean recordFlows, int flowCapacity, int flowReach, int maxPlayerFileBytes) {
+        public static final Recording DEFAULTS = new Recording(60, 30, true, 4096, 32, 4096, 48, true, 1024, 8, 4 << 20);
+    }
 
     public record ResidentSpec(String name, UUID uuid) {
     }
@@ -144,6 +158,19 @@ public record ObserverConfig(
         int events = integer(o, "eventCapacity", 256, 16, 4096);
         int trip = integer(o, "failureTripCount", 5, 1, 1000);
         int stall = integer(o, "stallSeconds", 10, 2, 600);
+        Recording d = Recording.DEFAULTS;
+        Recording recording = new Recording(
+                integer(o, "queryRatePerMinute", d.queryRatePerMinute(), 6, 600),
+                integer(o, "queryBurst", d.queryBurst(), 1, 120),
+                bool(o, "recordBlocks", d.recordBlocks()),
+                integer(o, "blockDetailCapacity", d.blockDetailCapacity(), 256, 65536),
+                integer(o, "blockDetailPerTick", d.blockDetailPerTick(), 1, 256),
+                integer(o, "blockAggregateCells", d.blockAggregateCells(), 256, 65536),
+                integer(o, "blockAggregateHours", d.blockAggregateHours(), 2, 168),
+                bool(o, "recordFlows", d.recordFlows()),
+                integer(o, "flowCapacity", d.flowCapacity(), 64, 8192),
+                integer(o, "flowReach", d.flowReach(), 1, 32),
+                integer(o, "maxPlayerFileBytes", d.maxPlayerFileBytes(), 64 << 10, 32 << 20));
 
         List<ResidentSpec> residents = residents(array(o, "residents"));
         List<FacilitySpec> facilities = facilities(array(o, "facilities"));
@@ -153,7 +180,7 @@ public record ObserverConfig(
         }
         return new ObserverConfig(enabled, bind, allowNonLoopback, hosts, sightDistance, requestQueue,
                 requestTimeout, bookPages, bookPageChars, bookChars,
-                port, interval, budget, slots, kinds, events, trip, stall, residents, facilities, consumers);
+                port, interval, budget, slots, kinds, events, trip, stall, recording, residents, facilities, consumers);
     }
 
     public ResidentSpec resident(String name) {

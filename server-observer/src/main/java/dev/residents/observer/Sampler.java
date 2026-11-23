@@ -50,6 +50,14 @@ public final class Sampler {
     private long lastPublishAtMs;
     private final long startedAtMs;
 
+    // Recorders (server thread writes; request threads read published views only).
+    private final BlockLog blocks;
+    private final SeqRing<Flows.Flow> flows;
+    private List<Flows.Candidate> candidates = List.of();
+    private volatile long flowsRecorded;
+    private int listenerFailures;
+    private volatile String recorderProblem;
+
     private final AtomicReference<Observations.Snapshot> snapshot = new AtomicReference<>();
     private final AtomicReference<Observations.Status> status = new AtomicReference<>();
     private volatile long heartbeatAtMs;
@@ -72,6 +80,8 @@ public final class Sampler {
         }
         this.cursor = facilities.length; // "previous pass complete", so the first cycle starts at 0
         this.startedAtMs = wallMs.getAsLong();
+        this.blocks = new BlockLog(config.recording(), config.tickBudgetMicros());
+        this.flows = new SeqRing<>(config.recording().flowCapacity());
         this.heartbeatAtMs = startedAtMs;
         events.append("observer_started", startedAtMs, 0L, null, null,
                 config.residents().size() + " residents, " + config.facilities().size() + " facilities configured");
@@ -137,18 +147,23 @@ public final class Sampler {
                 warn.accept("tripped after " + consecutiveFailures + " consecutive failures; observing stops until restart");
             }
         } finally {
-            long micros = Math.max(0L, (nanos.getAsLong() - t0) / 1000L);
+            // Recorder publication (ring copies, hour roll-over) runs before the measurement, and the
+            // block listeners' time since the previous tick is added: the budget metrics cover all observer work.
+            long listenerNanos = blocks.endTick(now);
+            flows.publish();
+            events.publish();
+            long micros = Math.max(0L, (nanos.getAsLong() - t0 + listenerNanos) / 1000L);
             if (micros > config.tickBudgetMicros()) {
                 overBudgetTicks++;
             }
             maxTickMicros = Math.max(maxTickMicros, micros);
-            events.publish();
             publishStatus(micros);
         }
     }
 
     private void readResidents(long now, long gameTime) {
         List<ObserverConfig.ResidentSpec> specs = config.residents();
+        List<Flows.Candidate> near = new java.util.ArrayList<>(specs.size() * 2);
         for (int i = 0; i < specs.size(); i++) {
             ObserverConfig.ResidentSpec spec = specs.get(i);
             Observations.Resident prev = residents[i];
@@ -158,7 +173,15 @@ public final class Sampler {
             Observations.Resident cur = new Observations.Resident(spec.name(), spec.uuid(), body != null, now, body, lastSeen);
             residents[i] = cur;
             residentEvents(prev, cur, now, gameTime);
+            // Flow evidence: where each resident was at this sample and the one before it.
+            if (body != null) near.add(candidate(spec.name(), body, "now"));
+            if (prev != null && prev.online()) near.add(candidate(spec.name(), prev.body(), "previous"));
         }
+        candidates = near;
+    }
+
+    private static Flows.Candidate candidate(String name, Observations.Body b, String when) {
+        return new Flows.Candidate(name, b.dimension(), b.x(), b.y(), b.z(), when);
     }
 
     private void residentEvents(Observations.Resident prev, Observations.Resident cur, long now, long gameTime) {
@@ -202,13 +225,66 @@ public final class Sampler {
             events.append("facility_status", now, gameTime, null, spec.id(),
                     prev.status().id() + " -> " + cur.status().id() + (cur.detail() == null ? "" : ": " + cur.detail()));
         }
+        if (config.recording().recordFlows() && cur.status() == Observations.FacilityStatus.OBSERVED) {
+            boolean continuous = prev.status() == Observations.FacilityStatus.OBSERVED;
+            Observations.Contents before = continuous ? prev.contents() : prev.lastKnown();
+            Long beforeAt = continuous ? Long.valueOf(prev.checkedAtMs()) : prev.lastObservedAtMs();
+            if (before != null && beforeAt != null) {
+                Flows.Flow flow = Flows.diff(spec, before, beforeAt, continuous, cur.contents(), now, gameTime,
+                        candidates, config.recording().flowReach(), config.maxItemKinds());
+                if (flow != null) {
+                    flows.append(flow);
+                    flowsRecorded++;
+                }
+            }
+        }
+    }
+
+    // === recorders: block listeners call these on the server thread ===
+
+    /** True when listeners may record: not paused, not tripped, and the block recorder has not stopped itself. */
+    public boolean recording() {
+        return !paused && !tripped && recorderProblem == null && blocks.enabled();
+    }
+
+    public BlockLog blocks() {
+        return blocks;
+    }
+
+    /** Server thread. A listener completed normally. */
+    public void listenerSucceeded() {
+        listenerFailures = 0;
+    }
+
+    /** Server thread. Repeated listener failures stop block recording (only) until restart; the game is unaffected. */
+    public void listenerFailed(Throwable t) {
+        listenerFailures++;
+        String error = describe(t);
+        warn.accept("block listener failed (" + listenerFailures + "/" + config.failureTripCount() + "): " + error);
+        if (listenerFailures >= config.failureTripCount() && recorderProblem == null) {
+            recorderProblem = "block recording stopped after " + listenerFailures + " consecutive listener failures: " + error;
+            events.append("recorder_stopped", wallMs.getAsLong(), 0L, null, null, recorderProblem);
+            warn.accept(recorderProblem);
+        }
+    }
+
+    public SeqRing.View<Flows.Flow> flows() {
+        return flows.view();
+    }
+
+    public long flowsRecorded() {
+        return flowsRecorded;
+    }
+
+    public long startedAtMs() {
+        return startedAtMs;
     }
 
     private void publishStatus(long lastTickMicros) {
         status.set(new Observations.Status(startedAtMs, lastPublishAtMs, ticks, lastTickMicros, maxTickMicros,
                 config.tickBudgetMicros(), overBudgetTicks, config.intervalTicks(), lagCycles, lagStreak,
                 consecutiveFailures, config.failureTripCount(), lastError, tripped, paused,
-                residents.length, facilities.length));
+                residents.length, facilities.length, recorderProblem));
     }
 
     static String describe(Throwable t) {
@@ -274,6 +350,9 @@ public final class Sampler {
         if (st != null && st.lagStreak() >= 3) {
             return new State("degraded", "facility reads are not finishing within the interval ("
                     + st.lagStreak() + " cycles behind); facility times are older than the interval");
+        }
+        if (st != null && st.recorderProblem() != null) {
+            return new State("degraded", st.recorderProblem());
         }
         return new State("ok", null);
     }
