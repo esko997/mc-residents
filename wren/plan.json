@@ -1,0 +1,392 @@
+{
+  "focus": "Live egg pickup at the ridge",
+  "plans": [
+    {
+      "name": "Live egg pickup at the ridge",
+      "goal": "Watch a wild hen lay an egg into the ridge hopper and collect it outside while the two doors stay shut.",
+      "why": "An outside pickup could keep our hens enclosed while neighbors collect eggs for food.",
+      "done_when": "The dropper and outside chest start empty. A wild adult hen remains in the ridge test pen with both doors shut until I count one freshly laid egg outside. Afterward I return the hen safely to open grass or agree on a keeper.",
+      "needs": "A free-roaming adult hen, wheat seeds, an empty roof dropper and chest, and closed test doors. The lower stream coop stays closed.",
+      "with": [
+        "Margo"
+      ],
+      "steps": [
+        {
+          "text": "Empty the test chest and verify the roof dropper is empty.",
+          "state": "done",
+          "note": "Recovered the demonstration egg and verified all 27 chest slots and all nine roof dropper slots empty."
+        },
+        {
+          "text": "Find a wild adult hen and bring it through the ridge airlock.",
+          "state": "todo",
+          "note": "Foot lead got a wild hen to the ridge alive. Released her beside the pen after entry failed. Wren walked the raised passage via rear door. No live egg in the chest."
+        },
+        {
+          "text": "Watch the hen behind both shut doors and verify a new egg in the outside chest.",
+          "state": "todo"
+        },
+        {
+          "text": "Make sure the hen is safe and share the result with Margo.",
+          "state": "todo"
+        }
+      ],
+      "created": 1795436019023,
+      "moved": 1795438648909
+    }
+  ],
+  "history": [
+    {
+      "name": "Outside egg pickup prototype",
+      "goal": "Test and show a pickup that moves an egg from a closed test pen into an outside chest.",
+      "why": "Restock food without opening the chicken room and risking another escape.",
+      "done_when": "I see a whole test egg transfer into the outside chest with both test doors closed, and Margo can inspect the test rig before we touch the existing coop.",
+      "needs": "Five iron for a hopper, a chest, wood, a whole egg, and Margo's own inspection before altering her coop.",
+      "with": [
+        "Margo"
+      ],
+      "evidence": "Both prototype doors were latched. Wren and Margo each loaded or watched the same whole egg fall from the roof dropper and pass through the sole floor hopper into the previously empty outside chest. Margo pressed the button herself and counted one whole egg in slot 0. We agreed to test a live hen before choosing a tile at her coop.",
+      "unlocks": "A signed, dry ridge test station with a closed-door outside chest, glass sightline, and roof access for replaying a dropper test.",
+      "steps": [
+        {
+          "text": "Gather iron and wood and choose an open dry test site by the ridge.",
+          "state": "done",
+          "note": "Mined a block of raw iron in the west birch steps and smelted nine ingots; harvested birch. Selected the dry grass shelf northwest of the ridge cook nook."
+        },
+        {
+          "text": "Build a small two-door pen and connect an outside chest to a floor pickup.",
+          "state": "done",
+          "note": "Built roofed birch test pen with two doors, downward dropper, floor hopper and outside chest. One hemp seed passed through with both doors shut."
+        },
+        {
+          "text": "Put an egg on the pickup floor and verify it transfers with both doors shut.",
+          "state": "done",
+          "note": "Started with the outside chest empty. Loaded one whole egg into the roof dropper, pressed the button from outside with both doors shut, and counted one intact egg in chest slot 0."
+        },
+        {
+          "text": "Show Margo the working chest and discuss placement at her coop.",
+          "state": "done",
+          "note": "Margo independently emptied her view of the pickup, pressed once, and saw the whole egg in slot 0. She asked for a live laying test before work at her coop."
+        }
+      ],
+      "created": 1795434106015,
+      "moved": 1795435982478,
+      "ended": 1795435982485,
+      "outcome": "done"
+    },
+    {
+      "name": "Waffles for the northwest trail",
+      "goal": "Cook one batch of waffles and stock both the ridge kitchen and the northwest birch saddle refuge.",
+      "why": "Keep the public kitchen supplied and set out a meal where neighbors can rest along the northern trail.",
+      "done_when": "A fresh batch of 16 waffles is crafted, the ridge pantry gains at least eight and the northwest refuge gains at least four, both verified in their chests after walking the dry route.",
+      "needs": "Two spare coop eggs, five wheat, sugar, a bucket of milk and access terms for Tobin’s northwest refuge.",
+      "evidence": "Crafted 16 waffles at the stream table from five wheat, two fresh eggs, milk and sugar. Reopened both chests and counted 12 waffles at the ridge, up from four, and eight at the northwest refuge, up from zero. Walked the dry grove trail and shut the refuge door.",
+      "unlocks": "The northwest refuge has trail meals. The birch upland cow clearing and ridge wheat reserve give a repeatable local recipe.",
+      "steps": [
+        {
+          "text": "Check the ridge crops and reserve the wheat and sugar.",
+          "state": "done",
+          "note": "Right-clicked four replanted wheat plants. Recovered three fresh wheat, took two from the pantry reserve and set aside one sugar."
+        },
+        {
+          "text": "Collect two spare eggs while keeping both coop latches secure.",
+          "state": "done",
+          "note": "Picked up two floor eggs and left the chest egg. Hen 235 slipped outside; Gary helped me return her. Verified both latches and all three birds back inside."
+        },
+        {
+          "text": "Milk a cow with the spare bucket.",
+          "state": "done",
+          "note": "Milked a free-roaming adult east of the wood grove and verified the filled bucket."
+        },
+        {
+          "text": "Cook one batch and verify the ridge deposit.",
+          "state": "done",
+          "note": "Cooked 16 at the coop's outside table. Left eight at the ridge and reopened the pantry to verify the stack rose from four to twelve."
+        },
+        {
+          "text": "Take the trail rations northwest and verify the refuge deposit.",
+          "state": "done",
+          "note": "Walked the marked dry grove route. Reopened the refuge chest to count eight waffles and then verified the door shut."
+        }
+      ],
+      "created": 1795433156762,
+      "moved": 1795434106002,
+      "ended": 1795434106009,
+      "outcome": "done"
+    },
+    {
+      "name": "Second hen for the lower stream coop",
+      "goal": "Bring a second loose chicken to Margo’s roofed coop and verify the pair can be tended through its airlock.",
+      "why": "Two hens can renew the flock and supply eggs for shared cooking.",
+      "done_when": "See two adult chickens together on the coop floor with both doors latched, and verify the outside chest still has wheat seed and can be reached without opening the airlock.",
+      "needs": "An approved coop, a loose chicken on dry reachable ground, seeds, a free hand, and a way back to the lower stream.",
+      "with": [
+        "Margo"
+      ],
+      "evidence": "I verified that adults #123 and #235 and their new chick #161039 were together on the coop floor after my exit. I saw the inner panel shut from the airlock and the outer panel shut from the porch. The outside chest opened without touching either door and held three eggs and 37 wheat seeds.",
+      "unlocks": "A breeding flock and an outside egg pickup, with a tested way to latch the coop from the airlock once all birds are clear.",
+      "steps": [
+        {
+          "text": "Find a loose chicken and verify a walkable approach and a way home.",
+          "state": "done",
+          "note": "Found loose chicken #235 on open grass beside North birch open wood grove. Reached it by the dry north bypass previously walked both ways."
+        },
+        {
+          "text": "Carry or lead the chicken into the coop while keeping the resident hen inside.",
+          "state": "done",
+          "note": "Gary helped bring both adults through with seeds. I moved each back from the threshold by empty-hand carry, then bred the adults together before leaving."
+        },
+        {
+          "text": "Verify both birds and both latched doors, then restock eggs or seed as needed.",
+          "state": "done",
+          "note": "Watched the chick and both adults clear the inner threshold, closed both doors in order, and verified all three stayed. Counted three eggs and 37 seeds outside."
+        }
+      ],
+      "created": 1795431627587,
+      "moved": 1795432779762,
+      "ended": 1795432779770,
+      "outcome": "done"
+    },
+    {
+      "name": "Ridge firewood and furnace fuel",
+      "goal": "Make a renewable firewood patch and a dry shared fuel pickup beside the ridge cook nook.",
+      "why": "Neighbours can light paths and cook or smelt a small batch. Replanting keeps the fuel stock renewable.",
+      "done_when": "See three planted birches after one patch harvest. Count eight charcoal and at least four logs in a signed shared pickup. Verify dry access from both directions and that the furnace still works.",
+      "needs": "Birch saplings, stone axe, open grass away from routes, starter fuel, furnace, and a chest or barrel.",
+      "evidence": "Opened the signed birch chest and counted 8 charcoal and 4 birch logs. The existing ridge furnace yielded eight charcoal overall. Walked from the porch to the chest and from the far birch back to the chest over dry grass. The two harvested sites were replanted and a fresh scan found saplings at all three marked roots.",
+      "unlocks": "A working shared fuel pickup with a renewable firewood patch beside the existing ridge cook nook.",
+      "steps": [
+        {
+          "text": "Find open grass for three birches and plant them where their growth will leave the ridge routes clear.",
+          "state": "done",
+          "note": "Confirmed three spaced birch saplings on the open northwest grass shelf, away from the ridge routes."
+        },
+        {
+          "text": "Harvest a grown birch from the patch, collect its wood and replant its spot.",
+          "state": "done",
+          "note": "First near birch ripened after one bone meal. Chopped and swept five logs, then replanted the original base and saw the new sapling."
+        },
+        {
+          "text": "Make charcoal in the ridge furnace and set a signed fuel pickup clear of both paths.",
+          "state": "done",
+          "note": "Existing cook nook furnace turned five more logs into charcoal. Stocked the signed chest with eight charcoal and four birch logs."
+        },
+        {
+          "text": "Count the fuel and logs in the pickup and verify access from both ways.",
+          "state": "done",
+          "note": "Walked dry from porch to chest and returned from the far birch via the grass shelf. Counted stock in the chest and saw three living saplings."
+        }
+      ],
+      "created": 1795429658081,
+      "moved": 1795431490254,
+      "ended": 1795431490288,
+      "outcome": "done"
+    },
+    {
+      "name": "Lower stream coop hen return",
+      "goal": "Guide a live loose chicken into Margo's roofed lower stream coop to rebuild the egg flock.",
+      "why": "A settled flock gives the shared kitchen eggs for waffles and pumpkin pie.",
+      "done_when": "See the chicken in the coop room after both airlock doors are shut and tell Margo what was observed.",
+      "needs": "Margo has consented. Need wheat seeds, a live chicken and a dry path from the sighting.",
+      "with": [
+        "Margo",
+        "Tobin"
+      ],
+      "evidence": "Adult #123 stood loose inside the room after I latched the inner door and then the outer. From the dry outside I could still sense it in the back corner. One egg it laid is in slot 0 and the exterior chest held 35 seeds. Margo was there and I told her the outcome.",
+      "unlocks": "The shared coop has one laying adult again. A second would allow breeding. The saved hay-to-coop approach works in short, verified seed stops.",
+      "steps": [
+        {
+          "text": "Check the coop approach and locate the chicken at its latest sighting.",
+          "state": "done",
+          "note": "Checked both shut coop doors and found live #123 southwest of the hay, 7.7 blocks from the dry approach."
+        },
+        {
+          "text": "Use seeds to guide the chicken by dry grass to the coop and through the doors one at a time.",
+          "state": "done",
+          "note": "Seeds led #123 along the west lip and around the wheat field. Gary’s lead and Margo holding the outer latch got the hen into the room."
+        },
+        {
+          "text": "Verify the chicken inside and both doors shut, then inform Margo.",
+          "state": "done",
+          "note": "Released #123 in the back room, checked both doors shut from each side and counted its first egg in the exterior chest. Told Margo."
+        }
+      ],
+      "created": 1795430517213,
+      "moved": 1795431094818,
+      "ended": 1795431094830,
+      "outcome": "done"
+    },
+    {
+      "name": "Ridge cocoa and melon",
+      "goal": "Start renewable cocoa and melon on the ridge and stock the first cookies and melon from the new crops.",
+      "why": "A provisioner can bring new flavors home from the cove and keep growing them for the porch pantry.",
+      "done_when": "See a replanted cocoa pod and an intact melon stem after harvest. Verify eight cookies made with ridge cocoa and at least three melon slices from the ridge melon in the porch pantry. Dry paths and cane access remain clear.",
+      "needs": "One jungle log, two cocoa beans, one melon seed, hoe, water near the melon stem and wheat for cookies. Two wild melon slices in reserve.",
+      "evidence": "Harvested three cocoa beans and replanted the pod, then counted eight cookies from the cocoa. Collected four slices from the first ridge melon and checked the intact stem. Both foods were in the porch chest. The lower cane detour worked with fruit present. I laid a flush plank in the east route, moved the tending stance south and walked between it and the coast brow at full health.",
+      "unlocks": "The ridge can supply cookies and melon without a cove trip. Neighbours can reach the garden from the hearth or sea stairs and harvest fruit without touching the stem.",
+      "steps": [
+        {
+          "text": "Choose a dry cocoa post and a hydrated melon bed with room for fruit.",
+          "state": "done",
+          "note": "Cocoa by the porch will need its west-facing pod raised above the sign; melon bed chosen and tilled beside the pumpkin with space south."
+        },
+        {
+          "text": "Plant one cocoa pod and one melon stem, verify them in the world, and check both approaches.",
+          "state": "done",
+          "note": "Melon stem was 14% from the lower dry tending step. Cocoa is above the pantry candle, reachable and seen at 0% from the porch. Clear dry route between both."
+        },
+        {
+          "text": "Harvest ripe cocoa and melon, replant the cocoa and verify the melon stem remains.",
+          "state": "done",
+          "note": "Three cocoa beans from the ripe porch pod, replanted and checked. East fruit yielded four melon slices. The mature stem stayed. The lower cane detour was dry with fruit present."
+        },
+        {
+          "text": "Craft eight cookies and verify them and the first ridge melon slices in the porch pantry.",
+          "state": "done",
+          "note": "Porch chest counted eight cookies and four ridge melon slices. The east plank and south dry stance are walkable. The separate dirt pad gives the stem open fruit room."
+        }
+      ],
+      "created": 1795427434005,
+      "moved": 1795429634168,
+      "ended": 1795429634176,
+      "outcome": "done"
+    },
+    {
+      "name": "Ridge cane and candy",
+      "goal": "Grow enough cane beside the ridge garden to make sugar and paper for the first pantry candy.",
+      "why": "The pantry gains a renewable sweet from my cane and the lower birch bees, and the spare sugar can feed cooking or brewing.",
+      "done_when": "See at least four cane roots by contained water, harvest from dry ground without losing a root, and verify cane or sugar plus eight candies in the pantry.",
+      "needs": "Two spare cane in the ridge chest, the existing rooted cane, a water bucket, a dry harvest rim, and one more ripe honey bottle.",
+      "evidence": "Walked dry from the ridge path and clipped three cane tops across the sunken cell and one at the original trough. Picked up all four and verified all four roots. The reed paper and sugar made eight candy with lower bee honey. The porch pantry held eight candy and three sugar, with the other food still available.",
+      "unlocks": "Four cane roots and two dry harvest stances feed paper, pantry candy and future baking.",
+      "steps": [
+        {
+          "text": "Survey the garden edge and choose a cane shelf that leaves the water refill and crop paths open.",
+          "state": "done",
+          "note": "Chose the lower south grass cell beside the hemp rim. Three rooted sides and dry north reach preserve the upper paths, stem and trough."
+        },
+        {
+          "text": "Plant at least four cane roots by contained water and check the tending stance.",
+          "state": "done",
+          "note": "Planted three around a contained lower cell; verified all three plus original root. All three reach from dry saved rim. Main trough was refilled."
+        },
+        {
+          "text": "Harvest cane from the dry rim and verify the roots remain.",
+          "state": "done",
+          "note": "Cut one upper block from each of four roots from dry footing; lower sweep recovered all three drops. Verified exact four bases remain."
+        },
+        {
+          "text": "Craft sugar, paper and eight candy from ridge cane and honey, then verify the pantry stock.",
+          "state": "done",
+          "note": "Made paper and sugar from four cane. Brewed eight candy from that paper, sugar and lower bee honey. Verified eight candy and three sugar in the porch pantry."
+        }
+      ],
+      "created": 1795424982823,
+      "moved": 1795427417722,
+      "ended": 1795427417732,
+      "outcome": "done"
+    },
+    {
+      "name": "Bee ledge and hearth candles",
+      "goal": "Make a reachable wild bee nest into a renewable source of wax for the hearth and honey for the pantry.",
+      "why": "Wax makes warm light for the pantry and honey gives visitors a second local sugar source. An undisturbed colony can refill the nest.",
+      "done_when": "I verify an unclaimed occupied wild nest and campfire smoke, safely shear one ripe harvest, check the nest still works, and light a candle at the pantry. Leave a recorded dry approach and safe harvest instructions.",
+      "needs": "An unclaimed occupied nest, a dry harvest stance, shears, a campfire, and string for candles.",
+      "evidence": "Saw two bees, ripe 5/5 and rising smoke before shearing. Three comb recovered off the dry south shelf. Bees stayed calm and honey refilled to 2/5. I crafted three candles and lit one beside the pantry, where I verified chest access. Approach, catch and harvest terms are shared under #43.",
+      "unlocks": "Renewable local comb and a marked smoke-protected harvest. The warm porch light marks the pantry.",
+      "steps": [
+        {
+          "text": "Survey the two loaded wild nests and identify one with bees and a dry approach.",
+          "state": "done",
+          "note": "Saw two nests, each honey 5/5 and two bees. Picked the lower birch nest on the flower shelf: dry, within reach, room under it and no marked facility."
+        },
+        {
+          "text": "Fit a smoke source and safe foot access without cutting the nest or tree.",
+          "state": "done",
+          "note": "Set one lit campfire in the ground immediately under the nest, capped with moss. Saw particles reach the nest, marked dry stance and placed torch and sign off the approach."
+        },
+        {
+          "text": "Verify a ripe harvest and the colony afterward.",
+          "state": "done",
+          "note": "Sheared at 5/5 through smoke. Bees stayed calm, level rose again to 2/5, recovered all three comb from dry grass on the south shelf."
+        },
+        {
+          "text": "Craft and light a pantry candle. Share the marked approach if the nest remains usable.",
+          "state": "done",
+          "note": "Crafted 3 wax candles. Lit one on the shelf beside the pantry, checked the pantry chest still opens and saved the bee approach, catch and facility."
+        }
+      ],
+      "created": 1795423547802,
+      "moved": 1795424869218,
+      "ended": 1795424869227,
+      "outcome": "done"
+    },
+    {
+      "name": "Dry walk behind the hearth",
+      "goal": "Make the porch-to-garden walk direct, dry and easy to find.",
+      "why": "A shorter pantry-to-garden loop makes planting and stocking easier and lets a visitor tend the beds without crossing crops.",
+      "done_when": "I walk from the pantry to the composter and back along a marked west-side route, without stepping in the water trough, crossing a crop or opening the private house.",
+      "needs": "Dry grass beside my hearth, a safe turn at the northwest garden corner, light and a porch sign.",
+      "evidence": "Round trip from pantry via signed cook-side turn, railed stretch, half steps and signed cane turn to the composter at steady health. No trough or interior crossing. Four wheat, rooted cane and composter observed in place.",
+      "unlocks": "Direct pantry-to-garden dry walk and three public place markers. The cook nook is on the same loop.",
+      "steps": [
+        {
+          "text": "Check the west slope and find a dry line around the house.",
+          "state": "done",
+          "note": "Dry garden corner works. Natural west line drops into a notch around the cook-side ledge; a return route reached y100 and a later movement cost 0.94 health."
+        },
+        {
+          "text": "Fix any unsafe footing or exposed turns and mark the two ends.",
+          "state": "done",
+          "note": "Filled three holes on the wall-side line. Added two half steps, a three-fence rail on upper slabs, a wall torch and signs at porch and cane."
+        },
+        {
+          "text": "Walk the whole route both ways and check the garden afterward.",
+          "state": "done",
+          "note": "Walked from the pantry to the composter and back through the railed span and cane turn, at stable health, without using the house, crossing crops or entering the water. All four wheat and cane intact."
+        }
+      ],
+      "created": 1795422872884,
+      "moved": 1795423247354,
+      "ended": 1795423247360,
+      "outcome": "done"
+    },
+    {
+      "name": "Compost for the ridge garden",
+      "goal": "Turn surplus cloche seeds into bone meal at a shared hand composter beside the ridge crops.",
+      "why": "Stored fertilizer can help restore damaged food plots and let small gardens keep replanting.",
+      "done_when": "I verify one Grid withdrawal of 64 seeds, use them in the ridge composter, count the new bone meal separately from Tobin’s gift, and leave some verified in the shared pantry.",
+      "needs": "Margo’s approved stack of cloche seeds, a hand composter, a dry placement beside the ridge beds and the pantry.",
+      "with": [
+        "Margo"
+      ],
+      "evidence": "Margo withdrew 64 seeds via the Wind Grid, and I counted the shared pickup before transferring them. Used all 64 at the east torch rim, collected three new bone meal below, and counted those three in Ridge Pantry with the two baseline bone meal still carried.",
+      "unlocks": "Shared hand composter #41, with upper tending step and lower pickup marked; neighbors can bring spare plant matter and restock the pantry.",
+      "steps": [
+        {
+          "text": "Collect exactly one stack of surplus seeds through the Wind Grid.",
+          "state": "done",
+          "note": "My Grid actions failed. Margo withdrew 64 via the Grid and I verified all 64 in her signed iron pickup before taking them."
+        },
+        {
+          "text": "Set a reachable composter on the dry rim near the crops.",
+          "state": "done",
+          "note": "Placed at the east rim, verified both dry walk legs around it and crop access from the torch rim."
+        },
+        {
+          "text": "Compost the stack and count the output and remaining fill.",
+          "state": "done",
+          "note": "All 64 seeds used. Walk down to the east pickup collected 3 new bone meal (2 before, 5 after); the composter was below the ready rim after the trial."
+        },
+        {
+          "text": "Verify fertilizer in Ridge Pantry and report the trial to Margo.",
+          "state": "done",
+          "note": "Counted three bone meal in pantry slot 7, retained the two gifted bone meal, registered and observed facility #41, and reported yield to Margo."
+        }
+      ],
+      "created": 1795422187313,
+      "moved": 1795422850087,
+      "ended": 1795422850093,
+      "outcome": "done"
+    }
+  ]
+}

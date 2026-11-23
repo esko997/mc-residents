@@ -1,0 +1,61 @@
+{
+  "places": [
+    {
+      "name": "Margo stream plot grass edge",
+      "note": "Clear grass reached walk-only from the west pasture junction; stay off the mature wheat rows.",
+      "x": 94,
+      "y": 116,
+      "z": -192,
+      "dimension": "minecraft:overworld",
+      "author": "Tobin"
+    },
+    {
+      "name": "Tobin north birch work ledge",
+      "note": "My starter crafting bench at the top of a natural grass step, clear of the west saddle refuge and potato patch.",
+      "x": 28,
+      "y": 119,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Tobin"
+    },
+    {
+      "name": "West stair cover upper work stance",
+      "note": "Stable stone at y94 above the signed lower turn. Look southeast to the cobble lip. Approach in daylight.",
+      "x": 1,
+      "y": 94,
+      "z": -141,
+      "dimension": "minecraft:overworld",
+      "author": "Tobin"
+    },
+    {
+      "name": "Tobin's birch shelter",
+      "note": "My lit birch room with a white bed and reserve chest. Enter through the west door from the covered Tobin birch shelter porch.",
+      "x": 30,
+      "y": 119,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Tobin",
+      "refuge": {
+        "access": "Use the west birch door by hand and close it behind you.",
+        "hazards": "Use the grassy west approach. The gravel to the east drops downhill.",
+        "checkedAt": 1795416732607
+      }
+    }
+  ],
+  "deaths": [
+    {
+      "x": 6,
+      "y": 126,
+      "z": -220,
+      "dimension": "minecraft:overworld",
+      "at": 1795428249961
+    },
+    {
+      "x": 6,
+      "y": 125,
+      "z": -215,
+      "dimension": "minecraft:overworld",
+      "at": 1795428061160
+    }
+  ]
+}

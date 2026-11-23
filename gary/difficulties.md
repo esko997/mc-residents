@@ -216,3 +216,43 @@ Last tool error: hold_ticks: Number must be less than or equal to 200. attack: L
 Paired control at the shore tray: Margo took the returned 642-strength diamond pick and held attack 194 ticks from the same dry rim on the very same block. It broke and she got one obsidian, pick 641. My 194- and 200-tick holds had no cracks or wear.
 Position: 198.31, 52, -100.28 (minecraft:overworld)
 Last tool error: hold_ticks: Number must be less than or equal to 200. attack: Left-click; optionally hold attack to mine by hand.
+
+## 2026-11-23T04:01:44.234Z
+mine count 12 on denseores:dense_iron_ore kept running after I gained 13 raw iron because the ore drops raw iron instead of its block item. I stopped it manually. A drop-aware count would let me bound the harvest.
+Position: 116.51, 108.54, -234.44 (minecraft:overworld)
+Last tool error: minecraft:golden_boots needs a 3x3 grid: look at a crafting table and use it, then craft again.
+
+## 2026-11-23T05:58:29.306Z
+On the return from the cove smoker, excavate jumped in place at the bottom of a one-block shaft whenever a wall torch occupied the next pillar block. Canceling navigation, removing that torch, and restarting let it pillar up nine blocks immediately.
+Position: 415.51, 44, -805.64 (minecraft:overworld)
+Last tool error: Sign editor did not open (screen none); no text was entered.
+
+## 2026-11-23T06:24:33.726Z
+Wren reports native dismount returned Unknown player action twice at the west chest boat, while vehicle says not riding and she sees a fixed seated view. Native dismount worked for me from the same boat moments earlier.
+Position: 23.46, 59, -22.5 (minecraft:the_nether)
+Last tool error: limit: Number must be less than or equal to 10. place_find: List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name, note or refuge words; refuge lists the places saved with refuge notes.
+
+## 2026-11-23T07:51:16.838Z
+Livestock pushed my body into the southeast pasture fence intersection. Walk-only reported arrival at nearby blocks while my position stayed fixed. Lifting one fence freed me, and I replaced it. Walk-only can also open a gate or sign while crossing the east bay.
+Position: 79.47, 115, -193.13 (minecraft:overworld)
+Last tool error: Synapse: Unknown block id 'loot:chest': no block is registered under it (an item that is not a block cannot be searched for).
+
+## 2026-11-23T09:11:33.038Z
+Two foxhounds went from 6 m to hitting range between looks. The burn reflex repeatedly tried unavailable water in the Nether, and a look cancelled the reflex. My kit was gone by the time I could return, so there was no way to check the drop from shelter.
+Position: 36.48, 42, 0.24 (minecraft:the_nether)
+Last tool error: text: Required. say: Speak plain chat, independently of walking; not commands. Text longer than one chat line (256 characters) is sent as up to three lines.
+
+## 2026-11-23T09:43:34.854Z
+At the cabin, a crossbow hit interrupted walk-only movement through the door. A subsequent use gave ambiguous door feedback while my position was still changing, and opening the pantry exposed me to the captain who had followed inside. A door-open state in inspect_crosshair or use feedback would make a stop and check much clearer.
+Position: 110.5, 120, -208.24 (minecraft:overworld)
+Last tool error: minecraft:stone_sword needs a 3x3 grid: look at a crafting table and use it, then craft again.
+
+## 2026-11-23T09:51:01.358Z
+I lost repeated crossbow exchanges with a pillager while holding use with a shield equipped. The shield stayed at 336/336 throughout. Navigation and look interrupt held use, and the retreat reflex also repositioned me. A clear shield-raised state and feedback on interrupted use would help diagnose defensive timing.
+Position: 110.5, 120, -208.5 (minecraft:overworld)
+Last tool error: You are dead; respawn before running a skill.
+
+## 2026-11-23T11:41:54.024Z
+With Water Breathing active, walk-only go_to from the Shore apron to a scanned shallow clay shelf stopped at the dry edge. I could verify the effect on HUD, but my body has no direct swim or dive controls to test underwater access.
+Position: 170.58, 63, -73.5 (minecraft:overworld)
+Last tool error: Plain chat only; use movement tools for # commands. Slash commands are not a resident tool.

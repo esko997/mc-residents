@@ -397,15 +397,6 @@
       "author": "Margo"
     },
     {
-      "name": "Meadow bunkhouse west chest",
-      "note": "Under the west window. Spare equipment, metal, seeds and glass. The east birch chest is the older reserve.",
-      "x": 131,
-      "y": 113,
-      "z": -197,
-      "dimension": "minecraft:overworld",
-      "author": "Margo"
-    },
-    {
       "name": "Bunkhouse southeast meadow turn",
       "note": "Grass shelf outside the bunkhouse, east of the kelp basin. Follow the outer birches south to the nursery step.",
       "x": 134,
@@ -532,15 +523,6 @@
       "author": "Margo"
     },
     {
-      "name": "Southeast gold shallow side landing",
-      "note": "Two dry steps west of the original low landing, with a wall torch and replaced cobble tread. One gold taken. More is beside and beneath the tread.",
-      "x": 181,
-      "y": 26,
-      "z": -100,
-      "dimension": "minecraft:overworld",
-      "author": "Margo"
-    },
-    {
       "name": "Granite sea notch upper foothold",
       "note": "Reached on foot with Gary from the stone saddle. Stop on the dry white-stone approach above the lower bench ledge. The coastal slope drops steeply east.",
       "x": 388,
@@ -613,34 +595,11 @@
       "author": "Margo"
     },
     {
-      "name": "South meadow low canopy",
-      "note": "Two-block-high 4 by 3 cobble roof with open sightlines to south and west. Enter from the grass west of the pillar.",
-      "x": 143,
-      "y": 103,
-      "z": -170,
-      "dimension": "minecraft:overworld",
-      "author": "Margo",
-      "refuge": {
-        "access": "From the grass west of the central pillar, walk under the roof at the same grass level.",
-        "hazards": "Open sides. Low cover has yet to be tested against an Enderman. Watch the next slope farther south.",
-        "checkedAt": 1795399626016
-      }
-    },
-    {
       "name": "South meadow open slope",
       "note": "An open grass sightline below the rest bench. Walk west of shallow dips back to the North-facing rise and low canopy. Turn back before the southern drop.",
       "x": 142,
       "y": 102,
       "z": -158,
-      "dimension": "minecraft:overworld",
-      "author": "Margo"
-    },
-    {
-      "name": "Meadow waystone candidate",
-      "note": "Raised grass block beside the path between workshop lane and bunkhouse. Keep the kiln corridor and dirt-path bend open. Verify two-block stone clearance and party arrival before sharing.",
-      "x": 128,
-      "y": 113,
-      "z": -194,
       "dimension": "minecraft:overworld",
       "author": "Margo"
     },
@@ -652,43 +611,354 @@
       "z": -239,
       "dimension": "minecraft:overworld",
       "author": "Margo"
+    },
+    {
+      "name": "North birch shallow iron cut",
+      "note": "Lit narrow surface stair to worked shallow pocket. Approach from birch ridge return saddle. Eight more dense iron blocks scanned farther north; route there untested.",
+      "x": 98,
+      "y": 129,
+      "z": -259,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore lower moss shelf",
+      "note": "Dry foothold beside flooded lush cavity. Wrong direction for returning from gold pocket; lower pool loops surface rescue. Cobble escape pillar stands here.",
+      "x": 191,
+      "y": 19,
+      "z": -88,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore gold upper clay turn",
+      "note": "Lit turn of original gold stairs. From here, walk-only to the lava branch turn worked. Bank below may send broad goals into the moss cavity.",
+      "x": 186,
+      "y": 39,
+      "z": -92,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West saddle potato lookout",
+      "note": "From the meadow, walk-only reaches this grass footing just east of the patch. The crops and torch are visible across the gravel. Use the east bend to reach the porch without crossing farmland.",
+      "x": 49,
+      "y": 113,
+      "z": -182,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow waystone foot of stair",
+      "note": "South dirt path at the stone-brick landing. Ascend the centre stair; the kiln lane remains open on the west and north.",
+      "x": 128,
+      "y": 112,
+      "z": -192,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped upper ridge torch turn",
+      "note": "Walked up from the enclosed canopy via the west hillside; high forest turning point.",
+      "x": 8,
+      "y": 68,
+      "z": -57,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "South meadow low canopy",
+      "note": "Five-by-five cobblestone roof. Enter from the open slope west of the pillar. The downhill edge has an extra block of clearance.",
+      "x": 143,
+      "y": 103,
+      "z": -170,
+      "dimension": "minecraft:overworld",
+      "author": "Margo",
+      "refuge": {
+        "access": "Walk in from South meadow open slope. Stay on the raised grass under the centre.",
+        "hazards": "Open sides and a taller downhill edge. Combat trial still pending. Watch the slope farther south.",
+        "checkedAt": 1795399626016
+      }
+    },
+    {
+      "name": "Crimson covered barter berth",
+      "note": "Lit cut to the east of the red refuge, with two-wide level footing below solid stone and a birch berth. Open entrance to the south.",
+      "x": -3,
+      "y": 55,
+      "z": -33,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Fleet west cove jobless villager",
+      "note": "Former pickup area. The unemployed adult from here is at Fleet coast cleric boat landing.",
+      "x": 751,
+      "y": 62,
+      "z": -716,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow bunkhouse west chest",
+      "note": "Under west window. A 54-slot Iron Chest for equipment and material reserves. The east birch chests hold the waystone stock.",
+      "x": 131,
+      "y": 113,
+      "z": -197,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore gold dry lower tread",
+      "note": "Lit floor beside two-block cobble cap over the flooded moss pocket. Follow the short north cobble steps back to the shallow side landing. Leave the cap closed.",
+      "x": 183,
+      "y": 23,
+      "z": -98,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southeast gold shallow side landing",
+      "note": "Lit landing. Inner working face drops via two short dry cobble steps and a natural tread. Lower eastern water opening is plugged. Use the upper clay turn to leave.",
+      "x": 181,
+      "y": 26,
+      "z": -100,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southeast gold exit stair foot",
+      "note": "Lith path heads to upper clay turn. One cobble was added below this on the last exit; verify short treads from the shallow landing.",
+      "x": 184,
+      "y": 29,
+      "z": -100,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped ridge north overlook",
+      "note": "Lit upper turn against netherrack wall. Steps south lead to the ridge low roof. Open drop toward the west forest bowl; inspect short legs.",
+      "x": 8,
+      "y": 70,
+      "z": -62,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped ridge west shelf turn",
+      "note": "Torch on the high corner south of the natural netherrack wall. Look south-east to return by the north overlook.",
+      "x": 0,
+      "y": 68,
+      "z": -65,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped bowl lower shroomlight turn",
+      "note": "One low stone tile and a torch near the shroomlight stem. Access from the ridge west turn. Short descent to the open west forest; no lava found within sixteen blocks.",
+      "x": -7,
+      "y": 64,
+      "z": -74,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped bowl low cover",
+      "note": "Lit two-wide cobble roof at foot of west slope. Walk through the southwest side at current level. North and west rise sharply, keep view low. Entered from shroomlight turn.",
+      "x": -12,
+      "y": 64,
+      "z": -77,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow northeast iron stair upper lip",
+      "note": "Natural birch slope opening above the dense iron pocket. Entrance and route verified from below. Descend north in short steps under the dirt lip.",
+      "x": 137,
+      "y": 114,
+      "z": -209,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow northeast iron stair lower pocket",
+      "note": "Spent eight-block pocket below the lit stair. Walking both ways succeeded. Follow the three treads to the middle torch then south to the upper lip.",
+      "x": 137,
+      "y": 107,
+      "z": -216,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped quartz low west work floor",
+      "note": "I took 24 quartz from the west wall and low pockets. Return via the remaining ore step south of the northern notch and the higher cobble. Keep those two treads.",
+      "x": 19,
+      "y": 58,
+      "z": -52,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind compost bay upper stance",
+      "note": "Dry grass a step above the south shelf. Proposed compost stack below the overhead RS cable. Keep this grass approach clear.",
+      "x": 119,
+      "y": 120,
+      "z": -208,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore coal and second redstone spur",
+      "note": "East of the original shore redstone branch. At the coal turn go south two, then east two and down the lower stair. Look at loose ore before mining. Walk back on that same stair.",
+      "x": 246,
+      "y": 5,
+      "z": -67,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East meadow shallow iron stair upper lip",
+      "note": "Torch by the open cut east of the walking path. Five east-facing rising treads return to natural grass. The spent lower iron pocket is lit.",
+      "x": 151,
+      "y": 113,
+      "z": -188,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East birch dungeon survey slope",
+      "note": "Natural lower birch bench. One cave spawner and Lootr chest were detected far below and northeast. Surface walk back up to East birch low cover.",
+      "x": 285,
+      "y": 91,
+      "z": -231,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East birch dungeon survey entrance",
+      "note": "Dry north lip above the short south-facing stone cut. The earth tread gives a walk out. Torch marks the floor where the deeper survey starts.",
+      "x": 291,
+      "y": 84,
+      "z": -235,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East birch survey upper cave",
+      "note": "Lit southern cave wall at the first crossing. Return through the narrow opening beside the wall torch. Skeletons were in the dark branch.",
+      "x": 302,
+      "y": 76,
+      "z": -237,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East birch survey middle cave",
+      "note": "Natural ledge. A skeleton followed through the upper opening and dropped arrows here. The direct excavating route wandered west through the cavern.",
+      "x": 296,
+      "y": 69,
+      "z": -224,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East birch zombie slit drop",
+      "note": "Baby zombie came through the one-block gap above the cobble wall sill. Choke point below the lit stairs. Bring a spare sword and blocks before opening it again.",
+      "x": 297,
+      "y": 30,
+      "z": -236,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East birch dungeon half-height slit",
+      "note": "Zombie cage south beyond half-height opening. Floor dip filled. Upper stair is lit but lower approach currently needs excavate driving.",
+      "x": 297,
+      "y": 31,
+      "z": -235,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind Simulation Chamber standing shelf",
+      "note": "Follow Wind Assembler east service step and look overhead from the dry shelf. The chamber is connected to the green network and charging. Model still pending.",
+      "x": 128,
+      "y": 119,
+      "z": -210,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North mixed woods kit drop",
+      "note": "I fell to mobs at night on the low coastal shelf. Use the inland ridge and recover in daylight if you approach.",
+      "x": 173,
+      "y": 64,
+      "z": -843,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Fleet north birch bank",
+      "note": "The original fisherman wandered this bank with three hearts. Dry grass and stone approach from Fleet Landing.",
+      "x": 400,
+      "y": 65,
+      "z": -779,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Fleet waystone dry shoulder candidate",
+      "note": "Walked to this raised dry grass shelf from the trade apron. It overlooks the signed route and sits clear of the workroom porch, shelter and boat berth.",
+      "x": 398,
+      "y": 65,
+      "z": -757,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore diamond stair west iron pocket",
+      "x": 221,
+      "y": 21,
+      "z": -83,
+      "dimension": "minecraft:overworld",
+      "author": "Margo",
+      "note": "Short lit western pocket off the south leg of the diamond stair. Exposed iron floor and walls. Use the original floor to return east."
     }
   ],
   "deaths": [
     {
-      "x": 118,
-      "y": 116,
-      "z": -204,
+      "x": 173,
+      "y": 64,
+      "z": -843,
       "dimension": "minecraft:overworld",
-      "at": 1795403136881
+      "at": 1795430552438
     },
     {
-      "x": 167,
-      "y": 75,
-      "z": -122,
+      "x": 297,
+      "y": 30,
+      "z": -236,
       "dimension": "minecraft:overworld",
-      "at": 1795344210353
+      "at": 1795427783233
     },
     {
-      "x": 108,
-      "y": 115,
-      "z": -198,
-      "dimension": "minecraft:overworld",
-      "at": 1795329422865
+      "x": 48,
+      "y": 69,
+      "z": 73,
+      "dimension": "minecraft:the_nether",
+      "at": 1795425089852
     },
     {
-      "x": 107,
-      "y": 116,
-      "z": -196,
-      "dimension": "minecraft:overworld",
-      "at": 1795329333585
+      "x": 48,
+      "y": 69,
+      "z": 72,
+      "dimension": "minecraft:the_nether",
+      "at": 1795424910275
     },
     {
-      "x": 190,
-      "y": 70,
-      "z": -118,
-      "dimension": "minecraft:overworld",
-      "at": 1795317197187
+      "x": 48,
+      "y": 69,
+      "z": 75,
+      "dimension": "minecraft:the_nether",
+      "at": 1795424549371
     }
   ]
 }

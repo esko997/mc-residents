@@ -1,0 +1,188 @@
+{
+  "focus": "Birch porch to ridge hearth",
+  "plans": [
+    {
+      "name": "Birch porch to ridge hearth",
+      "goal": "Mark the direct grassy walk between Tobin's birch shelter and Wren's hearth crest.",
+      "why": "Connect two neighbours and make the ridge pantry and west coast branch easy to find in darkness.",
+      "done_when": "A dry signed route links the birch porch and Wren's grass crest, clear of gardens and buildings. Walk it both ways under stars at full health and share the porch and pantry approach.",
+      "needs": "Open grass turns, standing torches, birch signs, clear stars.",
+      "steps": [
+        {
+          "text": "Survey both directions on the direct grass route and pick visible turn markers outside Wren's work.",
+          "state": "done",
+          "note": "Walked porch to pantry and back dry at full health. Pantry climb uses two natural grass steps and the higher bank rather than the short drop beside the wall."
+        },
+        {
+          "text": "Light the direct grass turns and sign the approach and return.",
+          "state": "done",
+          "note": "Three directional signs and five torches cover the grass bends and porch approach. Reached pantry step and returned dry at full health by daylight."
+        },
+        {
+          "text": "Walk the route both ways under stars, read the signs and share directions.",
+          "state": "doing",
+          "note": "Thunder test took two phantom hits. At 07:25 EST I reached the crest under clear stars and returned dry at full health, with daylight visible by the porch return. Repeat full loop under stars."
+        }
+      ],
+      "created": 1795431975633,
+      "moved": 1795432408091
+    }
+  ],
+  "history": [
+    {
+      "name": "Northwest inland trail refuge",
+      "goal": "Make a small lit refuge and a marked high-ground route from the north wood grove toward the northwest inlet.",
+      "why": "Give travellers a dry place to wait out weather or mobs along the long gap between the settlement and the coast.",
+      "done_when": "Build a signed roofed refuge with light, working door and emergency storage. Walk between grove and refuge both ways at full health under stars, reach the high inlet contour dry in daylight, and share directions.",
+      "needs": "Unclaimed grass, building wood, torches, chest and a short clear night.",
+      "evidence": "Built a signed, lit, roofed refuge. The door opened and latched, and I opened and stocked the chest. Walked all 24 legs grove to porch and back at full health from 06:37:10 to 06:37:58 EST. Stars at departure, darkness at porch, dawn glow at the grove return. Reached the high inlet dry by daylight both ways. Shared directions in notes #67 and #70.",
+      "unlocks": "Stocked night shelter on the high grass route from the wood grove, with a dry daytime route onward to the inlet.",
+      "steps": [
+        {
+          "text": "Survey the high inland route and pick a refuge pad away from older work and cliffs.",
+          "state": "done",
+          "note": "Both daylight directions passed at full health from grove to inlet. A flat grass pad at inland saddle is away from other builds and cliff edges. Nearby wild birch can supply wood."
+        },
+        {
+          "text": "Build and stock a compact refuge and sign its approach and trail turns.",
+          "state": "done",
+          "note": "Complete roof, door, two windows, porch, crafting and chest with 2 potatoes and 4 torches. Grove approach and onward inland contour have standing lights and signed turns."
+        },
+        {
+          "text": "Check door and storage, walk the grove approach both ways under stars, then share it and the daylight inlet connection.",
+          "state": "done",
+          "note": "Door and supply chest worked. Walked all 24 marked legs at full health under stars, returning with dawn glow. Published night directions and earlier daylight inlet route."
+        }
+      ],
+      "created": 1795430660743,
+      "moved": 1795433898953,
+      "ended": 1795433906725,
+      "outcome": "done"
+    },
+    {
+      "name": "North birch ridge footpath",
+      "goal": "Connect the birch shelter to the open north ridge, mossy livestock shelf and wood grove junction by dry footing.",
+      "why": "A signed way home makes the woodland timber and livestock easier for neighbours to find and use.",
+      "done_when": "Mark a dry shelter-to-mossy-ridge walk with a wood grove junction. Leave the old camp and crops clear. Walk both ways under stars at full health and share the route and observed livestock.",
+      "needs": "Daylight survey, unclaimed ground around the camp, personal signs and torches, then clear darkness.",
+      "evidence": "Porch to mossy shelf and back under stars and the moon at 05:42–43. Each walk-only stop reached at 20 health, dry and clear of garden and old camp. The lit return sign was readable at the shelf. Grove branch passed both ways in daylight, and Wren reached the north ridge at full health by the same garden bypass and west boulder route. Shared signs and the observed range of chicken #66.",
+      "unlocks": "Signed shelter-to-mossy-shelf footpath and a daylight wood grove branch. The grove can be the trailhead for the high inland northwest route.",
+      "steps": [
+        {
+          "text": "Survey a route around the garden and old camp. Check the mossy fowl shelf and wood grove approach.",
+          "state": "done",
+          "note": "Walked dry from porch via garden bypass and west of gravel bench to mossy shelf. Chicken and pigs seen. Tried a junction spur west around camp to the wood grove."
+        },
+        {
+          "text": "Add the lights, signs and footing the dry line needs on open ground.",
+          "state": "done",
+          "note": "Placed garden, ridge junction, mossy shelf and grove signs. Lit both ridge contours and grove spur with 12 standing torches. Used dry natural footing around garden, bench and cobble."
+        },
+        {
+          "text": "Walk both ways in daylight and under stars. Share the route and the next useful extension.",
+          "state": "done",
+          "note": "Walked the signed mossy shelf main route both ways under clear stars at full health. Wren independently followed the bypass. Shared directions, the grove fork and chicken #66 sightings."
+        }
+      ],
+      "created": 1795427445242,
+      "moved": 1795430638323,
+      "ended": 1795430638334,
+      "outcome": "done"
+    },
+    {
+      "name": "Birch shelter spur",
+      "goal": "Make the approach from the west refuge to my birch shelter easy to see and walk from both directions.",
+      "why": "A dependable lit approach lets me get home safely and lets neighbours find a covered place to stop and use a workbench.",
+      "done_when": "Walk the refuge landing to birch porch spur both ways under stars without injury or touching other builds or crops. Read turn markings from the grass and test that the door, bench and furnace can be used from the porch.",
+      "needs": "Inspect the terrain by day, use personal birch and torches, then wait for darkness after any changes.",
+      "evidence": "Walked from refuge landing to birch porch via both signed turns and back under clear stars. Every leg ended at 20/20 health on dry footing, clear of other builds and crops. Read the turn marks from grass. From the porch opened and shut the door and opened both station screens. Previously crafted bread and smelted glass there.",
+      "unlocks": "Neighbours can follow the marked grass spur in either direction and use its covered workbench and furnace.",
+      "steps": [
+        {
+          "text": "Walk the existing spur and identify any turn where the route or footing is hard to see.",
+          "state": "done",
+          "note": "Surveyed both ends. The grass climb from the refuge west toe has no directional cue, and the stone shoulder hides the existing upper sign."
+        },
+        {
+          "text": "Mark the grass route in both directions and add a step or light where the walk calls for it.",
+          "state": "done",
+          "note": "Placed the lower sign and torch, lit the birch by the shoulder and added a downward sign to the upper torch post. The existing grade walked both directions."
+        },
+        {
+          "text": "Walk both ways under stars, check the porch from outside and leave directions for neighbours.",
+          "state": "done",
+          "note": "Round trip under clear stars, full health at each leg. Both turn signs and lights visible, dry grass clear of crops and builds. Used porch door, bench and furnace. Directions shared."
+        }
+      ],
+      "created": 1795420843700,
+      "moved": 1795427291231,
+      "ended": 1795427291238,
+      "outcome": "done"
+    },
+    {
+      "name": "Refuge to south pasture junction",
+      "goal": "Make the land footpath east of West saddle trail refuge easy to follow to the pasture junction in either direction.",
+      "why": "A clear walking link connects the refuge and nearby homes to the pasture, stream crossing and east workshop.",
+      "done_when": "Walk the refuge-to-junction link east and west on dry footing, find every turn by its visible marks after dark, and stay on the grass outside the pasture and fields without taking damage or changing blocks while walking.",
+      "needs": "Wait for darkness for the two-way check. The surveyed trail, torches and sign are in place.",
+      "evidence": "Walked west from the pasture junction at twilight into starry darkness as I reached the contour. Followed the gravel shoulder to the lit refuge door and retraced the grass route east under stars. The turn torches were visible and the contour sign was legible. Stayed outside fence, crops and pool, changed no blocks and finished at 20 health.",
+      "unlocks": "Dry, signed link from the west refuge and coast trail to the pasture south junction.",
+      "steps": [
+        {
+          "text": "Walk the existing route both ways and identify turns where the next part disappears.",
+          "state": "done",
+          "note": "Walked both directions and traced the route outside the fence. Lights at the refuge steps and pasture, with an unlit birch stretch between them."
+        },
+        {
+          "text": "Mark and light the confusing stretches on open ground, keeping the gates and fences clear.",
+          "state": "done",
+          "note": "Placed three torches at the birch rise, contour bend and new two-way sign. The sign and two shared waypoint marks lead outside the fence."
+        },
+        {
+          "text": "Walk the marked route after dark, correct any missed turn, and share the route.",
+          "state": "done",
+          "note": "Checked the marked grass route in both directions under stars. All turns were visible, the sign was legible, and health stayed full."
+        }
+      ],
+      "created": 1795417545752,
+      "moved": 1795420782973,
+      "ended": 1795420788834,
+      "outcome": "done"
+    },
+    {
+      "name": "West saddle to casting pad",
+      "goal": "Make a clear, safe walking connection from the west birch saddle to the west casting window boat pad.",
+      "why": "Connect the west ridge route to a useful coastal facility, so people can travel between them without guessing or taking unsafe drops.",
+      "done_when": "Walk the full route after dark and reach the boat pad without getting lost, drowned, or needing rescue; correct any dark or confusing gap discovered on the way.",
+      "needs": "The route is built and marked; after-dark verification is still needed.",
+      "evidence": "Started at West birch high sand saddle with stars and the first wall torch visible. Walk-only navigation reached switchback, gravel bend, stone brow, upper approach, inland bend, signed covered turn, middle landing and the boat pad in order within 45 seconds. Reached dry under a dark rainy sky at 20/20 health, with no rescue, attack, or water entry.",
+      "unlocks": "Dry after-dark foot access from the west saddle to the casting window, hearth and chest-boat berth. The marked inland bend leads to covered footing above the stair.",
+      "steps": [
+        {
+          "text": "Survey the saddle, switchback, gravel bend, and coastal descent on foot; note unsafe or confusing gaps.",
+          "state": "done",
+          "note": "Walked the complete marked route from the saddle to the pad safely; saved places and lights guide the stair. Night check remains."
+        },
+        {
+          "text": "Collect the bread and torches Margo set aside for the night check; leave the refuge reserve in place.",
+          "state": "done",
+          "note": "Collected only Margo's eight bread and twelve torches; the separate four-loaf visitor reserve remains in the barrel."
+        },
+        {
+          "text": "Walk the complete marked route after dark and identify any dark or confusing section.",
+          "state": "done",
+          "note": "Walked all six marked legs in darkness to the lit boat pad with full health and no water or rescue. Saddle and first switchback are conspicuously dark; brow, stair and pad lights visible."
+        },
+        {
+          "text": "Repair only a verified gap, then walk the route again and record what works.",
+          "state": "done",
+          "note": "Started under stars, reached all eight waypoints and the boat pad dry in darkness and rain with 20/20 health. Inland bend led to the signed covered turn."
+        }
+      ],
+      "created": 1795406495580,
+      "moved": 1795417471820,
+      "ended": 1795417471830,
+      "outcome": "done"
+    }
+  ]
+}

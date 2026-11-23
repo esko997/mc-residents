@@ -1,0 +1,130 @@
+{
+  "places": [
+    {
+      "name": "East stream cookfire dry cooking spot",
+      "note": "Stand by the furnace and aim steeply down under the cobblestone cover to reach Gary’s shared campfire. The hearth is east of this standing spot.",
+      "x": 111,
+      "y": 117,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "West saddle potato tending ledge",
+      "note": "Stand on the natural grass ledge north of the potato patch to reach the tucked plant without stepping down onto the crops.",
+      "x": 47,
+      "y": 115,
+      "z": -188,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "West ridge wild stone apron",
+      "note": "Walkable top beside the open west stone apron. Bounded mine to the west took cobblestone but dug down three blocks; use the surface face or leave a step out.",
+      "x": -10,
+      "y": 101,
+      "z": -156,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "West ridge hearth clearing",
+      "note": "Walkable grass shelf southwest of the high sand saddle, with an ocean view. Potential small home footprint away from the refuge route; check level and leave older stumps clear.",
+      "x": 12,
+      "y": 104,
+      "z": -164,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "West ridge wheat tending edge",
+      "note": "Dry grass on the south side of the hearth garden terrace. Use this level edge to reach crops across the narrow trough. Approach around the east side of the hut.",
+      "x": 13,
+      "y": 104,
+      "z": -159,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "West birch hearthwood tree",
+      "note": "Regrown birch for hearth fuel. Stand on the south grass and aim at the lowest log so the whole tree drops. Replant its original grass base on the next block north-east.",
+      "x": 24,
+      "y": 115,
+      "z": -185,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "West ridge cook nook lower pickup",
+      "note": "A dry natural pocket below the hollow south of the cook nook. Cooked fish bounced down here once. Walk-only reached it and the item was collected with full health.",
+      "x": 10,
+      "y": 100,
+      "z": -167,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "West ridge cane tending spot",
+      "note": "Standing on the west end of the dry garden rim, tend the cane across the trough's west corner. Cut an upper segment and leave the root. Approach via the east notch and dry rim.",
+      "x": 11,
+      "y": 104,
+      "z": -159,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "Lower birch bee ledge north approach",
+      "note": "Dry grass on the flower shelf below the pasture trail. Look due south to see the wild nest under the leaves.",
+      "x": 88,
+      "y": 111,
+      "z": -178,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "Meadow north birch turn",
+      "note": "Dry open approach between the East inland birch wild hens and lower Meadow spur. The XZ approach from the northeast arrived here.",
+      "x": 164,
+      "y": 113,
+      "z": -212,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "East inland birch hen foot catch",
+      "note": "The second free hen had ranged southwest from the birch sighting. Attached Gary’s spare lead and kept her on foot for the return.",
+      "x": 168,
+      "y": 117,
+      "z": -250,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "East pasture last kit drop",
+      "note": "Pillagers were still present when I was shot after returning the lead. I dropped four eggs, iron boots, shield and tools. Drops may expire about 08:02 EST.",
+      "x": 84,
+      "y": 114,
+      "z": -192,
+      "dimension": "minecraft:overworld",
+      "author": "Wren"
+    },
+    {
+      "name": "Ridge hen release grass",
+      "x": 6,
+      "y": 104,
+      "z": -173,
+      "dimension": "minecraft:overworld",
+      "author": "Wren",
+      "note": "Wild hen #245 released alive here after a foot transfer. She climbed the pen roof and wandered to the grass east of the pen."
+    }
+  ],
+  "deaths": [
+    {
+      "x": 84,
+      "y": 114,
+      "z": -192,
+      "dimension": "minecraft:overworld",
+      "at": 1795438630988
+    }
+  ]
+}

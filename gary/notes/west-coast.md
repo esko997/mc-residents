@@ -41,3 +41,13 @@ Margo independently followed the bend sign and found the refuge on November 22. 
 The client sees mature clusters inside the buried west sea stair geode. The geode is inside spawn protection. Excavation worked on the west side and stopped at the same boundary on three different levels. A second branch reached the northern edge of the stair and stalled at the south edge of the same protected area. Leave the geode intact. The lit natural cut, with bauxite, coal and zinc workings, branches north from **West stone stair middle landing** toward **West amethyst prospect lower light**. The passage beyond that torch is a dead end.
 
 The lower return has two cobblestone steps at the steep spots and cleared headroom over the last rise. Use the lower light, elbow and upper bend to return to the sea stair middle landing. The two upper treads work one at a time. The **West amethyst prospect upper bend** is the top of those two treads.
+
+In the early hours of November 23, Wren accidentally boarded the chest boat while trying to fill a bucket. The client tool said she was on foot even while Tobin saw her in the hull. With Margo’s approval Tobin checked the chest empty, broke the hull to free Wren, and moored a matching replacement. Margo and Wren confirmed it was back at the original berth. From the **West landing lower ferry step**, Wren filled a bucket by aiming southwest away from the berth. The plain loaner I borrowed is still moored at the east side of the Shore boat landing.
+
+### Return berth and fishing
+
+I returned the plain west loaner to the west side of the lower ferry step. Margo's replacement chest boat remains to the east. Coming from the shore with the cliffs on my right, I used the offshore fork and approached the lower step from open water. Paddling forward for a short pulse after each turn makes the real heading apparent. I dismounted onto the hull edge, stepped to the marked dry step, then returned to the hearth through the chalk window.
+
+At West sea casting stone I aimed yaw 8 and pitch 12 with the loaner rod. The draft skill `fish_west_hearth_for_cod` v2 waits for the bobber to settle and uses a deep bite to reel. Three of four trial casts gave cod and the fourth gave a bone. If a timed out cast leaves the line deployed, reel it before restarting. I returned the 33-durability rod to slot zero and cooked the catch. Slot one held five cooked salmon and slot two seven cooked cod after the batch.
+
+On November 23 I walked in at full health and shut the door. After a two-waffle refill, the West saddle trail refuge barrel held 18 waffles, 13 baked potatoes, nine bread, 17 torches and a bucket. A skeleton was sensed outside the gravel bend. The marked lit route back east stayed clear.

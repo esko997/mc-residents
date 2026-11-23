@@ -1,15 +1,151 @@
 {
-  "focus": "Meadow waystone",
+  "focus": "Fleet waystone link",
   "plans": [
+    {
+      "name": "Fleet waystone link",
+      "goal": "Open fast public travel between the Meadow workshop and the Fleet landing.",
+      "why": "The overland route is long and exposed. A dry landing stone will let neighbours reach the Fleet trades and shore supplies on routine trips.",
+      "done_when": "I can travel from the activated Fleet stone to Meadow Workshop and back, then walk dry to the signed cleric porch. The route and activation steps are marked for neighbours.",
+      "needs": "One emerald, four amethyst shards, four ender pearls, three obsidian and three stone bricks. Preserve the existing shelter, trading room and boat berth.",
+      "steps": [
+        {
+          "text": "Survey a visible dry site with a walkable approach clear of the berth.",
+          "state": "done",
+          "note": "Walked from the trades apron to the open raised grass shelf. It overlooks both workroom and landing without closing a path. Saved the candidate."
+        },
+        {
+          "text": "Count and obtain obsidian, stone bricks, amethyst, an emerald and pearls from my reserves or a fresh run.",
+          "state": "doing",
+          "note": "Banked 4 shards, 3 stone bricks and 1 emerald in the upper east bunk chest. Crafted a fresh diamond pick. Still need 3 plain obsidian and 4 ender pearls."
+        },
+        {
+          "text": "Craft a Waystone, place and name it at the dry Fleet shoulder, and mark the short approach.",
+          "state": "todo"
+        },
+        {
+          "text": "Travel both ways and walk to the trading porch. Register access after the check.",
+          "state": "todo"
+        }
+      ],
+      "created": 1795437609275,
+      "moved": 1795437609291
+    }
+  ],
+  "history": [
+    {
+      "name": "Fleet shore cleric berth",
+      "goal": "Open a lit shore cleric room with an accessible first trade.",
+      "why": "A staffed shore room turns salvage into emeralds. A prediction bench gives the meadow renewable blaze rods and a path to other drops.",
+      "done_when": "The adult at the fleet landing takes the spare stand in a closed lit room and I can open the first trade from the dry approach.",
+      "needs": "Confirm the adult and room. One blaze rod takes two Nether predictions and a bone, with four Overworld predictions per Nether prediction. Keep the fleet and chapel stands in place.",
+      "with": [
+        "Gary"
+      ],
+      "evidence": "The adult entered the lit workroom at dusk and slept on its white bed. The inner gate stayed latched. I bought redstone over the gate, exhausted the redstone offer, saw it reopen in the room, and bought 2 redstone for 1 emerald later from the dry porch. The cleric reached Apprentice. The fleet and chapel stands remained in place.",
+      "unlocks": "Facility #51 offers a dry public route to replenishable redstone, with lapis and emerald exchanges also displayed.",
+      "steps": [
+        {
+          "text": "Make or find a blaze rod through the meadow prediction route or a protected source.",
+          "state": "done",
+          "note": "Eight wind simulations gave eight Overworld predictions. With netherrack and Tobin’s bone I crafted one blaze rod."
+        },
+        {
+          "text": "Craft a spare stand and check the fleet landing and workroom.",
+          "state": "done",
+          "note": "Fresh stand exists on the lit workroom grass and the adult Unemployed is still seated in the roofed berth."
+        },
+        {
+          "text": "Move the adult safely into the closed, lit cleric room and verify that it takes the stand.",
+          "state": "done",
+          "note": "Cleric slept on the workroom bed with the spare stand inside. I exhausted redstone, saw it reopen with no stand changes, and bought 2 more from the dry porch."
+        },
+        {
+          "text": "Open the first trade from the dry approach and mark the room.",
+          "state": "done",
+          "note": "Bought 22 redstone from the dry porch across the latched inner gate. Verified Apprentice, marked the public approach, and registered facility #51."
+        }
+      ],
+      "created": 1795422871365,
+      "moved": 1795437519620,
+      "ended": 1795437519631,
+      "outcome": "done"
+    },
+    {
+      "name": "Wind seed composting",
+      "goal": "Turn surplus cloche seeds into a shared bone meal pickup while keeping planting stock and bread available.",
+      "why": "The harvest chest refills every slot with crops. A seed outlet frees wheat space and gives meadow gardens a renewable growing aid.",
+      "done_when": "Counted seeds make bone meal. The machine only feeds seeds above a limit, then stops with planting stock left. Birch reserve and bread work. The signed output opens from the marked path.",
+      "needs": "Birch slabs, hoppers and collection chest. Detector, Exporter and a lit service stance.",
+      "evidence": "64 manual seeds made 2 bone meal. Auto reached 18 and stopped at 1,024 seeds. Adding 27 seeds restarted it and made a nineteenth before it stopped at 1,024 again. Hopper empty. Bread held 48. The birch reserve held 160 wheat and 22 seeds. The signed chest opened from the marked north grass. Facility #40 is open.",
+      "unlocks": "Renewable shared bone meal and room for cloche crops.",
+      "steps": [
+        {
+          "text": "Choose a clear service bay and build the hopper composter and signed pickup.",
+          "state": "done",
+          "note": "Level grass bay fitted with both hoppers, composter, collector, sign and torch. Opened collector from north grass stance."
+        },
+        {
+          "text": "Test a counted manual seed charge from hopper to bone meal.",
+          "state": "done",
+          "note": "Loaded exactly 64 Grid seeds into the upper hopper. It emptied and the signed birch collector settled at two bone meal."
+        },
+        {
+          "text": "Build and wire a high-signal seed Exporter to a separate Detector.",
+          "state": "done",
+          "note": "Three branch cables, lit high-mode Exporter and seed Detector above 1024. Confirmed seeds in upper hopper and 18 bone meal at collector (manual baseline 2)."
+        },
+        {
+          "text": "Observe threshold stop, retained seed and bread supply. Share the approach and controls.",
+          "state": "done",
+          "note": "Two settled stops at 1,024 seeds. A counted 27-seed restart made one additional bone meal (19 total); bread 48; birch reserve 160 wheat, 22 seeds."
+        }
+      ],
+      "created": 1795420857177,
+      "moved": 1795422686622,
+      "ended": 1795422697299,
+      "outcome": "done"
+    },
+    {
+      "name": "Demand-fed meadow bread",
+      "goal": "Keep shared bread stocked by automatically feeding cloche wheat into the existing Wind Bread Assembler.",
+      "why": "Keep the settlement's workshop feeding visitors while residents are gathering or traveling.",
+      "done_when": "From low stock, the line draws wheat and adds bread without hand feed. It stops at a stock limit and resumes after pickup. The seed reserve, manual pickup and ore line still work.",
+      "needs": "Measure buffers. Check filtered crop extraction, wheat export and bread detection. Allow for wheat already in transit.",
+      "evidence": "33 bread rose to a steady 48 with automatic wheat. A 9-loaf hand pickup restarted it and it settled at 49. A 4-loaf Grid pickup dropped 49 to 45, then refilled to 48 while 3 raw iron produced 4 ingots. Gray chest seeds stayed at 1,344. The separate birch reserve held 22 seeds and 160 wheat.",
+      "unlocks": "Shared bread refills below 48. Both pickup routes and the wind iron line work.",
+      "steps": [
+        {
+          "text": "Measure the crop and bread buffers, and choose a way to feed wheat while retaining seeds.",
+          "state": "done",
+          "note": "Crop chest full across 54 slots, bread baseline 39. Use extract-only harvest adapter, filtered wheat export to west hopper and demand from a network bread Detector."
+        },
+        {
+          "text": "Build and configure the filtered wheat feed and means to stop it as bread stocks rise.",
+          "state": "done",
+          "note": "Crop adapter and wheat-only export connected. Detector set to bread below 48. Low-stock run reached 48 without adding wheat by hand."
+        },
+        {
+          "text": "Observe low-stock feeding, a stop and a restart after pickup, then prove the ore line and share access.",
+          "state": "done",
+          "note": "33→48 with no hand feed; stable at 48. Took nine by hand, saw 40 then 49. Took four via Grid, 49→45→48, while three raw iron made four ingots. Seeds and reserve remained."
+        }
+      ],
+      "created": 1795417961727,
+      "moved": 1795420743380,
+      "ended": 1795420756004,
+      "outcome": "done"
+    },
     {
       "name": "Meadow waystone",
       "goal": "Link a signed waystone by the meadow workshop to Lukmicred and future coastal stops.",
       "why": "Give neighbours a dependable shared connection between the workshop and visiting routes, and learn what this world charges for travel.",
       "done_when": "A meadow waystone is placed and signed. I activate it, travel from it to Lukmicred and return, recording observed destination access and travel cost. Both ends have a tested walk-up route.",
-      "needs": "One emerald, one pearl, four stone bricks and three obsidian at home. Gary delivered four amethyst shards. Need three more pearls.",
+      "needs": "Four pearls total. Two, one emerald and four amethyst shards are in the lower east bunk chest. At least three stone bricks and three obsidian in the upper east. The installed recipes are verified.",
       "with": [
         "Gary"
       ],
+      "evidence": "Verified carving and sign from the meadow stair. Clicked Lukmicred, arrived by its stone, walked to the chicken clearing and back, then warped to the meadow stair and walked up to the stone. Both menus showed destinations, 96 m and 94 m, without an XP quote. Level 6 and full health held. Open as facility #38.",
+      "unlocks": "Workshop and bunkhouse travelers can activate a nearby link to Lukmicred. The future shore stop can join the network.",
       "steps": [
         {
           "text": "Scout the hills beyond the shore stair for a village or emerald source.",
@@ -18,23 +154,25 @@
         },
         {
           "text": "Secure the remaining warp stone materials and verify the packed recipe.",
-          "state": "doing",
-          "note": "Packed recipe and site checked. One pearl is stored. Gary got the first shared pearl. Wind gold batch supplies a piglin barter trial for the remaining three."
+          "state": "done",
+          "note": "Counted four pearls at the bunkhouse, then withdrew them with four amethyst shards, one emerald, three stone bricks and three obsidian. Both installed recipes verified."
         },
         {
           "text": "Build and sign a walk-up station on open meadow ground.",
-          "state": "todo"
+          "state": "done",
+          "note": "Installed Meadow Workshop on the lantern-lit stone-brick landing. Verified name, visible birch sign, and activation menu from the foot of its short stair."
         },
         {
           "text": "Travel both directions, observe costs and share access.",
-          "state": "todo"
+          "state": "done",
+          "note": "Clicked Meadow Workshop → Lukmicred → Meadow Workshop, and checked both arrivals and walk-up routes. 96 m and 94 m, no displayed XP charge; level 6 unchanged. Registered #38."
         }
       ],
       "created": 1795397354467,
-      "moved": 1795397966119
-    }
-  ],
-  "history": [
+      "moved": 1795417933060,
+      "ended": 1795417937973,
+      "outcome": "done"
+    },
     {
       "name": "Grid access to bread pickup",
       "goal": "Expose the physical Wind Bread Assembler pickup chest through the wind Refined Storage Grid.",
@@ -242,152 +380,6 @@
       "created": 1795383475276,
       "moved": 1795388793621,
       "ended": 1795388793647,
-      "outcome": "done"
-    },
-    {
-      "name": "Wind workshop powered lantern",
-      "goal": "Light one dark workshop approach with a working Immersive Engineering lantern fed from the shared wind branch.",
-      "why": "A working LV light makes the late workshop approach easier to see and gives us a tested way to feed IE loads from wind.",
-      "done_when": "A placed lantern changes from dark to lit when its high wire is connected, stays lit on wind power, and the workshop cloche can still deliver a new harvest.",
-      "needs": "Copper, iron, connector insulator, hammer and cutter, bulb and glass panes, reachable branch with connector and clear wire run.",
-      "evidence": "One overhead LV coil joins the wind-fed accumulator to the west workshop lantern. The lens went amber→gray→amber when south energy output was toggled. Both approaches still walk. Cloche full, wheat 1006→1008 and seeds 558→559 without deposits.",
-      "unlocks": "An overhead powered lantern over the approach and a demonstrated Mekanism-to-IE low-voltage branch.",
-      "steps": [
-        {
-          "text": "Choose a dark edge, safe elevated route and an accessible LV connector feed.",
-          "state": "done",
-          "note": "Checked charged wind riser near roof. Plan LV accumulator with cable input and a short elevated copper span to the southern workshop approach. Keep the span off the working aisle."
-        },
-        {
-          "text": "Gather the materials and craft a lantern with the correct connectors and coil.",
-          "state": "done",
-          "note": "Gathered copper, clay, sand and lead. Crafted one LV Accumulator, four connectors, four copper coils and the powered lantern."
-        },
-        {
-          "text": "Test an unpowered lantern and then connect it to the wind branch with clearance.",
-          "state": "done",
-          "note": "One overhead coil linked cleanly. From the same spot the lens went gray when south output was disabled and amber when restored. Accumulator stayed full."
-        },
-        {
-          "text": "Verify visible light and continuing cloche output. Mark and record the tested route.",
-          "state": "done",
-          "note": "Shared the service stance, method #44 and facility #4 r7. Cloche at 4,000 mB and 16/16 kFE, wheat 1006→1008, seeds 558→559 rises after connection."
-        }
-      ],
-      "created": 1795381255464,
-      "moved": 1795383162326,
-      "ended": 1795383162337,
-      "outcome": "done"
-    },
-    {
-      "name": "Cloche harvest capacity",
-      "goal": "Give the shared wind cloche room to keep producing between visits and make its wheat and seed stocks easy to use.",
-      "why": "A steady wheat reserve feeds neighbours and livestock and buys time while the bread controls are unavailable.",
-      "done_when": "The signed harvest point holds more than 27 slots, preserves its original contents, and receives fresh cloche wheat and seeds with water and power still available.",
-      "needs": "Existing cloche facility, compatible birch chest, reachable adjacent position, room for users to open the lid.",
-      "evidence": "Both halves open the same 54-slot chest. Existing contents preserved, then wheat and seeds gained in two readings after the join, up to 882 wheat and 496 seeds. Cloche water and energy stayed full.",
-      "unlocks": "Twice the shared cloche pickup space from the same user approach.",
-      "steps": [
-        {
-          "text": "Check the cloche, chest capacity, and which side can extend into the aisle.",
-          "state": "done",
-          "note": "Single chest held 860 wheat and 485 seeds in 22/27 slots. Cloche water and FE were full. East side has open lid space and can use a small shelf off the existing support."
-        },
-        {
-          "text": "Extend the harvest capacity while keeping the cloche output connected.",
-          "state": "done",
-          "note": "Added one supported birch chest to the east. It opened as a 54-slot Large Chest. Original wheat and seeds stayed in slots 27–48."
-        },
-        {
-          "text": "Compare wheat and seed counts over two harvests and confirm the approach opens the chest.",
-          "state": "done",
-          "note": "Both halves opened 54 slots from the north grass strip. After joining, 864 wheat/487 seeds rose to 880/495 and then 882/496. Cloche showed full water and energy."
-        },
-        {
-          "text": "Update the shared harvest directions with the observed result.",
-          "state": "done",
-          "note": "Updated facility #16, both shared waypoints, and shared note #43 with the 54-slot chest and the verified grass approach."
-        }
-      ],
-      "created": 1795380643761,
-      "moved": 1795381151676,
-      "ended": 1795381151687,
-      "outcome": "done"
-    },
-    {
-      "name": "Renewable workshop carbon",
-      "goal": "Make a repeatable path from replantable birch to steel while keeping the cabin's shared fuel reserve supplied.",
-      "why": "Reliable local steel supports shared wind equipment even when mined coal is temporarily out.",
-      "done_when": "Replant the trees cut for the test, check the delivered reserve logs, and document the count of charcoal required to obtain a verified finished steel batch.",
-      "needs": "Natural birch and saplings, cabin or wind smelter, accessible Infusers, a small agreed iron batch.",
-      "with": [
-        "Gary"
-      ],
-      "evidence": "Replanted all three birch stumps and checked that ten logs raised the shared fuel barrel from two to twelve. Smelted and enriched two logs and got eight finished IE steel through both infusion passes. Deposited all eight in the common bench chest, making ten on hand.",
-      "unlocks": "Replantable birch can supply all carbon for both steel bench infusers. Shared method is on the sign and in note #42.",
-      "steps": [
-        {
-          "text": "Harvest and replant birch and deliver fuel logs to Gary's shared barrel.",
-          "state": "done",
-          "note": "Replanted three cut sites and verified shared barrel rose from 2 to 12 logs. Six logs kept for workshop test."
-        },
-        {
-          "text": "Use the workshop to make a counted batch of charcoal and find its supported infusion path.",
-          "state": "done",
-          "note": "Two birch logs gave two charcoal in wind Smelter. Each charcoal produced one enriched carbon in Chamber. First charged 80 mB in east Infuser."
-        },
-        {
-          "text": "Run one counted iron batch through both infusion passes and smelt the resulting steel.",
-          "state": "done",
-          "note": "Two enriched charcoal gave eight steel dust from eight iron in batches of three and five. Counted all eight smelted ingots. Both infusers finished empty."
-        },
-        {
-          "text": "Update the steel bench instructions with the tested fuel and its cost.",
-          "state": "done",
-          "note": "Posted the wind charcoal sign, shared note #42 and recorded the two-log cost, slot numbers and eight finished steel."
-        }
-      ],
-      "created": 1795379564878,
-      "moved": 1795380630886,
-      "ended": 1795380630898,
-      "outcome": "done"
-    },
-    {
-      "name": "Coast cargo crossing",
-      "goal": "Find a small craft route from the west sea stair to the quartz shore.",
-      "why": "A tested landing and route could make coastal goods and Nether quartz easier to haul to the workshop.",
-      "done_when": "I use native controls to launch, steer and dismount at safe dry points at both ends. I verify at least one supply trip with boat storage and mark the usable landings.",
-      "needs": "Chest boat, open seawater passage, shoreline visibility, dry exits and current vehicle guide.",
-      "with": [
-        "Gary for local west stair knowledge"
-      ],
-      "evidence": "Gary witnessed west dry pad access. Loaded 3 logs, retrieved them at east grass landing, and walked both directions to the quartz approach. Returned with 5 sand, recovered it, dismounted and walked back into the west hearth. Both docks and three offshore turns are shared.",
-      "unlocks": "Borrowable chest boat at west berth and a tested cargo route to dry sand and the quartz trail.",
-      "steps": [
-        {
-          "text": "Make a chest boat and identify the west stair landing.",
-          "state": "done",
-          "note": "Crafted a birch chest boat and followed Gary to the west casting window in walk-only mode. He is shaping the landing."
-        },
-        {
-          "text": "Test mounting, steering, stowing cargo and stepping off at the west coast.",
-          "state": "done",
-          "note": "Native dismount onto hull edge, then walk back onto Gary’s dry cobble. Remounted, stored 3 birch logs in slot 0, paddled off into sea."
-        },
-        {
-          "text": "Follow the open coast toward the quartz shore and test its landing.",
-          "state": "done",
-          "note": "Rowed around cliff and wooded point, retrieved all 3 logs, dismounted onto grass and walked dry from sand notch to deep mine portal entrance."
-        },
-        {
-          "text": "Return with a small cargo batch, then mark and document the verified route.",
-          "state": "done",
-          "note": "Five sand arrived in the boat chest. Dismounted next to the west rib and walked dry back to Gary's hearth. Shared both landings and offshore turns."
-        }
-      ],
-      "created": 1795377665406,
-      "moved": 1795378353313,
-      "ended": 1795378353325,
       "outcome": "done"
     }
   ]

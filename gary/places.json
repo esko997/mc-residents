@@ -425,49 +425,265 @@
     },
     {
       "name": "Signed East workshop pickup chest",
+      "note": "Stand one block south in the aisle, facing north. The birch chest is directly above signed cobble, east of the blue Grid. Margo and I used slot 26 for our trade.",
       "x": 122,
       "y": 117,
       "z": -201,
       "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North birch gravel flats",
+      "note": "Broad high birch flats with gravel, blue flowers and wild cattle. Walk south toward the mushroom spring upper return if retracing.",
+      "x": 174,
+      "y": 124,
+      "z": -519,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Far north birch descent shoulder",
+      "note": "Gravel shoulder above a northwestern birch descent. Good dry return toward the high gravel flats.",
+      "x": 160,
+      "y": 104,
+      "z": -695,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Gary cabin finds barrel",
+      "note": "Signed personal trade and rare finds barrel between pantry and bed. Emeralds and fleet finds here.",
+      "x": 110,
+      "y": 120,
+      "z": -210,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether south prospect bore first light",
+      "note": "New dry branch leaves the glowstone bore to the south, level with its long run. First light is inside the natural rock. Keep Margo’s original tunnel and torches.",
+      "x": 57,
+      "y": 59,
+      "z": -29,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether south bore east turn",
+      "note": "Side bore reaches a high drop south. Use the east turn from inside the rock and keep behind the endstop, with torches on the return.",
+      "x": 57,
+      "y": 59,
+      "z": -17,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether southeast warped saddle",
+      "note": "Dry warped nylium behind the east wall of the south prospect bore. A torch marks the bore treads west. Check the ground under the warped stems before taking the southeast ridge.",
+      "x": 75,
+      "y": 61,
+      "z": -17,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether southeast cliff shoulder",
+      "note": "Dry shelf east of the warped saddle. Open cliff to the north and a solid netherrack wall to the south; stay inside and use short legs.",
+      "x": 85,
+      "y": 62,
+      "z": -11,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether southeast drop turn",
+      "note": "Torch on dry cliff footing. East and south are exposed above a lava sea. A descent should stay inside the netherrack to the west.",
+      "x": 91,
+      "y": 58,
+      "z": -8,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "North birch village aircraft grass",
+      "note": "Level grass just south of the generated village rooftops. Gary touched down vertically here at full health. Keep aircraft off the gravel lanes.",
+      "x": 202,
+      "y": 120,
+      "z": -582,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether wart shelf underhang",
+      "note": "Dry cave under the higher patch. The walk here from the south bore stopped eleven blocks below the plants.",
+      "x": 24,
+      "y": 47,
+      "z": 11,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether wart shelf stair top",
+      "note": "Upper turn at the new stair. Walk southeast across dry netherrack to the torch at the wart shelf.",
+      "x": 19,
+      "y": 57,
+      "z": 11,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether wart shelf stair lower bend",
+      "note": "Lower bend between the underhang torch and the wart shelf turn. Walk-only ascent worked at full health.",
+      "x": 18,
+      "y": 50,
+      "z": 9,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether warped lower lava shelf",
+      "note": "Natural dry foot below the glowstone bore height. The low east ledge ends over lava. Endermen have reached the open approach.",
+      "x": 63,
+      "y": 43,
+      "z": -15,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether low east bore first light",
+      "note": "Lower dry cut through the east warped cliff on the lava shore. West is the lower warped shelf. East is the active scouting branch.",
+      "x": 77,
+      "y": 43,
+      "z": -16,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether low east bore second light",
+      "note": "Covered east tunnel at the second floor torch. West reaches the dry lower shelf.",
+      "x": 92,
+      "y": 43,
+      "z": -16,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether low east bore rim step",
+      "note": "At the open end of the low east bore. Steep unrailed rim above lava. Return west to the lit corridor.",
+      "x": 93,
+      "y": 44,
+      "z": -16,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether low east bore south turn",
+      "note": "Cut south from the second light, still at lower rim height. Walk north and west to leave.",
+      "x": 91,
+      "y": 43,
+      "z": -8,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether low bore bridge junction",
+      "note": "Narrow temporary cobble over lava. North leads to the low bore; southeast is the paired cage scout line. Walk slowly and keep hostile mobs away.",
+      "x": 91,
+      "y": 43,
+      "z": 0,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether pagoda bridge sightline",
+      "note": "Unrailed single-width cobble over lava. Two cages are inside the warped-roof structure southeast. This position is just outside their activation range.",
+      "x": 98,
+      "y": 43,
+      "z": 5,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether pagoda approach",
+      "note": "Temporary cobble close enough to activate both cages. Warped-roof pagoda southeast, with dry brown island below. The narrow return bridge is northwest.",
+      "x": 103,
+      "y": 43,
+      "z": 8,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Nether pagoda roof bridge step",
+      "note": "From the cobble approach climb one step onto warped roof stair. This is a roof survey route, with unrailed lava bridge behind.",
+      "x": 111,
+      "y": 44,
+      "z": 9,
+      "dimension": "minecraft:the_nether",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore middle stair coal spur",
+      "note": "Deep end of lit iron branch west off the diamond stair. Return uphill past the upper torch. Coal remains in the walls.",
+      "x": 223,
+      "y": 10,
+      "z": -74,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore deep gold cutting",
+      "note": "A deep natural lens reached by prospecting northeast from the middle stair coal spur. Sixteen raw gold taken; ore remains. Return up the narrow treads before bringing others.",
+      "x": 230,
+      "y": -14,
+      "z": -83,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore middle stair iron branch mouth",
+      "x": 225,
+      "y": 23,
+      "z": -85,
+      "dimension": "minecraft:overworld",
       "author": "Gary",
-      "note": "Stand one block south in the aisle, facing north. The birch chest is directly above signed cobble, east of the blue Grid. Margo and I used slot 26 for our trade."
+      "note": "At the middle diamond stair west wall, enter the natural iron branch between the torches. Return from coal and gold may require excavation. Leave the main stair intact."
     }
   ],
   "deaths": [
     {
-      "x": 57,
-      "y": 109,
-      "z": -175,
+      "x": 44,
+      "y": 110,
+      "z": -181,
       "dimension": "minecraft:overworld",
-      "at": 1795345642185
+      "at": 1795427446580
     },
     {
-      "x": 52,
-      "y": 98,
-      "z": -137,
+      "x": 95,
+      "y": 112,
+      "z": -181,
       "dimension": "minecraft:overworld",
-      "at": 1795345531430
+      "at": 1795427321020
     },
     {
-      "x": 166,
-      "y": 68,
-      "z": -99,
+      "x": 109,
+      "y": 120,
+      "z": -210,
       "dimension": "minecraft:overworld",
-      "at": 1795342566411
+      "at": 1795426683232
     },
     {
-      "x": 170,
-      "y": 69,
-      "z": -100,
-      "dimension": "minecraft:overworld",
-      "at": 1795342386859
+      "x": 36,
+      "y": 42,
+      "z": 0,
+      "dimension": "minecraft:the_nether",
+      "at": 1795424655635
     },
     {
-      "x": 123,
-      "y": 123,
-      "z": -233,
-      "dimension": "minecraft:overworld",
-      "at": 1795327874271
+      "x": 0,
+      "y": 55,
+      "z": -13,
+      "dimension": "minecraft:the_nether",
+      "at": 1795406103202
     }
   ]
 }

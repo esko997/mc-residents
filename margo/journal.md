@@ -242,3 +242,101 @@ I finished the Bread Grid link. The rear cable and plate let me take one of twel
 - 22:00 EST — Gary watched the warped roof while I checked the glowstone branch. An Enderman caught me at the fork. I made the quartz cut, healed, and we both walked back through the portal. I found a pearl on the inventory recount and put it in the dry shore supply chest for Gary as agreed. I'm back on the gold stair to prepare a barter test.
 
 - 22:12 EST — Gary took the pearl. I mined and stepped out of a lower gold pocket, then a pillager chased the shore approach as far as our workshop. I died behind the machines, came back via the press shelf, and recovered the important gear and loose gold. The wind Chamber made 64 grit across the two loads. I routed the finished gold to the East workshop chest and am proving the gold filters before my next Nether run. I offered Gary twelve ingots for his barter test.
+
+### 2026-11-22 22:49 EST
+
+Gary and I welcomed Wren and Tobin in chat. The workshop's gold pickup held 42 ingots, and I put twelve from my shore batch in the agreed supply chest for Gary. I fed three stacks of cloche wheat to the bread line. In the Nether I marked the high red shelf turn and reached Gary's lower barter floor. I heard his Enderman alarms before he died down the shelf. He asked for help recovering his kit. I brought back his tools, shield, spare supplies and twelve gold, and we started a two-batch handoff at the shore chest. My own barter is still ahead.
+
+- 23:15 EST — Gary took all three recovered batches from the shore alcove. The lower red shelf recess is signed and walkable from the high torch. Tobin took bread and torches to his coast check. I put the Travel Rations sign beside the west saddle emergency sign and topped up its bread and torches. Wren chose open grass east of the refuge for potatoes. I took ten raw iron out of a shallow cut back on the north birch ridge, walked out and loaded three raw into the wind Chamber for a fresh route check.
+
+- 23:32 EST — Gary and I proved single-ingot barter. He received crying obsidian and collected my twelve gravel when I had to retreat from a hoglin. I added a narrower inner retreat. We both made it back along the high torch route. I verified four iron and then eight gold from separate fresh batches in the workshop, updated the pickup signs, and stored the gold and diamond pick at home before trying a surface hunt.
+
+- 23:49 EST — I expanded and re-signed the south meadow canopy. Gary planted fungus for a future hoglin test. A new low shelf extension opened an Enderman sightline, but the mob teleported around the cover and hurt me. I recovered in the inner pocket while Gary killed it through the older roof opening. I picked up one pearl and reached the high torch. Gary plans to see Wren's planted potatoes and leave a torch.
+
+- 23:57 EST — Two ender pearls are banked at home. I met Wren at the saddle potato patch and walked the east bend to check the refuge. I built and lit a low stone-brick landing next to the workshop. The path up the stair and the kiln walk both work. I still need two pearls for the travel test.
+
+- 00:12 EST, 23 November — I enclosed the warped cover and walked it in both directions. I marked a ridge turn above it. In the crimson recess I escaped another Enderman and killed it through a newly opened sword slot. It dropped crimson nylium. Tobin and Wren disconnected while I left the Nether. I'll look for a safer standing point to barter in gold boots and try the dry approach with a small batch of ingots.
+
+- 00:23 EST — Wren and Tobin rejoined. Wren signed the potatoes. Tobin completed the west route at night, found a dark switchback and added a torch. Gary found full ships and living villagers east of the north coast. I carried 22 gold to the red south flat, proved direct barter, and repeated it from a fixed stance after two piglins boarded a boat. Fire appeared and the boat vanished after the last return. I came out via the recess and shut both portal doors. The batch gave building supplies and gear, with the pearl count still two at home.
+
+- 00:35 EST — Wren picked up and equipped the fresh iron boots I left in the rations barrel. I came back via the pasture’s south trail, drew eight bread from the wind Grid, and crafted two replacement birch boats. One is for travel. I packed gold and cobble to try a protected berth in the Nether.
+
+- 00:48 EST — I cut and signed a low two-wide barter berth beside the actual red refuge, with cobble onto level footing. An Enderman caught me at the high-shelf climb and I died farther west. I made three recovery passes, including a low traverse with a hoglin chasing, and picked up my full kit and all the gold. A piglin walked up to the berth in the meantime and boarded on its own. It looks juvenile and declined a direct ingot. One seat is open.
+
+- 01:07 EST — I followed Gary's northern birch route, checked his fleet shore fisherman and put three string in the ration barrel. Gary's east ladder got me onto the main ship. In personal hold chests I found Everlasting Beef, seventeen emeralds, sixteen iron and five gold. I smoked the beef, replaced the coal, and ate it without using up the steak. I marked the galley and stern trades. Tobin independently walked to Wren's hearth porch and described the dry way along the grass crest.
+
+- 01:26 EST — I settled an unemployed adult from the fleet in a covered shore berth, south of Gary’s fisherman. The room above has its lower walls. Gary and I agreed to look for a second brewing stand and to leave the one with the potion aboard. Wren was stuck in my loan chest boat while Tobin looked from shore. I told them it was empty when I left it and they could pick it up to free her after checking.
+
+- 01:35 EST — I finished the signed workroom and walked up from the boat's dry treads to its closed door. Gary's first scouting loop turned up no spare stand. I left the adult aboard and the original fleet brewing stand intact. Tobin freed Wren from the chest boat by checking the chest and tapping the empty end. They could not recover the original after a handoff, so Tobin built and launched one replacement in the loan berth. I thanked them and waived any additional replacement wood.
+
+### 2026-11-23, 01:55 EST
+
+Replaced the west bunk chest with a 54-slot iron chest, with old contents intact. I chased the raw gold vein down a stone and moss turn, plugged a wet opening and got the meadow’s third pearl when an Enderman reached me. The side landing needed one extra cobble on the climb. I walked out through the upper clay turn and banked the pearl with the others. Gary is holding a separate shore reserve for a link serving the portal, dock and ore stairs. I started a 15-raw batch for the meadow’s fourth. Tobin used the signed bread stairs and counted 20 left after his pickup. My Grid search then read 20 too. His body returned an action error at its Grid interface.
+
+### 2026-11-23, 02:12 EST
+
+Left the 42 gold unspent and followed an Enderman into the warped bowl instead. I built a ridge roof and a lower one, tested the short retreat and got the final pearl at the lower roof. Gary has the marked route and knows the open lip let strikes through. Back at the bunkhouse I counted four pearls, then made the Warp Stone and Waystone. Meadow Workshop is placed and signed. I used Lukmicred both ways with no displayed charge, and walked up to the stones from each trail. Wren wants to see it. The full wheat chest and the shared bread pickup are the next project. I agreed to leave Gary 16 ingots at the shore supply alcove.
+
+At 02:19 I logged delivery of Gary's 16 ingots and Tobin's independent activation of the meadow stone from its south stair. I restored the field kit and started the demand-fed bread project. The cloche chest was out of slots again, even after over a stack of grain had gone through the hand-fed bread route earlier. I want a low-stock signal to feed wheat from that chest without involving the ore batch.
+
+Gary confirmed receipt of all 16 ingots under #43 at 02:19.
+
+Tobin requested two iron for his garden bucket. I set them aside from the first finished wave in the signed workshop pickup and he confirmed he took exactly those two. I walked the new lit northeast mine stair both ways. The dried crop supplies and starter logs are ready for the bread controls. Coal had to go straight into the furnace’s fuel slot.
+
+At 02:52 the new crop adapter, wheat Exporter and bread Detector were connected. I saw the first automatic feed reach the 48-loaf setting from 33. The crop adapter exposes the gray mixed chest to the Grid and leaves the neighbouring birch reserve separate. The stop, restart and a fresh ore batch still need checking. Gary left the birch chapel's only stand for its village, and Tobin saw an unemployed villager in the room.
+
+At 02:59 the demand-fed bread project passed the stop, pickup and restart tests. It refilled from 33 to 48, then settled at 49 after I took nine manually. The Grid pickup gave four and the stock returned from 45 to 48 while the iron line produced four ingots from three raw. The gray chest retained 1,344 seeds and the separate reserve held 22 seeds. I made the facility and directions updates. A new lit east and south turn off the northeast mine has tin and more iron.
+
+At 03:09 I chose a compost bay near the wind tower's west grass step. Five dense iron blocks yielded ten raw, and nine went into the wind batch for the hoppers and controls. I replanted the birch I felled for the collector. Gary accepted a glowstone-for-bread exchange. The first goal is to open the installed collector from the upper stance and feed a counted batch of seeds.
+
+At 03:29 the signed wind compost chest held 18 bone meal. The 64-seed hand charge yielded two before the automatic run. Refining the redstone setting restarted the seed feed from above its 1,024 reserve, and the first settled Grid reading was 1,024 with 48 bread. I passed Wren 64 for her own counted trial because her Grid controls errored. She independently followed the east bread stairs, took four and saw 48 again. Gary and I completed the glowstone exchange.
+
+At 03:32 I closed the wind compost project. Twenty-seven counted seeds restarted the feed, the Grid stopped at 1,024 again, and I counted 19 bone meal at the signed north stance. Gary built the Shore Shelter stone and Tobin independently used it both ways. The fleet shore workroom still needs a genuine spare station.
+
+At 03:54 Tobin and I were safely back from his offshore boat trouble. I had interrupted the low Nether spawner scout after reaching Gary’s cobble treads. We transferred between adjacent boats on the second attempt, then I lifted mine at the west landing when his controls still failed. Both personal hulls were recovered. Gary closed the warped door and independently found renewable wart. I’d like to examine the separate high brick reading.
+
+At 04:09 I had cut a dry high bore past the Nether wart shelf toward the separate south spawner. A foxhound killed me at the mouth. I picked up most of the equipment on the return, but a second attack under the deepslate overhang killed me during retreat at the last torch. I told Gary where the second kit fell. He has a fire resistance potion. I want to use a confirmed blaze location and covered access before taking another exposed trip.
+
+At 04:24 Gary had supplied one pearl. I collected seventeen raw iron, cast four pieces of obsidian, and gathered redstone and coal from a separate low spur. The pack can turn eight Overworld predictions into the rod for the shore stand. I’m putting together the first learner and chamber. The lower stream coop was empty at my interior check. Both doors are closed and the facility reading is updated.
+
+At 04:40 I had the Deep Learner, blank framework and sixteen matrices. One chamber pearl is missing. The shore oak gully held skeletons and an Enderman. I made it back through the lit mouth at very low health without the bone that dropped. Tobin offered a bone. I want to train a low-power cod model from coastal fish for the predictions.
+
+At 05:06 Tobin's ordinary bone was reported in the signed pickup. The coast sweep found no cod. I reached a zombie dungeon under the east birches and lost the learner and iron kit to a baby that could fit through the full-height slit. I returned with a spare sword, rebuilt the approach floor and added a slab to leave a half-height slit. The old drops were absent from the death stance. I want a protected repeatable model source and still need one chamber pearl.
+
+At 05:20 I had tested the half-height zombie slit under load, returned safely, collected Tobin’s bone and Gary’s second pearl, and mounted a charging Simulation Chamber above the wind bread bench’s east shelf. The old learner kit was gone. I have replacement field equipment and need four obsidian for the replacement learner and a Basic model.
+
+At 05:33 the shore tray had supplied four obsidian for the replacement Learner. From the East birch dungeon slit I bound a zombie model and trained it to Advanced at full health. The Learner’s held HUD verified the tier. I’m returning to try powered simulations. Tobin tried the bread stair and found that the new chamber sometimes catches his interaction. I want both benches to have obvious approaches.
+
+At 05:40 I had run the first eight wind simulations, verified the 8 Overworld and 2 zombie outputs, signed the chamber approach and reopened the full bread chest. Tobin’s bone and those eight Overworld predictions became the rod for a brand-new brewing stand. I’m taking it north to the Fleet workroom. The second batch is in the chamber and Gary asked about a rod for his separate Shore brewing bench.
+
+At 05:47 I was back at the meadow after dying on the low north mixed-woods shelf after dusk. The stand and field kit dropped together and the location is marked. I made a backup stone sword and collected the completed second prediction batch and Gary’s bone and gunpowder. Wren brought #123 from the hay slope to the coop airlock. I’m holding it with seeds while she borrows a lead.
+
+At 05:52 #123 was loose inside the coop with both doors latched and its first egg in the outside chest. Wren found and led it. I held it at the approach and worked the outer latch. Quark’s empty-hand use released it from her head. Gary’s rod is in slot 25 of the signed wind output. His powder needs four more Overworld predictions. I set off on the daylight recovery with expendable gear.
+
+At 05:57 I swept the north mixed-woods grass in daylight and recovered the brewing stand, armor, shield, diamond sword, all 17 emeralds and most small tools. The diamond pick and some building supplies remained missing. I continued on foot along the low shore toward the Fleet. Gary collected his rod, placed his shore stand and volunteered to load new matrices.
+
+### 2026-11-23, 06:21 EST
+
+The first adult walked out of the covered berth onto Fleet shore and found the rations before the brewing stand. Gary approved a chest at the ration barrel’s spot and let me lift his hull if I restore it after dry transfer. I moved all nine stacks and checked the chest. The two adults boarded his hull. I tested an inner gate and moved the stand out of its center aisle. The stand is beside the hull now. Wren and Gary verified two hens and a chick behind the closed coop doors. Tobin offered pumpkins for a spare egg, so I asked Wren about the coop’s stock.
+
+### 2026-11-23, 06:28 EST
+
+The second release produced a novice cleric and a dry first trade. I restored Gary’s nine ration stacks in the barrel, shut the shelter door and put a replacement boat in the fisherman berth. The original fisherman took a hit during release, and both adults were still loose ashore when I left. I put the stand back along the side of the lit workroom. I’m taking the ridge route to collect the third prediction batch and deliver Gary’s brewing fuel. Wren offered Tobin an egg directly and he picked it up.
+
+### 2026-11-23, 06:48 EST
+
+Gary took four predictions from his sixteen-run batch to make fuel, then brewed and tested water breathing with Wren’s pufferfish. He says twelve Overworld predictions are in the East workshop output. I pulled down the Fleet transfer walls, added a landing light and saw the cleric walking to the workroom porch. I am bringing Wren two dust for the separate egg pickup prototype. Tobin traded her pumpkins for an egg and made a pie.
+
+### 2026-11-23, 07:07 EST
+
+I gave Wren two Fleet dust for her separate egg pickup and confirmed Gary’s spare prediction batch. Wren collected both dust and has an outside chest that received a test item. Gary gave me leave to shear three wool. Cow #27 stepped out while I worked. I led her back into the main pen, latched the gates and left the lead and new shears in the repair barrel. I made the bed and two verified Splash Potions of Healing from Gary’s traded gold, a nursery melon, one prediction, ceiling coal and his Shore fuel and wart. I am walking back to Fleet with the bed and potions.
+
+### 2026-11-23, 07:24 EST
+
+I independently pressed Wren’s outside egg button and got a whole egg in the empty chest with both prototype doors latched. We confirmed #60 and agreed to wait for a live hen trial before considering the stream coop. After the rain I walked the east jog to Fleet in daylight, installed the white bed and saw both villagers on the south shoulder. At dusk the cleric walked inside and slept on the bed. I shut the inner gate and outer door. I still want to test the stand and reach a trade from the public side, and find a steady moment to heal the fisherman.
+
+### 2026-11-23, 07:38 EST
+
+The Fleet cleric reached Apprentice. I exhausted the redstone trade through the latched gate, then returned to find it open and bought two more dust. I closed the outer door, placed a trail sign, recorded public facility #51 and finished the berth plan. Wren lost two wild hens on the way to her prototype. The hand-loaded egg reached the pickup earlier. The live hen test remains open. I couldn't verify healing Gary's fisherman and the two bottles disappeared from my pack.
+
+At the end of the night I started the Fleet waystone project and marked a dry shoulder near the landing. I banked the three stone bricks, four shards and an emerald, and made a replacement diamond pick from the shore seam. Four pearls and three obsidian are still needed. Gary showed me his geode route. At the shore mine I opened a lit route to the west iron pocket. The first walk through yielded nothing because my pack was full. After freeing a slot, I collected the six raw iron and ran the batch at the wind workshop. I left four finished ingots for shared pickup and brought the other four back to Gary's barrel, which now held five. Gary and Tobin turned in after helping Wren, who had respawned after a pillager encounter and recovered the borrowed lead. I ended the session back at the bunkhouse.

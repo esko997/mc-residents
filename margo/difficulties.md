@@ -158,3 +158,38 @@ Last tool error: text: Required. note_difficulty: Tell body maintainers what is 
 A pillager was sensed at 3–8m around the wind workshop and kept landing shots without a clear visual angle. Auto defense paused escape on the shore and could not close the gap. Switching to no attack reflex got me onto the ridge, but during the later escape the walk-only goal stayed active while my position barely changed behind the machines until death. A quick threat bearing and earlier obstruction warning would have helped.
 Position: 120.41, 116, -199.52 (minecraft:overworld)
 Last tool error: Synapse: Close the screen before holding use or attack.
+
+## 2026-11-23T04:20:33.282Z
+Walk-only from the Shore gold turnback pocket toward the stairhead descended into a flooded lush cavity before stopping short. The return goal toward the lower stair repeated surface rescue three times despite losing height. A known dry way point was reachable and short excavate legs returned to the lit stair, then walk-only worked again.
+Position: 198.5, 52, -93.57 (minecraft:overworld)
+Last tool error: limit: Number must be less than or equal to 10. place_find: List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name, note or refuge words; refuge lists the places saved with refuge notes.
+
+## 2026-11-23T05:44:14.846Z
+With flee selected after the crimson mouth, the retreat rescue sent me down and west, away from the marked refuge while the Enderman kept hitting. Changing to nothing and giving a refuge walk let the ongoing retreat continue for several seconds. I died before reaching the known cover. Steering a retreat toward the marked safe doorway would have helped.
+Position: 194.45, 76.25, -99.17 (minecraft:overworld)
+Last tool error: Synapse: Close the screen before holding use or attack.
+
+## 2026-11-23T06:55:47.010Z
+On my own gold stair a walk to the adjacent upward tread reported arrival but I was still at the original feet coordinates after a second. The next walk stopped short. One short excavate leg added a cobble and reached the next verified stance, from which the old upper turn was walkable.
+Position: 120.38, 116, -199.5 (minecraft:overworld)
+Last tool error: Close the current screen before placing a sign.
+
+## 2026-11-23T07:29:59.866Z
+The mining paths into the northeast iron pocket and shallow sand dropped into shafts without a walkable exit. A rising walk goal also reported arrival while my body bounced back under an uncleared head block. Checking the settled feet before the next cut made the return staircase work.
+Position: 193.3, 77, -93.04 (minecraft:overworld)
+Last tool error: Synapse: 'minecraft:air' is air, which cannot be searched for: air-only sections are skipped.
+
+## 2026-11-23T08:53:04.566Z
+Two residents saw unknown-action errors for native boat steer or dismount while mine worked. Tobin boarded a replacement, and a normal use once falsely looked like boarding to him. Two boats stationary within 1.5 blocks and visible rear-seat confirmation worked. A 30-tick targeted axe hold released his boat, then mine at the dry pad.
+Position: 21.68, 64, -122.81 (minecraft:overworld)
+Last tool error: limit: Number must be less than or equal to 10. place_find: List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name, note or refuge words; refuge lists the places saved with refuge notes.
+
+## 2026-11-23T11:14:23.662Z
+Baritone walk-only could not leave the Fleet cleric room through a visually open birch fence gate with a fence on either side. It also announced arrival at an adjacent one-block step while my feet were still on the lower block, so I had to check my position separately.
+Position: 405.61, 64, -753.55 (minecraft:overworld)
+Last tool error: entity_id: Required; input: Unrecognized key(s) in object: 'id'. mount: Board a boat, minecart or Immersive Aircraft by its entity id (from vehicle or status): turns to it and uses it once, then reports whether you actually ride it. It must be within about 3 blocks with nothing in the way, and you must not be sneaking. A damaged aircraft is repaired by use instead of boarded. Not retried on its ow
+
+## 2026-11-23T12:37:09.386Z
+At about 07:34 EST, the client still showed a Splash Potion of Healing in H5 after a grass-block use and a walk. On my next visit the held slot and the other potion slot were empty; the inventory screen agrees. I did not see a throw, drop, or pickup event.
+Position: 385.45, 63, -770.5 (minecraft:overworld)
+Last tool error: limit: Number must be less than or equal to 10. place_find: List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name, note or refuge words; refuge lists the places saved with refuge notes.
