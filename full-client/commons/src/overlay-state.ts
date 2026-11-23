@@ -39,13 +39,16 @@ export function readOverlayFile(path: string, limit: number): string {
   } finally { closeSync(fd); }
 }
 
-export function validateOverlayState(value: unknown, residents: readonly string[]): OverlayState {
+/** `residents` undefined: shape only (a saved federated name may be unknown until discovery). */
+export function validateOverlayState(value: unknown, residents?: readonly string[]): OverlayState {
   const parsed = schema.safeParse(value);
   if (!parsed.success) throw new OverlayStateError(400, "Invalid overlay settings; check fields and numeric bounds.");
   const state = parsed.data;
-  const resident = residents.find(name => name.toLowerCase() === state.resident.toLowerCase());
-  if (!resident) throw new OverlayStateError(400, "Choose a locally configured resident.");
-  state.resident = resident;
+  if (residents) {
+    const resident = residents.find(name => name.toLowerCase() === state.resident.toLowerCase());
+    if (!resident) throw new OverlayStateError(400, "Choose a configured resident.");
+    state.resident = resident;
+  }
   state.hideNames = [...new Map(state.hideNames.map(name => [name.toLowerCase(), name])).values()];
   const [width, height] = LAYOUTS[state.layout];
   for (const id of WIDGET_IDS) {
@@ -72,12 +75,17 @@ export function overlayPresets(layout: OverlayLayout = "1920x1080"): Record<"exp
 
 export class OverlayStore {
   private state: OverlayState;
+  private residents: () => readonly string[];
   readonly path: string;
-  constructor(dbPath: string, private residents: readonly string[], owners: readonly string[] = []) {
+  /** `residents` is called on every save: a hub passes its local plus federated names. */
+  constructor(dbPath: string, residents: readonly string[] | (() => readonly string[]), owners: readonly string[] = []) {
     this.path = `${dbPath}.overlay.json`;
-    if (!residents.length) throw new Error("Overlay requires a locally configured resident.");
-    this.state = validateOverlayState({ version: 1, revision: 0, resident: residents[0], layout: "1920x1080", preset: "exploring", hideNames: [...new Set(["spesk01", "Levi", ...owners])], title: "", nowPlaying: "", widgets: overlayPresets().exploring }, residents);
-    try { this.state = validateOverlayState(JSON.parse(readOverlayFile(this.path, 32_768)), residents); }
+    this.residents = typeof residents === "function" ? residents : () => residents;
+    const names = this.residents();
+    if (!names.length) throw new Error("Overlay requires a locally configured resident.");
+    this.state = validateOverlayState({ version: 1, revision: 0, resident: names[0], layout: "1920x1080", preset: "exploring", hideNames: [...new Set(["spesk01", "Levi", ...owners])], title: "", nowPlaying: "", widgets: overlayPresets().exploring }, names);
+    // A saved resident may live on a station not yet rediscovered after restart; it shows as unavailable.
+    try { this.state = validateOverlayState(JSON.parse(readOverlayFile(this.path, 32_768))); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Overlay settings are unreadable or invalid; preserve and repair the overlay state file.");
     }
@@ -85,7 +93,7 @@ export class OverlayStore {
   get(): OverlayState { return structuredClone(this.state); }
   replace(revision: number, value: unknown): OverlayState {
     if (!Number.isSafeInteger(revision) || revision !== this.state.revision) throw new OverlayStateError(409, "Overlay changed in another controller. Reload before saving.");
-    const next = validateOverlayState(value, this.residents);
+    const next = validateOverlayState(value, this.residents());
     if (next.revision !== revision) throw new OverlayStateError(409, "The overlay revision does not match the submitted state.");
     if (revision >= Number.MAX_SAFE_INTEGER - 1) throw new OverlayStateError(409, "Overlay revision limit reached; restart with operator assistance.");
     next.revision = revision + 1;

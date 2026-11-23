@@ -42,7 +42,7 @@
       <button type="button" id="live-stop" disabled>Stop</button>
     </div>
     <div class="live-notice">
-      <p class="fine" id="live-sharing">One shared channel. Watching another resident switches it for every viewer.
+      <p class="fine" id="live-sharing">One shared channel per host. Watching another resident on the same host switches it for every viewer there.
         Stop leaves your view; capture stops when the last viewer leaves. Leaving Live or hiding this page stops your view.</p>
       <p class="fine" id="live-channel">Live service status has not been read yet.</p>
     </div>
@@ -82,10 +82,13 @@
   <section id="p-activity" class="panel" aria-labelledby="t-activity" hidden>
     <div class="controls">
       <div id="activity-who" class="seg" role="group" aria-label="Whose activity"></div>
+      <div id="activity-view" class="seg" role="group" aria-label="What to show"></div>
       <label class="check"><input type="checkbox" id="activity-quiet"> Routine lines too</label>
     </div>
     <div id="signs" class="cards"></div>
     <ol id="feed" class="feed"></ol>
+    <div id="musings-note" hidden></div>
+    <ol id="musings" class="musings" aria-label="Thoughts, each with what the resident did next" hidden></ol>
     <p id="feed-empty" class="empty" hidden></p>
   </section>
 

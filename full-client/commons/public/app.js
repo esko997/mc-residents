@@ -202,6 +202,30 @@ function showPicture(name) {
   }
 }
 
+// ---------- Thoughts: reasoning summaries and remarks, in the resident's own words ----------
+// A summary section opens with its title in bold (**Checking the wheat**); nothing else of Markdown is used.
+function voiceInline(text) {
+  return text.split(/\*\*(.+?)\*\*/s).map((part, i) => i % 2 ? html`<b>${part}</b>` : part);
+}
+/** Title lines become headings in the resident's colour; the rest are paragraphs. */
+function voiceBlock(text) {
+  return text.split(/\n+/).map(line => line.trim()).filter(Boolean).map(line => {
+    const title = /^\*\*(.+)\*\*$/.exec(line);
+    return title ? html`<b>${title[1]}</b>` : html`<p>${voiceInline(line)}</p>`;
+  });
+}
+const SUMMARIES_OFF = "Reasoning summaries are off for this session";
+function musing(resident) {
+  const thoughts = resident.thoughts;
+  if (!thoughts) return html`<p class="fine">This host does not report thoughts yet.</p>`;
+  const latest = thoughts.latest, off = thoughts.summaries === "off";
+  if (!latest) return html`<p class="fine">${off ? `${SUMMARIES_OFF}, and it has made no remark yet.` : "No thoughts or remarks in the last two days."}</p>`;
+  return html`<button type="button" class="musing" aria-label="Read ${resident.name}'s thoughts in Activity">
+    <span class="voice ${latest.kind}">${voiceInline(latest.text.replace(/\s*\n+\s*/g, " "))}</span>
+    <span class="meta">${latest.kind === "thought" ? "Thought" : "Remark"} ${ago(latest.t)}${off ? html`; <span class="warn">${SUMMARIES_OFF.toLowerCase()}</span>` : ""}</span>
+  </button>`;
+}
+
 function renderResidents(data) {
   patch($("#residents"), data.residents, resident => JSON.stringify([resident.host, resident.name]), (card, resident) => {
     if (card.__new) {
@@ -209,10 +233,12 @@ function renderResidents(data) {
       card.className = "card resident";
       card.style.setProperty("--who", colour(resident.name));
       card.innerHTML = html`<header></header>
+        <div class="musing-slot"></div>
         <div class="view" data-name="${resident.name}" data-host="${resident.host}"><img alt="What ${resident.name} sees" hidden><p class="blank"></p>
           <div class="bar"><span class="when"></span><button type="button">Refresh picture</button></div></div>
         <div class="info"></div>`.text;
       $(".view button", card).onclick = () => loadPicture(resident.name, true);
+      $(".musing-slot", card).onclick = event => { if (event.target.closest(".musing")) openThoughts(resident.name); };
     }
     const words = {
       online: `looked ${ago(resident.checkedAt)}`,
@@ -230,6 +256,7 @@ function renderResidents(data) {
         ${health.restart_count ? `Restarts: ${health.restart_count}.` : ""}
         ${health.next_retry_at ? `Retry ${stamp(health.next_retry_at * 1000)}.` : ""}
         Recorded ${ago(health.updated_at * 1000)}.</p>` : ""}`);
+    setHtml($(".musing-slot", card), musing(resident));
     setHtml($(".info", card), residentInfo(resident, data.observer));
   }, "article");
   // After the cards are in the page: a new card is filled before it is attached.
@@ -268,7 +295,8 @@ function residentsTick() {
 }
 
 // ---------- Activity ----------
-const activity = { boot: "", after: 0, entries: new Map(), who: "All", quiet: false, summary: [], first: true };
+const activity = { boot: "", after: 0, entries: new Map(), who: "All", quiet: false, summary: [], first: true,
+  view: "all", older: new Map() }; // older: name -> { at, thoughts } from api/thoughts
 const EVENT_WORDS = { died: "died", stopped_short: "stopped short", navigation_stopped: "nav stopped", reflex: "reflex", chat: "heard", player_near: "player near", player_gone: "player gone" };
 
 function feedRow(entry) {
@@ -286,8 +314,8 @@ function feedRow(entry) {
     what = chat ? html`<b>${chat[1]}</b>: ${chat[2]}` : html`<span class="data">${entry.text.replace(/^text=/, "")}</span>`;
     cls += entry.type === "died" ? " alarm" : entry.type === "chat" ? " heard" : "";
   } else {
-    kind = { remark: "remark", thought: "thought", prompt: "told" }[entry.kind] ?? entry.kind;
-    what = html`${entry.text}`;
+    kind = { remark: "remark", answer: "answered", thought: "thought", prompt: "told" }[entry.kind] ?? entry.kind;
+    what = entry.kind === "thought" || entry.kind === "remark" ? html`${voiceInline(entry.text)}` : html`${entry.text}`;
   }
   const long = (entry.text ?? "").length + (entry.result ?? "").length > 260;
   return { cls: `${cls}${entry.quiet ? " quiet" : ""}${long ? " long" : ""}`, markup: html`<time title="${stamp(entry.t)}">${clock(entry.t)}</time><span class="kind">${kind}</span><span class="what">${what}</span>` };
@@ -311,12 +339,72 @@ function signsCard(card, info) {
     ${s.byTool.length ? html`<details data-d="tools:${info.name}"><summary>Calls by tool</summary><div class="chips">${s.byTool.map(tool => html`<span class="data">${tool.tool} ${tool.count}</span>`)}</div></details>` : ""}`);
 }
 
+// Thoughts view: each thought or remark, then what the resident did until its next one, oldest first
+// inside a group so it reads thought → action; groups newest first like the feed.
+function musingGroups(mine) {
+  const groups = [], open = new Map();
+  for (const entry of [...mine].sort((a, b) => a.t - b.t || a.id - b.id)) {
+    if (entry.kind === "thought" || entry.kind === "remark") {
+      const group = { key: `e${entry.id}`, thought: entry, then: [] };
+      open.set(entry.resident, group); groups.push(group);
+    } else if (entry.kind !== "prompt" && (activity.quiet || !entry.quiet)) open.get(entry.resident)?.then.push(entry);
+  }
+  for (const group of open.values()) group.last = true;
+  return groups.reverse();
+}
+function musingMarkup(item) {
+  const { thought, then } = item;
+  const head = html`<div class="musing-head"><time title="${stamp(thought.t)}">${clock(thought.t)}</time>${activity.who === "All" ? html`<span class="who">${thought.resident}</span>` : ""}<span>${thought.kind}</span></div>
+    <div class="voice ${thought.kind}">${voiceBlock(thought.text)}</div>`;
+  if (!then) return head;
+  const row = entry => { const { cls, markup } = feedRow(entry); return html`<li class="${cls}">${markup}</li>`; };
+  const first = then.slice(0, 8), rest = then.slice(8);
+  if (!then.length) return html`${head}<p class="then-none meta">${item.last ? "Nothing done since." : "Nothing done before the next one."}</p>`;
+  return html`${head}<ol class="feed then">${first.map(row)}</ol>
+    ${rest.length ? html`<details data-d="then:${item.key}"><summary>${plural(rest.length, "more line")}</summary><ol class="feed then">${rest.map(row)}</ol></details>` : ""}`;
+}
+function renderMusings(mine) {
+  const off = activity.summary.filter(info => (activity.who === "All" || info.name === activity.who) && info.sessions[0]?.summaries === "off");
+  const note = $("#musings-note");
+  note.hidden = off.length === 0;
+  setHtml(note, html`${off.map(info => html`<p class="fine summaries-off">Reasoning summaries are off for ${info.name}'s current session, so only its remarks appear.
+    Summaries begin when a session starts or resumes with <code>model_reasoning_summary</code> set in the residents' Codex config.</p>`)}`);
+  const groups = musingGroups(mine).slice(0, 150);
+  // Older thoughts, from the resident's own host: what it did between them is older than this page holds.
+  const floor = mine.length ? Math.min(...mine.map(entry => entry.t)) : Infinity;
+  const older = activity.who === "All" ? [] : (activity.older.get(activity.who)?.thoughts ?? []).filter(thought => thought.t < floor)
+    .map(thought => ({ key: `o${thought.t}:${thought.kind}:${thought.text.length}`, thought: { ...thought, resident: activity.who }, then: null }));
+  const items = [...groups, ...(older.length ? [{ key: "earlier" }, ...older] : [])];
+  patch($("#musings"), items, item => item.key, (li, item) => {
+    if (!item.thought) {
+      li.className = "musing-earlier";
+      li.textContent = `Earlier thoughts. What ${activity.who} did between them is older than this page holds.`;
+      return;
+    }
+    li.className = `musing-group${li.__new && !activity.first ? " fresh" : ""}`;
+    li.__new = false;
+    li.style.setProperty("--who", colour(item.thought.resident));
+    setHtml(li, musingMarkup(item));
+  }, "li");
+  return items.length;
+}
+
 function renderActivity() {
-  segmented($("#activity-who"), [{ value: "All", label: "All" }, ...state.names.map(name => ({ value: name, label: name, who: name }))], activity.who, value => { activity.who = value; renderActivity(); });
+  segmented($("#activity-who"), [{ value: "All", label: "All" }, ...state.names.map(name => ({ value: name, label: name, who: name }))], activity.who, value => { activity.who = value; renderActivity(); void loadOlderThoughts(); });
+  segmented($("#activity-view"), [{ value: "all", label: "Everything" }, { value: "thoughts", label: "Thoughts" }], activity.view, value => { activity.view = value; renderActivity(); void loadOlderThoughts(); });
   patch($("#signs"), activity.summary.filter(info => activity.who === "All" || info.name === activity.who), info => info.name, signsCard, "article");
-  const shown = [...activity.entries.values()]
-    .filter(entry => (activity.who === "All" || entry.resident === activity.who) && (activity.quiet || !entry.quiet))
-    .sort((a, b) => b.t - a.t || b.id - a.id).slice(0, 300);
+  const thinking = activity.view === "thoughts";
+  $("#feed").hidden = thinking;
+  $("#musings").hidden = !thinking;
+  if (!thinking) $("#musings-note").hidden = true;
+  const mine = [...activity.entries.values()].filter(entry => activity.who === "All" || entry.resident === activity.who);
+  const empty = $("#feed-empty");
+  if (thinking) {
+    empty.hidden = renderMusings(mine) > 0;
+    empty.textContent = "No thoughts or remarks yet in what this page holds. They appear as the residents' sessions write them.";
+    return;
+  }
+  const shown = mine.filter(entry => activity.quiet || !entry.quiet).sort((a, b) => b.t - a.t || b.id - a.id).slice(0, 300);
   patch($("#feed"), shown, entry => entry.id, (row, entry) => {
     if (!row.__new) return; // entries never change once recorded
     row.__new = false;
@@ -325,20 +413,38 @@ function renderActivity() {
     row.style.setProperty("--who", colour(entry.resident));
     row.innerHTML = markup.text;
   }, "li");
-  const empty = $("#feed-empty");
   empty.hidden = shown.length > 0;
   empty.textContent = activity.entries.size ? "Only routine lines here (status, wait, arrivals). Tick “Routine lines too” to see them."
     : "No session in the last two days. Lines appear here as soon as a resident's session starts writing.";
 }
-$("#feed").addEventListener("click", event => event.target.closest("li.long")?.classList.toggle("open"));
+for (const list of ["#feed", "#musings"]) $(list).addEventListener("click", event => event.target.closest("li.long")?.classList.toggle("open"));
 $("#activity-quiet").addEventListener("change", event => { activity.quiet = event.target.checked; renderActivity(); });
+
+/** From a resident's card: its thoughts, each followed by what it did. */
+function openThoughts(name) {
+  activity.who = name; activity.view = "thoughts";
+  show("activity");
+  renderActivity();
+  void loadOlderThoughts();
+}
+/** Thoughts older than the loaded activity, for one resident, from its own host; at most every 30 s. */
+async function loadOlderThoughts() {
+  const who = activity.who;
+  if (activity.view !== "thoughts" || who === "All" || Date.now() - (activity.older.get(who)?.at ?? 0) < 30_000) return;
+  activity.older.set(who, { at: Date.now(), thoughts: activity.older.get(who)?.thoughts ?? [] });
+  try {
+    const data = await get(`api/thoughts?resident=${encodeURIComponent(who)}`);
+    activity.older.set(who, { at: Date.now(), thoughts: data.thoughts });
+  } catch { /* the newest thoughts are still in the activity feed; older ones are tried again later */ }
+  if (activity.view === "thoughts" && activity.who === who) renderActivity();
+}
 
 async function loadActivity() {
   const data = await get(`api/activity?boot=${encodeURIComponent(activity.boot)}&after=${activity.after}&limit=500`);
   if (data.boot !== activity.boot) {
     // The app restarted, or read a file again from its start: the numbers of the rows on screen now belong to other entries, or to none.
     activity.entries.clear(); activity.after = 0; activity.boot = data.boot; activity.first = true;
-    $("#feed").replaceChildren();
+    $("#feed").replaceChildren(); $("#musings").replaceChildren();
   }
   for (const entry of data.entries) { activity.entries.set(entry.id, entry); activity.after = Math.max(activity.after, entry.id); }
   if (activity.entries.size > 2000) {
@@ -348,6 +454,7 @@ async function loadActivity() {
   activity.summary = data.residents;
   renderActivity();
   activity.first = false;
+  void loadOlderThoughts();
 }
 
 // ---------- Map ----------

@@ -41,10 +41,10 @@ function adopt(snapshot) {
 }
 function updateResidents(snapshot) {
   const select = find("resident"), before = select.value;
-  const names = (snapshot.residents || []).map(item => item.name);
-  if (JSON.stringify(names) === JSON.stringify(Array.from(select.options, option => option.value))) return;
+  const items = (snapshot.residents || []).map(item => [item.name, item.liveAvailable === true ? item.name : `${item.name} — Live unavailable${item.detail ? `: ${item.detail}` : ""}`]);
+  if (JSON.stringify(items) === JSON.stringify(Array.from(select.options, option => [option.value, option.textContent]))) return;
   select.replaceChildren();
-  for (const item of snapshot.residents || []) { const option = element("option", "", item.name); option.value = item.name; select.append(option); }
+  for (const [name, label] of items) { const option = element("option", "", label); option.value = name; select.append(option); }
   select.value = draft?.resident || before || snapshot.state.resident;
 }
 function receive(snapshot) {

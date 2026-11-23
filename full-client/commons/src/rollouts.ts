@@ -8,7 +8,8 @@ import { open, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { clip, finite, record } from "./json.ts";
 
-export type EntryKind = "call" | "event" | "said" | "remark" | "thought" | "prompt";
+/** remark: the model's commentary while it works; answer: its final answer at the end of a turn. */
+export type EntryKind = "call" | "event" | "said" | "remark" | "answer" | "thought" | "prompt";
 export interface Entry {
   id: number;
   /** Unix ms. For an event: when the tool result that reported it came back. */
@@ -25,15 +26,25 @@ export interface Entry {
   ms?: number;
   /** event: died, stopped_short, chat, ... */
   type?: string;
-  /** event: the rest of its line. said, remark, thought, prompt: the words. */
+  /** event: the rest of its line. said, remark, answer, thought, prompt: the words. */
   text?: string;
   /** Routine lines (status, wait, arrivals, Baritone chatter) a reader usually skips. */
   quiet: boolean;
 }
 export interface Tokens { input: number; cached: number; output: number; reasoning: number; total: number }
+/**
+ * Whether the session's reasoning items carry summaries, as its latest reasoning item showed.
+ * "off": they arrive with an empty summary (Codex config `model_reasoning_summary` is "none" or unset).
+ */
+export type SummaryState = "on" | "off" | "unknown";
 export interface SessionInfo {
   id: string; resident: string; model?: string; startedAt: number; lastAt: number; tokens?: Tokens;
+  /** Unset until the session wrote a reasoning item. */
+  summaries?: "on" | "off";
 }
+/** What the resident thought (a reasoning summary) or remarked to itself (its commentary), in its own words. */
+export interface Thought { t: number; kind: "thought" | "remark"; text: string }
+export interface ThoughtSummary { summaries: SummaryState; latest: Thought | null }
 export interface Quota { usedPercent: number; windowMinutes?: number; resetsAt?: number; plan?: string; at: number }
 /** `session` is the one written to most recently; `day` adds up every session active in the last 24 hours. */
 export interface TokenTotals { session?: SessionInfo; day: Tokens; daySessions: number }
@@ -166,8 +177,13 @@ interface FileState extends Tail {
   resident: string | null | undefined;
   info: SessionInfo;
   pending: Map<string, Pending>;
-  /** The harness logs a reasoning summary twice (response item and finished item); it is recorded once. */
-  lastThought: string;
+  /**
+   * Summary sections recorded lately, with when, and reasoning item ids already seen. The harness
+   * logs one summary up to three times (response item, finished item, one agent_reasoning event per
+   * section); each section is recorded once. Both are bounded.
+   */
+  sections: Map<string, number>;
+  reasoningIds: Set<string>;
 }
 interface CallLog extends Tail {
   /** Device and inode: a log that was moved away and begun again is another file, whatever its size. */
@@ -185,7 +201,7 @@ interface ResidentDir { name: string; dir: string }
 const NEEDED: Record<string, true> = {
   "response_item:custom_tool_call": true, "response_item:custom_tool_call_output": true,
   "response_item:message": true, "response_item:reasoning": true, "event_msg:token_count": true, "event_msg:item_completed": true,
-  "event_msg:thread_settings_applied": true,
+  "event_msg:thread_settings_applied": true, "event_msg:agent_reasoning": true,
 };
 // Most bytes of a rollout are lines this record never uses (usage records, turn context,
 // events of other kinds). Their kind is readable from the first few bytes without parsing
@@ -194,6 +210,8 @@ const NEEDED: Record<string, true> = {
 const KIND = /^\{\s*"timestamp":\s*"[^"]*",\s*(?:"ordinal":\s*\d+,\s*)?"type":\s*"(\w+)",\s*"payload":\s*\{\s*"type":\s*"(\w+)"/;
 // A call-log line opens with when the call started and how long it took, readable without parsing the reply.
 const CALL_TIMES = /^\{"t":"([^"]+)","ms":(\d+)[,}]/;
+/** Longest thought or remark kept, in characters: a summary of several sections still fits. */
+const THOUGHT_CHARS = 1000;
 
 export class RolloutTail {
   private started = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -201,6 +219,8 @@ export class RolloutTail {
   private files = new Map<string, FileState>();
   private callLogs = new Map<string, CallLog>();
   private entries = new Map<string, Entry[]>();
+  /** Each resident's latest thoughts and remarks, kept apart so that busy hours of tool calls do not push them out. */
+  private thoughtLists = new Map<string, Entry[]>();
   private unsorted = new Set<string>();
   private nextId = 1;
   private running?: Promise<void>;
@@ -208,7 +228,7 @@ export class RolloutTail {
 
   constructor(
     private sessionsDir: string, private residents: ResidentDir[],
-    private options: { days?: number; maxEntries?: number; now?: () => number; callsDir?: string } = {},
+    private options: { days?: number; maxEntries?: number; maxThoughts?: number; now?: () => number; callsDir?: string } = {},
   ) {}
   private now() { return this.options.now?.() ?? Date.now(); }
   /** Changes when ids handed out before no longer name the same entries: at a restart, and when a file was dropped to be read again. */
@@ -239,7 +259,7 @@ export class RolloutTail {
         if (!state && info.mtimeMs < cutoff) continue;
         if (state && info.size < state.offset) { this.forget(state); state = undefined; }
         if (!state) {
-          state = { path, offset: 0, carry: Buffer.alloc(0), resident: undefined, pending: new Map(), lastThought: "", info: { id: path, resident: "", startedAt: 0, lastAt: 0 } };
+          state = { path, offset: 0, carry: Buffer.alloc(0), resident: undefined, pending: new Map(), sections: new Map(), reasoningIds: new Set(), info: { id: path, resident: "", startedAt: 0, lastAt: 0 } };
           this.files.set(path, state);
         }
         const reading = state;
@@ -270,6 +290,7 @@ export class RolloutTail {
   /** Takes back what was read from one file, so that it can be read again. */
   private drop(resident: string, session: string) {
     this.entries.set(resident, (this.entries.get(resident) ?? []).filter(entry => entry.session !== session));
+    this.thoughtLists.set(resident, (this.thoughtLists.get(resident) ?? []).filter(entry => entry.session !== session));
     this.rereads++;
   }
 
@@ -345,8 +366,12 @@ export class RolloutTail {
     } else if (type === "item_completed") this.item(state, record(payload.item), t);
     else if (type === "message" && payload.role === "assistant") {
       const words = textOf(payload.content).trim();
-      if (words) this.add(state, { t, kind: "remark", text: clip(words, 600), quiet: false });
-    } else if (type === "reasoning") this.thought(state, payload.summary, t);
+      // Commentary (or a harness that writes no phase) is a remark, kept with the thoughts. A turn's
+      // final answer, or any other phase, stays in the activity record only.
+      const remark = payload.phase === "commentary" || payload.phase === undefined;
+      if (words) this.add(state, { t, kind: remark ? "remark" : "answer", text: clip(words, THOUGHT_CHARS), quiet: false });
+    } else if (type === "reasoning") this.thought(state, payload.summary, t, payload.id);
+    else if (type === "agent_reasoning") this.thought(state, [payload.text], t);
     else if (type === "custom_tool_call") {
       if (typeof payload.call_id === "string") state.pending.set(payload.call_id, { t, script: String(payload.input ?? ""), itemsSeen: 0 });
     } else if (type === "custom_tool_call_output") this.scriptOutput(state, payload, t);
@@ -374,20 +399,35 @@ export class RolloutTail {
   }
 
   /**
-   * The model's reasoning summary: a list of short texts, empty unless summaries are switched on
-   * in the resident's Codex config. Nothing is recorded for an empty one.
+   * The model's reasoning summary: a list of sections (`{type: "summary_text", text}` or plain strings),
+   * empty unless summaries are switched on in the resident's Codex config. An empty one is recorded
+   * only as a sign that summaries are off; an `agent_reasoning` event carries one section and only
+   * exists when they are on.
    */
-  private thought(state: FileState, summary: unknown, t: number) {
-    const words = (Array.isArray(summary) ? summary : []).map(part => typeof part === "string" ? part : textOf([part]))
-      .filter(Boolean).join("\n").trim();
-    if (!words || words === state.lastThought) return;
-    state.lastThought = words;
-    this.add(state, { t, kind: "thought", text: clip(words, 600), quiet: false });
+  private thought(state: FileState, summary: unknown, t: number, id?: unknown) {
+    const sections = (Array.isArray(summary) ? summary : []).map(part => (typeof part === "string" ? part : textOf([part])).trim()).filter(Boolean);
+    state.info.summaries = sections.length ? "on" : "off";
+    if (typeof id === "string" && id) {
+      // An item read again (a harness replaying history) is the same thought.
+      if (state.reasoningIds.has(id)) return;
+      state.reasoningIds.add(id);
+      if (state.reasoningIds.size > 512) state.reasoningIds.delete(state.reasoningIds.values().next().value!);
+    }
+    const fresh = sections.filter(section => {
+      const seen = state.sections.get(section);
+      return seen === undefined || Math.abs(t - seen) > 5 * 60_000;
+    });
+    for (const section of sections) {
+      state.sections.delete(section);
+      state.sections.set(section, t);
+    }
+    while (state.sections.size > 64) state.sections.delete(state.sections.keys().next().value!);
+    if (fresh.length) this.add(state, { t, kind: "thought", text: clip(fresh.join("\n\n"), THOUGHT_CHARS), quiet: false });
   }
 
   /** The harness's own record of a finished item: exact tool name, arguments and result. */
   private item(state: FileState, item: Record<string, unknown>, t: number) {
-    if (item.type === "Reasoning") return this.thought(state, item.summary_text, t);
+    if (item.type === "Reasoning") return this.thought(state, item.summary_text, t, item.id);
     if (item.type === "UserMessage") {
       const words = textOf(item.content).trim();
       if (words) this.add(state, { t, kind: "prompt", text: clip(words, 600), quiet: true });
@@ -448,12 +488,33 @@ export class RolloutTail {
     let list = this.entries.get(resident);
     if (!list) this.entries.set(resident, list = []);
     if (list.length && entry.t < list[list.length - 1].t) this.unsorted.add(resident);
-    list.push({ id: this.nextId++, resident, session, ...entry });
+    const stored: Entry = { id: this.nextId++, resident, session, ...entry };
+    list.push(stored);
     const limit = this.options.maxEntries ?? 4000;
     if (list.length > limit * 1.25) {
       this.sorted(resident);
       list.splice(0, list.length - limit);
     }
+    if (entry.kind !== "thought" && entry.kind !== "remark") return;
+    let thoughts = this.thoughtLists.get(resident);
+    if (!thoughts) this.thoughtLists.set(resident, thoughts = []);
+    thoughts.push(stored);
+    const most = this.options.maxThoughts ?? 200;
+    if (thoughts.length > most * 1.25) {
+      thoughts.sort((a, b) => a.t - b.t || a.id - b.id);
+      thoughts.splice(0, thoughts.length - most);
+    }
+  }
+
+  /** A resident's latest thoughts and remarks, newest first, at most `maxThoughts` (200). */
+  thoughts(resident: string, limit = this.options.maxThoughts ?? 200): Thought[] {
+    return [...this.thoughtLists.get(resident) ?? []].sort((a, b) => b.t - a.t || b.id - a.id).slice(0, limit)
+      .map(entry => ({ t: entry.t, kind: entry.kind as Thought["kind"], text: entry.text ?? "" }));
+  }
+
+  /** Whether the latest session writes reasoning summaries, and the newest thought or remark. */
+  thoughtSummary(resident: string): ThoughtSummary {
+    return { summaries: this.sessions(resident)[0]?.summaries ?? "unknown", latest: this.thoughts(resident, 1)[0] ?? null };
   }
 
   private sorted(resident: string): Entry[] {

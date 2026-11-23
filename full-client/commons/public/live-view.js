@@ -18,7 +18,7 @@ export function createLiveView(root, { now, stamp, colour }) {
   const audioButton = find("#live-audio"), mediaNote = find("#live-media-note");
   const supported = typeof RTCPeerConnection === "function";
   let active = false, enabled = null, current = null, pendingWatch = false, revision = 0;
-  let residents = [], sampleSeconds = 5, mode = "idle", station = false;
+  let residents = [], sampleSeconds = 5, mode = "idle";
   // Watch intent that survives one session: { resident, attempts, timer }.
   let wanted = null;
 
@@ -61,14 +61,13 @@ export function createLiveView(root, { now, stamp, colour }) {
   }
 
   function unavailableMessage() {
-    if (station) return "Live video is disabled on stations. Use the Commons hub.";
     if (!supported) return "This browser does not support WebRTC video.";
     const resident = residents.find(entry => entry.name === select.value);
     if (!resident) return "No residents are configured.";
     if (resident.hostUnreachable) return `Host ${resident.host} is unreachable. ${resident.hostLastSeen === null
       ? "Host not reached yet." : `Host last seen ${stamp(resident.hostLastSeen)}.`}`;
-    if (resident.liveAvailable !== true) return `Live video is unavailable for ${resident.name} on host ${resident.host}.`;
-    if (enabled === false) return "Live video is disabled on this host.";
+    if (resident.liveAvailable !== true) return `Live video is unavailable for ${resident.name} on host ${resident.host}: Live is not enabled there.`;
+    if (enabled === false) return `Live video is disabled on host ${resident.host}.`;
     return "";
   }
 
@@ -126,10 +125,11 @@ export function createLiveView(root, { now, stamp, colour }) {
     if (document.fullscreenElement === stage) void document.exitFullscreen().catch(() => {});
   }
 
-  function release(lease, generation, expectedRevision) {
+  function release(lease, generation, expectedRevision, resident) {
     // keepalive is also used on pagehide. JSON matches the normal stop route;
     // no beacon content-type exception or additional backend contract is needed.
-    void request("stop", { lease, generation }, { keepalive: true }).then(data => {
+    // The resident routes the stop to the channel's own host.
+    void request("stop", { lease, generation, resident }, { keepalive: true }).then(data => {
       if (revision === expectedRevision && !current) showChannel(data);
     }).catch(() => {
       if (revision === expectedRevision && !current && !wanted) {
@@ -152,7 +152,7 @@ export function createLiveView(root, { now, stamp, colour }) {
         session.peer.close();
         for (const receiver of session.peer.getReceivers()) receiver.track?.stop();
       }
-      if (session.lease) release(session.lease, session.generation, revision);
+      if (session.lease) release(session.lease, session.generation, revision, session.resident);
     }
     clearMedia();
   }
@@ -228,11 +228,13 @@ export function createLiveView(root, { now, stamp, colour }) {
       && (data.state === "starting" || data.state === "live");
   }
 
+  // One channel per host: say whose host this is, so viewers know what Watch will switch.
   function showChannel(data) {
     enabled = data.enabled;
-    channel.textContent = !data.enabled ? `Live video is disabled. ${data.detail || "Ask the host operator to enable it."}`
-      : data.resident ? `Shared channel: ${data.resident}. Service ${data.state}; ${data.viewers} viewer${data.viewers === 1 ? "" : "s"}. ${data.detail || ""}`
-      : `Shared channel: ${data.state}. ${data.detail || "No resident is being streamed."}`;
+    const where = typeof data.host === "string" ? ` on ${data.host}` : "";
+    channel.textContent = !data.enabled ? `Live video is disabled${where}. ${data.detail || "Ask the host operator to enable it."}`
+      : data.resident ? `Channel${where}: ${data.resident}. Service ${data.state}; ${data.viewers} viewer${data.viewers === 1 ? "" : "s"}. ${data.detail || ""}`
+      : `Channel${where}: ${data.state}. ${data.detail || "No resident is being streamed."}`;
   }
 
   function renderContext() {
@@ -279,7 +281,7 @@ export function createLiveView(root, { now, stamp, colour }) {
       // Use request start, not response arrival, as the conservative lease clock.
       const sentAt = Date.now();
       try {
-        const data = await request("heartbeat", { lease: session.lease, generation: session.generation }, { signal: session.controller.signal });
+        const data = await request("heartbeat", { lease: session.lease, generation: session.generation, resident: session.resident }, { signal: session.controller.signal });
         if (current !== session) return;
         showChannel(data);
         if (!matches(session, data)) {
@@ -354,7 +356,7 @@ export function createLiveView(root, { now, stamp, colour }) {
       finally { pendingWatch = false; buttons(); }
       if (typeof data.lease !== "string" || !Number.isSafeInteger(data.generation)) throw fatal("Live service returned an invalid viewing lease.");
       if (current !== session) {
-        release(data.lease, data.generation, revision);
+        release(data.lease, data.generation, revision, session.resident);
         return;
       }
       // Status reads started before acquisition describe the previous channel.
@@ -413,7 +415,7 @@ export function createLiveView(root, { now, stamp, colour }) {
       if (current !== session) return;
       const sdp = peer.localDescription?.sdp;
       if (!sdp || sdp.length > 65536) throw fatal("The browser generated an invalid or oversized video offer.");
-      const answer = await request("offer", { lease: session.lease, generation: session.generation, sdp }, { signal: session.controller.signal, timeout: 12000 });
+      const answer = await request("offer", { lease: session.lease, generation: session.generation, resident: session.resident, sdp }, { signal: session.controller.signal, timeout: 12000 });
       if (current !== session) return;
       if (typeof answer.sdp !== "string" || answer.sdp.length > 65536) throw fatal("Live service returned an invalid video answer.");
       await peer.setRemoteDescription({ type: "answer", sdp: answer.sdp });
@@ -423,8 +425,12 @@ export function createLiveView(root, { now, stamp, colour }) {
   }
 
   select.addEventListener("change", () => {
-    end("Selection changed. Press Watch to tune the shared channel.");
+    // The last status described the previous resident's host; forget it before
+    // redrawing, then read this one's.
+    enabled = null;
+    end("Selection changed. Press Watch to tune that resident's host channel.");
     updateAvailability();
+    if (!unavailableMessage()) void loadStatus();
   });
   watch.addEventListener("click", () => { void start(); });
   stop.addEventListener("click", () => end());
@@ -462,6 +468,33 @@ export function createLiveView(root, { now, stamp, colour }) {
   window.addEventListener("pageshow", buttons);
   setState(supported ? "idle" : "disabled", supported ? "Choose a resident, then press Watch." : "This browser does not support WebRTC video.");
 
+  // Status describes the channel on the host of the resident being watched (or selected).
+  async function loadStatus() {
+    if (!active || document.hidden) return;
+    const expectedRevision = revision, name = current?.resident ?? wanted?.resident ?? select.value;
+    try {
+      const data = await request(name ? `status?resident=${encodeURIComponent(name)}` : "status");
+      if (!active || document.hidden || revision !== expectedRevision) return;
+      showChannel(data);
+      if (current?.lease && (!matches(current, data) || Date.now() >= current.expiresAt)) {
+        lost(current, "The shared channel changed, ended, or your lease expired. Press Watch to join again.");
+      } else if (current?.lease) setResuming(current, data.resuming === true);
+      updateAvailability();
+      buttons();
+      renderContext();
+    } catch (error) {
+      if (!active || document.hidden || revision !== expectedRevision) return;
+      channel.textContent = "Live service status is unavailable.";
+      enabled = null;
+      if (current) failed(current, error);
+      else {
+        if (unavailableMessage()) updateAvailability();
+        else if (!wanted) detail.textContent = error.message;
+        buttons();
+      }
+    }
+  }
+
   return {
     setActive(value) {
       if (active === value) return;
@@ -473,10 +506,9 @@ export function createLiveView(root, { now, stamp, colour }) {
     updateResidents(data) {
       residents = data.residents;
       sampleSeconds = data.sampleSeconds;
-      station = data.role === "station";
       const options = residents.map(entry => {
         const label = `${entry.name} (${entry.host})${entry.hostUnreachable ? " — host unreachable"
-          : station || entry.liveAvailable !== true ? " — Live unavailable" : ""}`;
+          : entry.liveAvailable !== true ? " — Live unavailable" : ""}`;
         return new Option(label, entry.name);
       });
       if (options.length !== select.options.length || options.some((option, index) =>
@@ -487,38 +519,10 @@ export function createLiveView(root, { now, stamp, colour }) {
         select.replaceChildren(...options);
         if (residents.some(entry => entry.name === selected)) select.value = selected;
       }
-      if (station) {
-        enabled = false;
-        channel.textContent = "Live video is disabled on stations.";
-      }
       updateAvailability();
       buttons();
       renderContext();
     },
-    async loadStatus() {
-      if (!active || document.hidden || station) return;
-      const expectedRevision = revision;
-      try {
-        const data = await request("status");
-        if (!active || document.hidden || station || revision !== expectedRevision) return;
-        showChannel(data);
-        if (current?.lease && (!matches(current, data) || Date.now() >= current.expiresAt)) {
-          lost(current, "The shared channel changed, ended, or your lease expired. Press Watch to join again.");
-        } else if (current?.lease) setResuming(current, data.resuming === true);
-        updateAvailability();
-        buttons();
-        renderContext();
-      } catch (error) {
-        if (!active || document.hidden || station || revision !== expectedRevision) return;
-        channel.textContent = "Live service status is unavailable.";
-        enabled = null;
-        if (current) failed(current, error);
-        else {
-          if (unavailableMessage()) updateAvailability();
-          else if (!wanted) detail.textContent = error.message;
-          buttons();
-        }
-      }
-    },
+    loadStatus,
   };
 }

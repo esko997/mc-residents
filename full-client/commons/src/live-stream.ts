@@ -12,7 +12,10 @@ const TTL = 30_000, HEARTBEAT = 10_000, START_TIMEOUT = 15_000, IO_TIMEOUT = 5_0
 const RESUME_WINDOW = 90_000, RESUME_POLL = 500;
 // JSON may encode each SDP character as six-byte \\uXXXX; the decoded SDP still
 // has its own 64 KiB limit. Leave bounded space for lease/generation and field names.
-const SDP_LIMIT = 65_536, BODY_LIMIT = SDP_LIMIT * 6 + 8192, MAX_VIEWERS = 4;
+export const SDP_LIMIT = 65_536, LIVE_BODY_LIMIT = SDP_LIMIT * 6 + 8192;
+const BODY_LIMIT = LIVE_BODY_LIMIT, MAX_VIEWERS = 4;
+export const LIVE_ACTIONS = ["watch", "heartbeat", "stop", "offer"] as const;
+export type LiveAction = typeof LIVE_ACTIONS[number];
 
 export interface LiveStatus {
   enabled: boolean;
@@ -38,7 +41,7 @@ export interface LiveDependencies {
   now?: () => number;
 }
 
-class LiveError extends Error {
+export class LiveError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
 }
 const changed = () => new LiveError(409, "The lease expired or the shared channel changed. Press Watch again.");
@@ -69,7 +72,7 @@ function bounded<T>(promise: Promise<T>, ms: number, signal?: AbortSignal): Prom
   });
 }
 
-async function textLimited(body: ReadableStream<Uint8Array> | null, limit: number, signal?: AbortSignal): Promise<string> {
+export async function textLimited(body: ReadableStream<Uint8Array> | null, limit: number, signal?: AbortSignal): Promise<string> {
   if (!body) throw new LiveError(502, "The video service returned an empty response.");
   signal = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(IO_TIMEOUT)]);
   const reader = body.getReader(), chunks: Uint8Array[] = [];
@@ -607,37 +610,68 @@ export class LiveStream {
     } catch { return false; } // Released sessions have MediaMTX's ICE timeout as a backstop.
   }
 
+  /** One validated viewer request; throws LiveError with its HTTP status. */
+  async act(request: LiveRequest, signal?: AbortSignal): Promise<object> {
+    // Narrow the single-literal members first: "heartbeat" | "stop" share one member.
+    if (request.action === "offer") return this.offer(request.lease, request.generation, request.sdp);
+    if (request.action === "watch") return this.watch(request.resident, signal);
+    if (request.action === "heartbeat") return this.heartbeat(request.lease, request.generation);
+    return this.stop(request.lease, request.generation);
+  }
+
   /** Called only after the app authenticates its secret URL path. */
   async handle(request: Request, action: string): Promise<Response> {
-    const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
-      status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
-    });
     try {
-      if (action === "status" && request.method === "GET") return reply(this.status());
-      if (request.method !== "POST" || !["watch", "heartbeat", "stop", "offer"].includes(action)) return reply({ error: "Not found." }, 404);
-      // Origin-less CLI clients are allowed, but browser cross-site requests are not.
-      const origin = request.headers.get("origin"), site = request.headers.get("sec-fetch-site");
-      if ((origin !== null && origin !== new URL(request.url).origin) || (site !== null && site !== "same-origin" && site !== "none")) {
-        throw new LiveError(403, "Live video changes must come from this page's origin.");
-      }
-      if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") throw new LiveError(415, "Send a JSON live video request.");
-      if (Number(request.headers.get("content-length") ?? 0) > BODY_LIMIT) throw new LiveError(413, "The live video message is too large.");
-      let body: Record<string, unknown>;
-      try { body = object(JSON.parse(await textLimited(request.body, BODY_LIMIT, request.signal))); }
-      catch (error) { throw error instanceof LiveError ? error : new LiveError(400, "Send a valid JSON live video request."); }
-      if (action === "watch") {
-        if (typeof body.resident !== "string" || body.resident.length > 128) throw new LiveError(400, "Choose a configured resident.");
-        return reply(await this.watch(body.resident, request.signal));
-      }
-      if (typeof body.lease !== "string" || body.lease.length > 128 || typeof body.generation !== "number" || !Number.isSafeInteger(body.generation)) {
-        throw new LiveError(400, "A lease and generation are required.");
-      }
-      if (action === "heartbeat") return reply(this.heartbeat(body.lease, body.generation));
-      if (action === "stop") return reply(await this.stop(body.lease, body.generation));
-      if (typeof body.sdp !== "string") throw new LiveError(400, "An SDP offer is required.");
-      return reply(await this.offer(body.lease, body.generation, body.sdp));
-    } catch (error) {
-      return reply({ error: error instanceof LiveError ? error.message : "Live video request failed." }, error instanceof LiveError ? error.status : 502);
-    }
+      if (action === "status" && request.method === "GET") return liveReply(this.status());
+      if (request.method !== "POST" || !isLiveAction(action)) return liveReply({ error: "Not found." }, 404);
+      return liveReply(await this.act(await readLiveRequest(request, action), request.signal));
+    } catch (error) { return liveFailure(error); }
   }
 }
+
+export type LiveRequest =
+  | { action: "watch"; resident: string }
+  | { action: "heartbeat" | "stop"; resident?: string; lease: string; generation: number }
+  | { action: "offer"; resident?: string; lease: string; generation: number; sdp: string };
+
+export const isLiveAction = (action: string): action is LiveAction => (LIVE_ACTIONS as readonly string[]).includes(action);
+
+export function liveReply(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" },
+  });
+}
+export function liveFailure(error: unknown): Response {
+  return liveReply({ error: error instanceof LiveError ? error.message : "Live video request failed." }, error instanceof LiveError ? error.status : 502);
+}
+
+/**
+ * Same-origin, JSON and size checks, then field validation. `resident` names the
+ * owning host's resident; lease requests may carry it so a hub can route them.
+ */
+export async function readLiveRequest(request: Request, action: LiveAction): Promise<LiveRequest> {
+  // Origin-less CLI clients (and a hub's server-side proxy) are allowed, but browser cross-site requests are not.
+  const origin = request.headers.get("origin"), site = request.headers.get("sec-fetch-site");
+  if ((origin !== null && origin !== new URL(request.url).origin) || (site !== null && site !== "same-origin" && site !== "none")) {
+    throw new LiveError(403, "Live video changes must come from this page's origin.");
+  }
+  if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") throw new LiveError(415, "Send a JSON live video request.");
+  if (Number(request.headers.get("content-length") ?? 0) > BODY_LIMIT) throw new LiveError(413, "The live video message is too large.");
+  let body: Record<string, unknown>;
+  try { body = object(JSON.parse(await textLimited(request.body, BODY_LIMIT, request.signal))); }
+  catch (error) { throw error instanceof LiveError ? error : new LiveError(400, "Send a valid JSON live video request."); }
+  const resident = body.resident;
+  if (action === "watch") {
+    if (typeof resident !== "string" || resident.length > 128) throw new LiveError(400, "Choose a configured resident.");
+    return { action, resident };
+  }
+  if (resident !== undefined && (typeof resident !== "string" || resident.length > 128)) throw new LiveError(400, "Choose a configured resident.");
+  if (typeof body.lease !== "string" || body.lease.length > 128 || typeof body.generation !== "number" || !Number.isSafeInteger(body.generation)) {
+    throw new LiveError(400, "A lease and generation are required.");
+  }
+  const lease = { resident, lease: body.lease, generation: body.generation };
+  if (action !== "offer") return { action, ...lease };
+  if (typeof body.sdp !== "string") throw new LiveError(400, "An SDP offer is required.");
+  return { action, ...lease, sdp: body.sdp };
+}
+

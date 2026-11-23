@@ -7,8 +7,8 @@ import { recordPosition } from "../src/db.ts";
 import type { Routes } from "../src/routes/context.ts";
 import type { ResidentsReply } from "../src/routes/residents.ts";
 import type { MapReply } from "../src/routes/map.ts";
-import type { ActivityReply } from "../src/routes/activity.ts";
-import { callLine, fakeSynapse, png, tempHome, type Home } from "./helpers.ts";
+import type { ActivityReply, ThoughtsReply } from "../src/routes/activity.ts";
+import { callLine, fakeSynapse, png, rollout, tempHome, type Home } from "./helpers.ts";
 
 const TOKEN = "station-test-token";
 const cleanups: (() => void)[] = [];
@@ -62,7 +62,7 @@ function setup(name = "Wren", options: { timeoutMs?: number } = {}) {
   const federation = new Federation(localHome.config({ COMMONS_HOST_NAME: "inspiron" }), () => clock, options);
   cleanups.push(() => federation.stop());
   const localRoutes: Routes = {};
-  for (const route of ["residents", "map", "activity", "notes", "file", "picture", "map-picture", "commons"]) {
+  for (const route of ["residents", "map", "activity", "notes", "file", "picture", "map-picture", "commons", "thoughts"]) {
     localRoutes[`GET ${route}`] = async ask => {
       const response = await request(local, `${route}?${ask.query}`);
       return response.ok && response.headers.get("Content-Type")?.includes("application/json") ? response.json() : response;
@@ -91,9 +91,13 @@ test("station serves only local reads and samples positions without shared table
   expect(residents.residents[0]).toMatchObject({ host: "chungus1", liveAvailable: false, status: "online" });
   expect(station.db.query("SELECT * FROM positions").all()).toHaveLength(1);
   expect(station.db.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name)).toEqual(["positions"]);
-  for (const [route, method] of [["commons", "GET"], ["review", "POST"], ["console", "GET"], ["command", "POST"], ["live/status", "GET"], ["live/watch", "POST"], ["notes?resident=Wren", "POST"]]) {
+  for (const [route, method] of [["commons", "GET"], ["review", "POST"], ["console", "GET"], ["command", "POST"], ["notes?resident=Wren", "POST"]]) {
     expect((await request(station, route, method)).status).toBe(404);
   }
+  // A station serves its own Live API (for the hub's proxy); without its own opt-in it is disabled.
+  expect(await (await request(station, "live/status")).json()).toMatchObject({ enabled: false, state: "disabled", host: "chungus1" });
+  const watch = await station.fetch(new Request(`http://fixture/${TOKEN}/api/live/watch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"resident":"Wren"}' }));
+  expect(watch.status).toBe(503);
   const api = await station.fetch(new Request("http://fixture/resident-api/v1/caretaker/digest?resident=Wren"));
   expect(api.status).toBe(404);
   const notes = await (await request(station, "notes?resident=Wren")).json();
@@ -139,6 +143,39 @@ test("hub merges residents, activity cursors, trails, private places and caretak
   await s.get("residents"); await s.federation.refresh();
   expect(s.counts.get(`/${TOKEN}/api/residents`)).toBe(1);
   expect(s.counts.get(`/${TOKEN}/api/notes?resident=Wren`)).toBe(1);
+});
+
+test("a station resident's thoughts reach the hub: newest on its card, the latest 200 through the hub's cached read", async () => {
+  const s = setup();
+  const day = new Date(clock).toISOString().slice(0, 10).replaceAll("-", "/");
+  s.remoteHome.put(`codex-home/sessions/${day}/rollout-wren.jsonl`, [
+    rollout.meta(clock - 60_000, join(s.remoteHome.dir, "resident", "wren")),
+    ...rollout.reasoning(clock - 50_000, ["**Stocking the pantry**", "Bread first, then the carrots."]),
+    ...rollout.call(clock - 45_000, "craft", { item: "bread" }, "Crafted 1 bread."),
+    rollout.remark(clock - 40_000, "Pantry has bread now."),
+  ].join("\n") + "\n");
+  await s.federation.refresh();
+  const residents = await s.get<ResidentsReply>("residents");
+  const wren = residents.residents.find(r => r.name === "Wren")!;
+  expect(wren.host).toBe("chungus1");
+  expect(wren.thoughts).toEqual({ summaries: "on", latest: { t: clock - 40_000, kind: "remark", text: "Pantry has bread now." } });
+  expect(residents.residents.find(r => r.name === "Gary")!.thoughts).toEqual({ summaries: "unknown", latest: null });
+
+  const thoughts = await s.get<Response>("thoughts", "resident=Wren");
+  const body = await thoughts.json() as ThoughtsReply;
+  expect(body).toMatchObject({ resident: "Wren", summaries: "on" });
+  expect(body.thoughts.map(t => `${t.kind}: ${t.text}`)).toEqual(["remark: Pantry has bread now.", "thought: **Stocking the pantry**\n\nBread first, then the carrots."]);
+  // Cached like the other scoped station reads: a second read within five seconds does not ask the station again.
+  await s.get("thoughts", "resident=Wren");
+  expect(s.counts.get(`/${TOKEN}/api/thoughts?resident=Wren`)).toBe(1);
+  // Activity interleaves them with what Wren did, on the hub's cursor.
+  await s.get("activity"); await s.federation.refresh();
+  const activity = await s.get<ActivityReply>("activity");
+  expect(activity.entries.filter(e => e.resident === "Wren").map(e => e.kind)).toEqual(["remark", "call", "thought"]);
+  expect(activity.residents.find(r => r.name === "Wren")!.sessions[0].summaries).toBe("on");
+  // A local resident is answered locally; an unknown one is not found.
+  expect((await s.get<ThoughtsReply>("thoughts", "resident=Gary")).thoughts).toEqual([]);
+  expect((await s.get<Response>("thoughts", "resident=Nobody")).status).toBe(404);
 });
 
 test("unreachable station retains its residents and last success while local requests never await its timeout", async () => {

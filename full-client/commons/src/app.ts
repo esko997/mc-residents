@@ -10,9 +10,10 @@ import { openCommons } from "./db.ts";
 import { Federation } from "./federation.ts";
 import { openStation } from "./station-db.ts";
 import { LiveStream } from "./live-stream.ts";
+import { LiveRouter } from "./live-proxy.ts";
 import type { TextFile } from "./notes.ts";
 import { RolloutTail } from "./rollouts.ts";
-import { activityRoutes, type ActivityReply } from "./routes/activity.ts";
+import { activityRoutes, type ActivityReply, type ThoughtsReply } from "./routes/activity.ts";
 import { commonsRoutes, type CommonsReply } from "./routes/commons.ts";
 import { consoleRoutes, type ConsoleReply } from "./routes/console.ts";
 import { json, refuse, type Context, type Routes } from "./routes/context.ts";
@@ -29,6 +30,7 @@ import { Overlay } from "./overlay.ts";
 /** The JSON each GET route under /<token>/api/ returns, for whoever reads it (the page, the tests). */
 export interface Replies {
   residents: ResidentsReply; activity: ActivityReply; map: MapReply; commons: CommonsReply; notes: NotesReply; file: TextFile; console: ConsoleReply;
+  thoughts: ThoughtsReply;
 }
 
 export interface App {
@@ -41,6 +43,8 @@ export interface App {
   stream: Console;
   feed: ConsoleFeed;
   db: Database;
+  /** Hub only: station discovery, also awaited by tests. */
+  federation?: Federation;
 }
 
 const STATIC: Record<string, string> = {
@@ -81,12 +85,13 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     },
     resident: name => config.residents.find(resident => resident.name.toLowerCase() === name?.toLowerCase()),
   };
-  const overlay = new Overlay(context, token, log);
+  const federation = config.role === "hub" ? new Federation(config, now, { sharedPlaces: () => sharedPlaces(db) }) : undefined;
+  const overlay = new Overlay(context, token, log, federation);
+  const liveRouter = new LiveRouter(live, config.hostName, federation);
   const localRoutes: Routes = {
     ...residentRoutes(context), ...activityRoutes(context), ...mapRoutes(context), ...notesRoutes(context),
     ...(config.role === "hub" ? { ...commonsRoutes(context), ...consoleRoutes(context) } : {}),
   };
-  const federation = config.role === "hub" ? new Federation(config, now, { sharedPlaces: () => sharedPlaces(db) }) : undefined;
   const routes = federation ? federation.wrap(localRoutes) : localRoutes;
   const secret = Buffer.from(token);
 
@@ -101,11 +106,9 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     // Overlay owns bounded bodies, same-origin writes and bounded streaming replies.
     if (rest[0] === "api" && rest[1] === "overlay") return overlay.handle(request, rest.slice(2).join("/"));
     // The URL token was checked before this dispatch. Live owns its larger,
-    // stream-bounded SDP body limit and same-origin mutation checks.
-    if (rest[0] === "api" && rest[1] === "live") {
-      if (config.role === "station") return refuse(404, "Live is unavailable on stations.");
-      return live.handle(request, rest.slice(2).join("/"));
-    }
+    // stream-bounded SDP body limit and same-origin mutation checks; on a hub,
+    // station residents' signaling is proxied to their own host.
+    if (rest[0] === "api" && rest[1] === "live") return liveRouter.handle(request, rest.slice(2).join("/"));
     if (rest[0] === "api") {
       const key = `${request.method} ${rest.slice(1).join("/")}`;
       const handler = Object.hasOwn(routes, key) ? routes[key] : undefined;
@@ -123,7 +126,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   }
 
   return {
-    watcher, tail, stream, feed, db,
+    watcher, tail, stream, feed, db, federation,
     async fetch(request) {
       const url = new URL(request.url);
       if (url.pathname.startsWith("/resident-api/v1/")) {
@@ -148,6 +151,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     start() { watcher.start(); if (config.role === "hub") feed.start(); federation?.start(); void context.readSessions(); },
     stop() {
       overlay.stop();
+      liveRouter.stop();
       // Abort capture and signal FFmpeg now; TERM → KILL/reap continues boundedly.
       void live.shutdown().catch(() => log("Live video encoder cleanup failed; restart Commons before streaming again."));
       residentApi?.close();

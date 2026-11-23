@@ -1,10 +1,13 @@
-// Token-authenticated broadcast endpoints; no network calls or video side effects.
+// Token-authenticated broadcast endpoints; no video side effects. On a hub, the
+// on-stream resident may live on a station: its source comes from the federation
+// cache (never awaited here) and passes through the same projection as local ones.
+import type { Federation } from "./federation.ts";
 import type { Context } from "./routes/context.ts";
 import { json, refuse } from "./routes/context.ts";
-import { overlayData, overlaySecrets, overlayText, type OverlayData } from "./overlay-data.ts";
+import { overlayData, overlaySecrets, overlaySource, overlayText, parseOverlaySource, type OverlayData, type OverlaySource } from "./overlay-data.ts";
 import { LAYOUTS, OverlayStateError, OverlayStore, overlayPresets, type OverlayLayout, type OverlayState } from "./overlay-state.ts";
 
-export interface OverlaySnapshot { state: OverlayState; data: OverlayData; residents: { name: string; liveAvailable: boolean }[] }
+export interface OverlaySnapshot { state: OverlayState; data: OverlayData; residents: { name: string; liveAvailable: boolean; detail?: string }[] }
 const BODY_LIMIT = 32_768, MAX_CLIENTS = 8;
 interface Client { controller: ReadableStreamDefaultController<Uint8Array>; removeAbort(): void }
 
@@ -14,8 +17,9 @@ export class Overlay {
   private timer?: Timer;
   private stopped = false;
   private readonly encoder = new TextEncoder();
-  constructor(private context: Context, private token: string, log: (line: string) => void = console.log) {
-    try { this.store = new OverlayStore(context.config.dbPath, context.config.residents.map(resident => resident.name), context.config.owners); }
+  constructor(private context: Context, private token: string, log: (line: string) => void = console.log, private federation?: Federation) {
+    const names = () => [...context.config.residents.map(resident => resident.name), ...(federation?.remoteResidents().map(resident => resident.name) ?? [])];
+    try { this.store = new OverlayStore(context.config.dbPath, names, context.config.owners); }
     catch { log("Overlay settings are unavailable; preserve and repair the overlay state file. Other Commons routes remain available."); }
   }
   snapshot(): OverlaySnapshot {
@@ -24,10 +28,31 @@ export class Overlay {
     // State is broadcast alongside data. Never return its unfiltered user-editable strings.
     state.title = overlayText(state.title, state.hideNames, secrets, 160);
     state.nowPlaying = overlayText(state.nowPlaying, state.hideNames, secrets, 160);
-    const data = overlayData(this.context, state, secrets);
-    return { state, data, residents: this.context.config.residents.map(resident => ({
-      name: resident.name, liveAvailable: this.context.config.role === "hub" && this.context.config.live?.enabled === true,
-    })) };
+    const { config, watcher } = this.context, remote = this.federation?.remoteResidents() ?? [];
+    const key = (name: string) => name.toLowerCase();
+    const counts = new Map<string, number>();
+    for (const name of [...config.residents.map(resident => resident.name), ...remote.map(resident => resident.name)]) counts.set(key(name), (counts.get(key(name)) ?? 0) + 1);
+    // Host labels are private on air; reasons stay generic.
+    const entry = (name: string, available: boolean, reason: string) => counts.get(key(name))! > 1
+      ? { name, liveAvailable: false, detail: "This name exists on more than one host." }
+      : available ? { name, liveAvailable: true } : { name, liveAvailable: false, detail: reason };
+    const residents = [
+      ...config.residents.map(resident => entry(resident.name, config.live?.enabled === true, "Live video is disabled on its host.")),
+      ...remote.map(resident => entry(resident.name, resident.liveAvailable, resident.unreachable ? "Its host is unreachable." : "Live video is disabled on its host.")),
+    ];
+    const local = this.context.resident(state.resident);
+    let source: OverlaySource | null = null;
+    if (local) source = overlaySource(this.context, local, secrets);
+    else {
+      const found = this.federation?.overlaySource(state.resident), parsed = found && parseOverlaySource(found.value, state.resident);
+      // The last good sample stays visible with its own time, but never claims the resident is online.
+      if (parsed) source = found?.current ? parsed : { ...parsed, online: false };
+    }
+    const located = (name: string) => {
+      const body = this.context.resident(name) ? watcher.sighting(name).state : remote.find(resident => key(resident.name) === key(name))?.state;
+      return body ? { pos: body.pos, dimension: body.dimension } : null;
+    };
+    return { state, data: overlayData(this.context, state, secrets, source, located), residents };
   }
   private remove(client: Client) {
     if (!this.clients.delete(client)) return;
@@ -86,9 +111,16 @@ export class Overlay {
       try { return JSON.parse(bytes.toString("utf8")); } catch { throw new OverlayStateError(400, "Send valid JSON overlay settings."); }
     } finally { clearTimeout(timer); void reader.cancel().catch(() => {}); reader.releaseLock(); }
   }
+  /** A local resident's own secret-filtered source, for a hub's overlay. Needs no saved overlay state. */
+  private source(request: Request): Response {
+    const resident = this.context.resident(new URL(request.url).searchParams.get("resident"));
+    if (!resident) return refuse(404, "No resident by that name.");
+    return json(overlaySource(this.context, resident, overlaySecrets(this.context.config, this.token)));
+  }
   /** App has already authenticated the dashboard URL before dispatch. */
   async handle(request: Request, action: string): Promise<Response> {
     try {
+      if (request.method === "GET" && action === "source" && !this.stopped) return this.source(request);
       if (!this.store || this.stopped) throw new OverlayStateError(503, "Overlay settings are unavailable; ask the operator to inspect the saved overlay file.");
       if (request.method === "GET") {
         if (action === "") return json(this.snapshot());

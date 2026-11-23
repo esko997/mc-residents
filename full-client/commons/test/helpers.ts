@@ -40,6 +40,22 @@ export const rollout = {
   model: (t: number, model: string) => line(t, "event_msg", { type: "thread_settings_applied", thread_settings: { model } }),
   prompt: (t: number, text: string) => line(t, "event_msg", { type: "item_completed", item: { type: "UserMessage", id: `u${++serial}`, content: [{ type: "text", text }] } }),
   remark: (t: number, text: string) => line(t, "response_item", { type: "message", role: "assistant", content: [{ type: "output_text", text }], phase: "commentary" }),
+  /** The model's final answer when a turn ends: activity only, never a thought. */
+  answer: (t: number, text: string) => line(t, "response_item", { type: "message", role: "assistant", content: [{ type: "output_text", text }], phase: "final_answer" }),
+  /**
+   * A reasoning item as the harness logs it: the response item, then the finished item with the same id.
+   * `sections` is empty while summaries are off (only encrypted content then). `plain` writes the
+   * response item's summary as bare strings instead of `{type: "summary_text", text}` parts.
+   */
+  reasoning(t: number, sections: string[], options: { id?: string; plain?: boolean } = {}): string[] {
+    const id = options.id ?? `rs_${++serial}`;
+    return [
+      line(t, "response_item", { type: "reasoning", id, summary: options.plain ? sections : sections.map(text => ({ type: "summary_text", text })), encrypted_content: "gAAAAB" }),
+      line(t + 1, "event_msg", { type: "item_completed", item: { type: "Reasoning", id, summary_text: sections, raw_content: [] } }),
+    ];
+  },
+  /** One summary section as the event Codex emits while summaries stream. */
+  agentReasoning: (t: number, text: string) => line(t, "event_msg", { type: "agent_reasoning", text }),
   tokens: (t: number, total: number, usedPercent = 9) => line(t, "event_msg", {
     type: "token_count",
     info: { total_token_usage: { input_tokens: total - 100, cached_input_tokens: Math.floor(total / 2), output_tokens: 100, reasoning_output_tokens: 10, total_tokens: total } },

@@ -36,7 +36,7 @@ test("overlay pages, assets, presets and API require the existing exact URL toke
   const initial = await snapshot();
   expect(initial.data.online).toBe(false); expect(initial.data.sampledAt).toBeNull();
   expect(initial.data.vitals).toBeNull(); expect(initial.data.position).toBeNull();
-  expect(initial.residents).toEqual([{ name: "Gary", liveAvailable: false }]);
+  expect(initial.residents).toEqual([{ name: "Gary", liveAvailable: false, detail: "Live video is disabled on its host." }]);
 });
 
 test("HTTP mutation has bounded streamed JSON, same-origin gating, strict fields and optimistic conflict", async () => {
@@ -138,12 +138,16 @@ test("corrupt persisted overlay is a safe explicit failure without taking Common
   expect(readFileSync(`${config.dbPath}.overlay.json`, "utf8")).toBe("{broken");
 });
 
-test("station snapshots use real local sources and never claim remote video support", async () => {
+test("station snapshots use real local sources and report Live only from the station's own opt-in", async () => {
   start({ COMMONS_ROLE: "station" });
   const answer = await snapshot();
-  expect(answer.residents).toEqual([{ name: "Gary", liveAvailable: false }]);
+  expect(answer.residents).toEqual([{ name: "Gary", liveAvailable: false, detail: "Live video is disabled on its host." }]);
   expect(answer.data.alarms).toEqual([]);
-  expect((await get("api/live/status")).status).toBe(404);
+  expect(await (await get("api/live/status")).json()).toMatchObject({ enabled: false, state: "disabled" });
+  app!.stop(); app = undefined;
+  start({ COMMONS_ROLE: "station", COMMONS_LIVE_ENABLED: "true", COMMONS_LIVE_ENCODER: "h264_vaapi", COMMONS_LIVE_VAAPI_DEVICE: "/dev/dri/renderD128" });
+  expect((await snapshot()).residents).toEqual([{ name: "Gary", liveAvailable: true }]);
+  expect(await (await get("api/live/status")).json()).toMatchObject({ enabled: true, state: "idle" });
 });
 
 test("privacy fails closed for URLs, addresses, hostnames, paths, credentials and secret encodings", () => {

@@ -2,6 +2,11 @@
 cli_auth_credentials_store = "file"
 model = "gpt-6.2-sol"
 model_reasoning_effort = "medium"
+# The model's default for gpt-6.2-sol is "none": reasoning items then carry only
+# encrypted content and an empty summary. "concise" asks for short readable
+# summaries, which the Commons dashboard shows as each resident's thoughts. It
+# does not change the model, the effort or what the resident is told.
+model_reasoning_summary = "concise"
 # Older history is summarised once a request passes this size. At 60K the
 # residents lost everything older than about nine minutes (20 summaries in a
 # 3.4-hour run) and with it any momentum on long jobs; 150K keeps roughly

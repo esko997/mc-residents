@@ -118,8 +118,66 @@ test("reasoning summaries become the resident's thoughts once they are switched 
   await tail.refresh();
   expect(tail.recent().map(entry => `${entry.kind}: ${entry.text}`)).toEqual([
     "remark: Heading to the stream.",
-    "thought: The stream is north.\nWheat needs water.",
+    "thought: The stream is north.\n\nWheat needs water.",
   ]);
+  expect(tail.thoughtSummary("Gary").summaries).toBe("on");
+});
+
+test("thoughts: both summary shapes and the streamed sections are recorded once each, newest first, apart from tool calls", async () => {
+  session("gary", [
+    rollout.meta(T, join(home.dir, "resident", "gary")),
+    // Streamed sections arrive first; the response item and finished item that repeat them add nothing.
+    rollout.agentReasoning(T + 1000, "**Finding water**\n\nThe stream is north of the wheat."),
+    ...rollout.reasoning(T + 1500, ["**Finding water**\n\nThe stream is north of the wheat."], { id: "rs_a" }),
+    ...rollout.call(T + 2000, "go_to", { x: 1, z: -40 }, "Started #goto 1 -40."),
+    // Plain strings in the response item; the finished item has the same id.
+    ...rollout.reasoning(T + 3000, ["**Planting**", "Seeds go on the wet side."], { plain: true }),
+    // The first item read again much later, as a harness replaying history would write it.
+    ...rollout.reasoning(T + 400_000, ["**Finding water**\n\nThe stream is north of the wheat."], { id: "rs_a" }),
+    rollout.remark(T + 4000, "Planting by the stream."),
+  ]);
+  const tail = new RolloutTail(join(home.dir, "sessions"), residents(), { now: () => T + 60_000, maxEntries: 2 });
+  await tail.refresh();
+  expect(tail.thoughts("Gary")).toEqual([
+    { t: T + 4000, kind: "remark", text: "Planting by the stream." },
+    { t: T + 3000, kind: "thought", text: "**Planting**\n\nSeeds go on the wet side." },
+    { t: T + 1000, kind: "thought", text: "**Finding water**\n\nThe stream is north of the wheat." },
+  ]);
+  // The activity record keeps only its newest two lines here; thoughts are kept apart from it.
+  expect(tail.recent({ resident: "Gary" }).length).toBeLessThanOrEqual(3);
+  expect(tail.thoughtSummary("Gary")).toEqual({ summaries: "on", latest: { t: T + 4000, kind: "remark", text: "Planting by the stream." } });
+  expect(tail.sessions("Gary")[0].summaries).toBe("on");
+  expect(tail.thoughtSummary("Margo")).toEqual({ summaries: "unknown", latest: null });
+});
+
+test("thoughts: with summaries off a session shows its remarks only and says so", async () => {
+  session("gary", [
+    rollout.meta(T, join(home.dir, "resident", "gary")),
+    ...rollout.reasoning(T + 1000, []),
+    rollout.remark(T + 2000, "I'll check the wheat first."),
+    ...rollout.reasoning(T + 3000, []),
+    ...rollout.call(T + 4000, "status", {}, "ok"),
+    rollout.answer(T + 5000, "Stopping for now; my notes are up to date."),
+  ]);
+  const tail = tailer();
+  await tail.refresh();
+  // The turn's final answer is in the activity record, but it is not a thought or remark.
+  expect(tail.thoughts("Gary").map(thought => `${thought.kind}: ${thought.text}`)).toEqual(["remark: I'll check the wheat first."]);
+  expect(tail.thoughtSummary("Gary")).toMatchObject({ summaries: "off", latest: { kind: "remark" } });
+  expect(tail.recent().map(entry => entry.kind)).toEqual(["answer", "call", "remark"]);
+});
+
+test("thoughts: at most maxThoughts per resident are kept, the newest, and a file read again replaces its own", async () => {
+  const lines = [rollout.meta(T, join(home.dir, "resident", "gary"), "s1")];
+  for (let i = 0; i < 12; i++) lines.push(...rollout.reasoning(T + i * 1000, [`Thought ${i}`]), ...rollout.call(T + i * 1000 + 500, "mine", { block: "stone" }, "Mined."));
+  session("gary", lines);
+  const tail = new RolloutTail(join(home.dir, "sessions"), residents(), { now: () => T + 60_000, maxThoughts: 4 });
+  await tail.refresh();
+  expect(tail.thoughts("Gary").map(thought => thought.text)).toEqual(["Thought 11", "Thought 10", "Thought 9", "Thought 8"]);
+  // Rewritten shorter (a new file in the same place): what was read from the old one goes.
+  home.put("sessions/2026/11/21/gary.jsonl", [rollout.meta(T, join(home.dir, "resident", "gary"), "s1"), ...rollout.reasoning(T + 500, ["Only this"])].join("\n") + "\n");
+  await tail.refresh();
+  expect(tail.thoughts("Gary").map(thought => thought.text)).toEqual(["Only this"]);
 });
 
 test("a line that is not JSON is skipped and the lines after it still count", async () => {

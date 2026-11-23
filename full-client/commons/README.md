@@ -25,11 +25,14 @@ It alone serves shared knowledge, reviews, commands and the resident API.
 
 `COMMONS_ROLE=station` runs the same package for another host's residents. Set
 `COMMONS_HOST_NAME=chungus1` there. A station serves only authenticated dashboard
-GETs for `residents`, `activity`, `map`, `notes`, `file`, `picture` and `map-picture`,
-plus the dashboard static assets. It samples local positions into its own SQLite
+GETs for `residents`, `activity`, `thoughts`, `map`, `notes`, `file`, `picture`, `map-picture`
+and `overlay/source`, plus the dashboard static assets and its own Live API
+(see [Live on stations](#live-on-stations)). It samples local positions into its own SQLite
 and keeps its local place-picture cache; it never initializes or accesses shared
-tables. Shared Knowledge, review, console, server observer and Live are disabled,
+tables. Shared Knowledge, review, console and server observer are disabled,
 even if their old environment settings are present. Do not copy the hub DB to a station.
+Stations now read the `COMMONS_LIVE_*` settings like the hub: an invalid
+leftover value (for example `h264_vaapi` without a device) stops Commons at start.
 
 The hub reads `COMMONS_STATIONS_FILE`, default
 `~/gary-client/commons-data/stations.json` (under `GARY_CLIENT_HOME` when set):
@@ -62,13 +65,15 @@ return 409.
 Merged dashboard shapes preserve existing fields:
 
 - `residents`: adds `role`, `federationErrors`; each resident has `host`,
-  `hostUnreachable`, `hostLastSeen`, `liveAvailable`. Remote Live is unavailable.
+  `hostUnreachable`, `hostLastSeen`, `liveAvailable`, `audioAvailable`. A station
+  reports its own Live/audio settings; the hub shows them only while the station is
+  reachable and the name is unique.
 - `activity`: merges host-tagged entries and summaries, remapping IDs into a hub
   cursor. A source restart/discovery changes `boot`, resetting browser cursors.
 - `map`: merges local/shared places with station-private places, deaths and trails
   for the requested hours. Remote picture IDs are `station:<host>:<image-id>`;
   `map-picture` forwards them without exposing the station URL.
-- `notes?resident=Name`, `file`, and `picture` resolve the owning host. Notes include
+- `notes?resident=Name`, `file`, `picture` and `thoughts?resident=Name` resolve the owning host. Notes include
   that host's caretaker entries and the hub's current shared places. `commons`
   includes remote caretaker notes but never fetches a station's shared knowledge.
 - Scoped remote reads have the same five-second cache and bounded deadline;
@@ -96,6 +101,7 @@ Merged dashboard shapes preserve existing fields:
    [the caretaker README](../overseer/README.md) for `caretaker.env` and role gates.
    Only the hub runs central review/research jobs. Never use the dashboard token
    as a bearer token or overwrite it with the caretaker token.
+6. Optional: enable Live on the station itself; see [Live on stations](#live-on-stations).
 
 ## Run
 
@@ -215,11 +221,14 @@ once; later starts print only where the token file is.
 
 ## Private live video
 
-The **Live** panel selects any configured local resident. Watch starts one shared
-channel; selecting another resident switches it for all viewers. Up to four
-viewers may share that channel. Stop, leaving Live, or hiding the page releases
-that viewer; capture and encoding stop when the last viewer leaves. Lost viewers
-expire after 30 seconds. Audio is opt-in; there is no recording or desktop capture.
+The **Live** panel lists every resident, on the hub and on stations. Each host
+has one shared channel for its own residents: Watch starts it; watching another
+resident **on the same host** switches it for all of that host's viewers, while
+channels on other hosts are unaffected. The status line names the host whose
+channel you see. Up to four viewers may share one channel. Stop, leaving Live, or
+hiding the page releases that viewer; capture and encoding stop when the last
+viewer leaves. Lost viewers expire after 30 seconds. Audio is opt-in; there is no
+recording or desktop capture.
 
 Loading screens do not end the channel. When the resident changes dimension,
 respawns or the client stops sending frames for 5 seconds, Synapse ends its raw
@@ -276,6 +285,81 @@ The experimental [Twitch mode guide](../../docs/TWITCH-MODE.md) covers isolated
 per-client audio, OBS RTSP pull, transparent overlays, the second-window scene
 editor and composite preview. These pages live under the existing secret URL:
 `overlay`, `overlay/control`, `overlay/preview`. Keep that URL off stream.
+
+### Live on stations
+
+A station may run Live for its own residents when **its own** configuration
+enables it, with its own explicit encoder and its own MediaMTX. The browser still
+talks only to the hub's secret URL:
+
+```text
+browser ──signaling──▶ hub /<hub-token>/api/live/* ──server-side──▶ station /<station-token>/api/live/*
+browser ◀═══════════ WebRTC media (UDP/TCP 8189) ═══════════════▶ station MediaMTX
+```
+
+The hub routes each request by resident: `GET live/status?resident=Name`, and
+`POST live/watch {resident}`, `live/offer {lease, generation, resident, sdp}`,
+`live/heartbeat {lease, generation, resident}`, `live/stop {lease, generation, resident}`.
+A hub resident (or a request without `resident`, from an old page) uses the hub's
+own channel; a station resident's request goes to the station URL in the stations
+file. The station alone issues leases and generations, so fencing, the four-viewer
+cap, last-viewer teardown and the "between worlds" resume work as on the hub. The
+hub checks origin, JSON type and the SDP body limit before forwarding, rebuilds
+the body from validated fields, and returns only a validated status/lease/SDP
+shape plus `host`. That is the stations-file label, already shown on every
+dashboard resident (`Wren (chungus1)`) and never on the overlay; choose a label
+that is not the station's DNS name if the name itself is private. Station
+status details and error sentences are relayed only when they contain no URL,
+IP address, `name:port`, long token-like run, control character, or the
+station URL's host, port or secret path; otherwise a fixed sentence replaces
+them. Deadlines: status 2.5 s, watch 33 s,
+offer 11 s, heartbeat and stop 6 s; at most 12 calls in flight per station
+(then 429). Concurrent status reads for one station share one request. A
+station that is unreachable, has Live disabled, or shares a resident name with
+another host is refused for that resident with a clear reason; hub-local Live and
+other stations are never delayed. The station's media candidates (its LAN
+address and port 8189) reach the browser inside the SDP answer; nothing else about
+the station does.
+
+The overlay pages (`overlay`, `overlay/control`, `overlay/preview`) also accept
+any federated resident. Overlay state stays on the hub. For a station resident the
+hub reads the station's `overlay/source?resident=Name` through the federation
+cache (five seconds, never awaited by the overlay), accepts only its exact bounded
+shape, and applies the hub's secret filter and hide list as for hub residents.
+Chat, alarms and shared places come from the hub. While the station is
+unreachable, the last sample stays visible with its time but is shown offline.
+
+Install on the station:
+
+1. FFmpeg with the selected encoder. For AMD, install Mesa's VA-API driver and
+   check the encoder on the actual render node, for example
+   `vainfo --display drm --device /dev/dri/renderD128` must list
+   `VAProfileH264ConstrainedBaseline` (or `VAProfileH264Main`) with
+   `VAEntrypointEncSlice`, and `ffmpeg -hide_banner -encoders | grep h264_vaapi`
+   must list the encoder. The user running Commons needs read/write access to
+   that node (usually the `render` group); Commons refuses to start a channel
+   otherwise, with no software fallback.
+2. MediaMTX **1.21.4** at `~/gary-client/bin/mediamtx`, `../live/mediamtx.yml` at
+   `~/gary-client/live/mediamtx.yml`, `../live/resident-video.service` as a user
+   service, and `../live/commons-live.conf` as
+   `~/.config/systemd/user/commons.service.d/live-video.conf` with the station's
+   encoder lines uncommented. `systemctl --user daemon-reload`, start
+   `resident-video.service`, restart Commons.
+3. `[features] videoEnabled = true` in each stopped client's
+   `config/synapse-client.toml` on that station.
+4. Firewall: the hub must reach the station's Commons port (8770, already needed
+   for federation); viewers' browsers must reach the station on **UDP and TCP
+   8189** (WebRTC media). Keep RTSP 8554 and WHEP 8889 on loopback.
+
+Per-host settings (in the drop-in or `~/.config/commons/env`):
+
+| Host | Role | `COMMONS_LIVE_ENABLED` | `COMMONS_LIVE_ENCODER` | `COMMONS_LIVE_VAAPI_DEVICE` |
+| --- | --- | --- | --- | --- |
+| Inspiron (GTX 1060) | hub | `true` | `h264_nvenc` | unset |
+| Chungus1 (RX 590) | station | `true` | `h264_vaapi` | `/dev/dri/renderD128` (confirm with `ls -l /dev/dri/by-path`) |
+
+`COMMONS_LIVE_AUDIO=true` is per host too and needs each resident's dedicated
+sink on that host; `audioAvailable` in `residents` reports the result.
 
 ### Less obstructive client HUD
 
@@ -415,7 +499,7 @@ after API note submission. Preserve the place-picture cache beside the database.
   always use the stacked layout without erasing the desktop arrangement.
 - **Activity**: the Codex session files, told apart by the `cwd` in their first
   line, and each resident's call log. Each file is read once and then only its
-  new bytes. The session files give remarks (assistant messages), thoughts
+  new bytes. The session files give remarks (commentary), final answers, thoughts
   (reasoning summaries; nothing while those are empty), token counts and shell
   commands. "Routine" lines (status, wait, picture, screen, inventory, shell
   commands, arrivals, hurt, Baritone chatter) are hidden until asked for. The
@@ -436,6 +520,41 @@ after API note submission. Preserve the place-picture cache beside the database.
   log is not an error, a half-written last line waits for its end, and a log
   that is removed or begun again makes the app read that resident's files
   afresh and the page reload its feed.
+- **Thoughts** (on the Residents cards and in Activity): what each resident
+  thought and remarked, in its own words. Thoughts are the reasoning summaries in
+  its Codex session files: `response_item` lines of type `reasoning` with a
+  `summary` list (`{type: "summary_text", text}` parts or plain strings), the
+  harness's finished `Reasoning` item (`summary_text`), and `agent_reasoning`
+  events (one section each). One summary arrives up to three ways; each section is
+  recorded once (same item id, or the same text within five minutes). Remarks are
+  the resident's commentary messages (`phase: "commentary"`, or no phase). A
+  turn's final answer (`phase: "final_answer"`) is listed in Activity as
+  "answered" but is never a thought or remark. Nothing else is shown: no
+  prompts, tool output, encrypted reasoning, paths or tokens.
+
+  Summaries exist only when the Codex config asks for them:
+  `model_reasoning_summary = "concise"` in `../codex-config.toml` (the installed
+  CLI accepts `auto`, `concise`, `detailed`, `none`; gpt-6.2-sol defaults to
+  `none`). A session started or resumed before that setting writes empty
+  summaries; it then shows remarks only and says "reasoning summaries are off for
+  this session". Each host keeps the newest 200 thoughts and remarks per resident
+  in memory, apart from the activity record, so busy hours of tool calls do not
+  push them out; they are read from the last two days of session files.
+
+  A resident's card shows the newest one with its age; selecting it opens
+  Activity's **Thoughts** view for that resident: each thought, then what the
+  resident did until its next one (oldest first inside the group, groups newest
+  first). "Routine lines too" applies there as well. For a single resident the
+  view also asks `GET thoughts?resident=Name` (at most every 30 s) for thoughts
+  older than the loaded activity; their actions are not shown.
+
+  API: `residents[].thoughts` is `{summaries: "on" | "off" | "unknown", latest:
+  {t, kind: "thought" | "remark", text} | null}`; `activity` session summaries
+  carry `summaries`; `GET thoughts?resident=Name` returns `{now, resident,
+  summaries, thoughts}` with at most 200, newest first. On the hub, a station
+  resident's card data arrives with `residents`, its thoughts in the merged
+  `activity`, and `thoughts` is forwarded to its station through the five-second
+  scoped cache. Thoughts are dashboard-only: the stream overlay never receives them.
 - **Map**: the `positions` table (this app writes one row per online resident
   every 10 s), `places.json` of each resident, `resident/shared/places.json`,
   and deaths from `places.json` plus `died` events in the session files.
@@ -545,6 +664,20 @@ best-effort console `tellraw` displays `<Name shouts for help: reason>` for huma
 The console bridge is never awaited or retried: missing chat cannot delay event
 fanout. Resident log readers suppress this reserved relay line so it cannot
 bypass spatial perception.
+
+Resident-only `GET /resident-api/v1/sight?to=<Resident>` answers
+`{result: {visible: true|false|null, distance, reason}}`: whether the caller can
+see that other credentialed resident now, from the server observer's
+`/v1/sight?from=<caller>&to=<Resident>` (canonical credential names; the bridge
+matches case-sensitively). It is always the caller's own sight: a `from`
+parameter, the caller's own name, an unknown name or a caretaker credential is
+refused (400/403). Without an observer, when it is down, slow (1.5 s bound) or
+reports unknown (other dimension, offline, unloaded ray) the answer is
+`visible: null`, never a guess. The observer comes from
+`COMMONS_OBSERVER_URL`/`COMMONS_OBSERVER_TOKEN_FILE`, as the hub's config reads
+it (`src/resident-sight.ts`). A resident body asks only for an alarm beyond its
+48-block earshot and within 96 blocks in the same dimension, and perceives it
+only when `visible` is `true`.
 
 ## The phone-chat service on the server machine
 

@@ -16,9 +16,10 @@ function receive(snapshot) {
   if (latest && latest.state.resident !== snapshot.state.resident) media.selectionChanged();
   latest = snapshot;
   const residents = snapshot.residents || [];
-  if (JSON.stringify(Array.from(select.options, option => option.value)) !== JSON.stringify(residents.map(item => item.name))) {
+  const label = item => item.liveAvailable === true ? item.name : `${item.name} — Live unavailable${item.detail ? `: ${item.detail}` : ""}`;
+  if (JSON.stringify(Array.from(select.options, option => [option.value, option.textContent])) !== JSON.stringify(residents.map(item => [item.name, label(item)]))) {
     select.replaceChildren();
-    for (const resident of residents) { const option = document.createElement("option"); option.textContent = resident.name; option.value = resident.name; select.append(option); }
+    for (const resident of residents) { const option = document.createElement("option"); option.textContent = label(resident); option.value = resident.name; select.append(option); }
   }
   select.value = snapshot.state.resident; select.disabled = selecting || !residents.length;
   media.availability(!selecting && residents.some(item => item.name === snapshot.state.resident && item.liveAvailable === true));

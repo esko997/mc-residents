@@ -195,7 +195,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     stationsFile: expandHome(env.COMMONS_STATIONS_FILE ?? join(home, "commons-data", "stations.json")),
     consoleUrl: role === "hub" && consoleUrl ? `${consoleUrl.replace(/\/+$/, "")}/` : undefined,
     observer: role === "hub" ? observerSourceFromEnv(env) : undefined,
-    live: role === "hub" ? liveConfig(env) : undefined,
+    // Each host publishes only its own residents with its own explicit encoder; a hub proxies signaling to stations.
+    live: liveConfig(env),
     autoAccept: role === "hub" && !/^(0|off|false|no)$/i.test(env.COMMONS_AUTO_ACCEPT ?? ""),
     owners: (env.COMMONS_OWNER ?? "spesk01").split(/[\s,]+/).filter(Boolean),
     home, port, hostname: env.COMMONS_BIND ?? "0.0.0.0", dbPath,

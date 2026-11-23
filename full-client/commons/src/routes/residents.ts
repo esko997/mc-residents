@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pendingCount } from "../db.ts";
 import { fileSize } from "../notes.ts";
-import type { Quota, TokenTotals } from "../rollouts.ts";
+import type { Quota, ThoughtSummary, TokenTotals } from "../rollouts.ts";
 import { unitStates } from "../units.ts";
 import type { Sighting } from "../watcher.ts";
 import { refuse, type Context, type Routes } from "./context.ts";
@@ -39,7 +39,9 @@ export interface ResidentsReply {
   /** Units that belong to no single resident. */
   sharedUnits: UnitState[];
   observer: ObserverHealth;
-  residents: (Sighting & { name: string; host: string; hostUnreachable: boolean; hostLastSeen: number | null; liveAvailable: boolean; memoryBytes: number | null; units: UnitState[]; tokens: TokenTotals; pictureAt: number | null; sessionHealth: SessionHealth | null; serverObservation: ObservedResident | null })[];
+  residents: (Sighting & { name: string; host: string; hostUnreachable: boolean; hostLastSeen: number | null; liveAvailable: boolean; audioAvailable: boolean; memoryBytes: number | null; units: UnitState[]; tokens: TokenTotals; pictureAt: number | null; sessionHealth: SessionHealth | null; serverObservation: ObservedResident | null;
+    /** The newest thought or remark, and whether the latest session writes reasoning summaries. Dashboard only: never sent to the overlay. */
+    thoughts: ThoughtSummary })[];
 }
 
 export function residentRoutes({ config, db, watcher, tail, now, readSessions, resident }: Context): Routes {
@@ -58,10 +60,13 @@ export function residentRoutes({ config, db, watcher, tail, now, readSessions, r
         residents: await Promise.all(config.residents.map(async entry => ({
           name: entry.name, ...watcher.sighting(entry.name),
           host: config.hostName, hostUnreachable: false, hostLastSeen: now(),
-          liveAvailable: config.role === "hub" && config.live?.enabled === true,
+          // Hubs and stations both report their own Live setting; the hub merges reachability.
+          liveAvailable: config.live?.enabled === true,
+          audioAvailable: config.live?.enabled === true && config.live.audio === true && !!entry.audioSink,
           memoryBytes: await fileSize(join(entry.dir, "memory.md")),
           sessionHealth: await sessionHealth(join(config.home, "sessions", `${entry.name}-health.json`)),
           units: unitsOf(entry.name), tokens: tail.tokenTotals(entry.name), pictureAt: watcher.pictureAt(entry.name),
+          thoughts: tail.thoughtSummary(entry.name),
           serverObservation: watcher.observer.resident(entry.name) ?? null,
         }))),
       };

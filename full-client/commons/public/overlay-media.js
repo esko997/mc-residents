@@ -47,8 +47,9 @@ export function createPreviewMedia({ video, blank, watch, stop, audio, fullscree
     video.srcObject = null; video.removeAttribute("src"); video.load();
     if (document.fullscreenElement === stage) void document.exitFullscreen().catch(() => {});
   }
-  function release(lease, channelGeneration, expected) {
-    void request("stop", { lease, generation: channelGeneration }, { keepalive: true }).catch(() => {
+  // The resident routes lease requests to the host whose channel issued the lease.
+  function release(lease, channelGeneration, expected, name) {
+    void request("stop", { lease, generation: channelGeneration, resident: name }, { keepalive: true }).catch(() => {
       if (generation === expected && !current && !wanted) message("Playback stopped here. Release was not confirmed; the server lease expires within 30 seconds of its last heartbeat.");
     });
   }
@@ -59,7 +60,7 @@ export function createPreviewMedia({ video, blank, watch, stop, audio, fullscree
       clearTimeout(session.heartbeat); clearTimeout(session.deadline); clearTimeout(session.expiry);
       session.controller.abort();
       if (session.peer) { session.peer.ontrack = null; session.peer.onconnectionstatechange = null; session.peer.close(); for (const receiver of session.peer.getReceivers()) receiver.track?.stop(); }
-      if (session.lease) release(session.lease, session.generation, generation);
+      if (session.lease) release(session.lease, session.generation, generation, session.resident);
     }
   }
   function cancelRetry() { clearTimeout(wanted?.timer); wanted = null; }
@@ -111,7 +112,7 @@ export function createPreviewMedia({ video, blank, watch, stop, audio, fullscree
       if (Date.now() >= session.expiresAt) { lost(session, "Your viewing lease expired. Press Watch to join again."); return; }
       const sentAt = Date.now();
       try {
-        const data = await request("heartbeat", { lease: session.lease, generation: session.generation }, { signal: session.controller.signal });
+        const data = await request("heartbeat", { lease: session.lease, generation: session.generation, resident: session.resident }, { signal: session.controller.signal });
         if (current !== session) return;
         if (!matches(session, data)) { lost(session, "The shared channel changed or ended. Press Watch to join again."); return; }
         setResuming(session, data.resuming === true);
@@ -150,7 +151,7 @@ export function createPreviewMedia({ video, blank, watch, stop, audio, fullscree
       try { data = await request("watch", { resident: session.resident }, { timeout: 35000 }); }
       finally { pendingWatch = false; buttons(); }
       if (typeof data.lease !== "string" || !Number.isSafeInteger(data.generation)) throw new MediaError("The live service returned an invalid lease. Press Watch to try again.", true);
-      if (current !== session) { release(data.lease, data.generation, generation); return; }
+      if (current !== session) { release(data.lease, data.generation, generation, session.resident); return; }
       session.lease = data.lease; session.generation = data.generation; session.recoverable = true;
       if (!matches(session, data)) throw new MediaError("The shared channel changed before playback started. Press Watch to join again.");
       session.resuming = data.resuming === true; session.audio = data.audio === true;
@@ -184,7 +185,7 @@ export function createPreviewMedia({ video, blank, watch, stop, audio, fullscree
       if (current !== session) return;
       const sdp = peer.localDescription?.sdp;
       if (!sdp || sdp.length > 65536) throw new MediaError("The browser generated an invalid media offer. Press Watch to try again.", true);
-      const answer = await request("offer", { lease: session.lease, generation: session.generation, sdp }, { signal: session.controller.signal, timeout: 12000 });
+      const answer = await request("offer", { lease: session.lease, generation: session.generation, resident: session.resident, sdp }, { signal: session.controller.signal, timeout: 12000 });
       if (current !== session) return;
       if (typeof answer.sdp !== "string" || answer.sdp.length > 65536) throw new MediaError("The live service returned an invalid media answer. Press Watch to try again.", true);
       await peer.setRemoteDescription({ type: "answer", sdp: answer.sdp });

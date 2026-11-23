@@ -18,9 +18,14 @@ interface Station {
   cache: Map<string, Cached>; pending: Map<string, Promise<Cached | undefined>>;
 }
 interface Cached { at: number; status: number; headers: Record<string, string>; bytes: Uint8Array<ArrayBuffer> }
+/** Where a resident's Live signaling goes; `url` is the station's secret URL and stays server-side. */
+export type LiveTarget =
+  | { kind: "local" } | { kind: "duplicate" }
+  | { kind: "remote"; host: string; url: string; unreachable: boolean; liveAvailable: boolean };
 const TTL = 5000;
 const MAX_REPLY = 4 * 1024 * 1024;
-const SCOPED: Record<string, true> = { notes: true, file: true, picture: true, "map-picture": true };
+// A station resident's thoughts come from its own host, through the same five-second cache as its notes.
+const SCOPED: Record<string, true> = { notes: true, file: true, picture: true, "map-picture": true, thoughts: true };
 const nameKey = (name: string) => name.toLowerCase();
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const parse = <T>(cached?: Cached): T | undefined => {
@@ -72,10 +77,10 @@ export class Federation {
       station.lastSeen = row.lastSeen;
       station.unreachable = true;
       station.residents = row.names.map((name: string) => ({
-        name, host: station.host, hostUnreachable: true, hostLastSeen: row.lastSeen, liveAvailable: false,
+        name, host: station.host, hostUnreachable: true, hostLastSeen: row.lastSeen, liveAvailable: false, audioAvailable: false,
         status: "unchecked", checkedAt: 0, state: null, lastOnlineAt: null, memoryBytes: null,
         units: [], tokens: { day: { input: 0, cached: 0, output: 0, reasoning: 0, total: 0 }, daySessions: 0 },
-        pictureAt: null, sessionHealth: null, serverObservation: null,
+        pictureAt: null, sessionHealth: null, serverObservation: null, thoughts: { summaries: "unknown", latest: null },
       }));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") this.rosterError = "Cannot read the saved station roster; offline names may be unavailable after restart.";
@@ -287,12 +292,15 @@ export class Federation {
         if (answer instanceof Response) return answer;
         if (route === "residents") {
           const data = answer as ResidentsReply;
+          // A station reports its own Live/audio settings; an unreachable one cannot serve them.
           const remote = this.stations.flatMap(s => (s.residents ?? []).map(r => ({
-            ...r, host: s.host, liveAvailable: false, hostUnreachable: s.unreachable, hostLastSeen: s.lastSeen,
+            ...r, host: s.host, hostUnreachable: s.unreachable, hostLastSeen: s.lastSeen,
+            liveAvailable: !s.unreachable && r.liveAvailable === true,
+            audioAvailable: !s.unreachable && r.liveAvailable === true && r.audioAvailable === true,
             ...(s.unreachable ? { status: "error" as const, detail: "host unreachable", state: null } : {}),
           })));
           return { ...data, federationErrors: this.errors(), residents: [...data.residents, ...remote].map(r =>
-            this.owners(r.name).length > 1 ? { ...r, liveAvailable: false } : r) };
+            this.owners(r.name).length > 1 ? { ...r, liveAvailable: false, audioAvailable: false } : r) };
         }
         if (route === "activity" && this.stations.length) return this.activity(answer as ActivityReply, ask);
         if (route === "map") return this.map(answer as MapReply);
@@ -310,6 +318,37 @@ export class Federation {
       };
     }
     return wrapped;
+  }
+
+  /** Server-side only: where a resident's Live signaling goes. The URL never reaches a browser. */
+  liveTarget(name: string): LiveTarget {
+    this.reload();
+    const owners = this.owners(name);
+    if (owners.length > 1) return { kind: "duplicate" };
+    const owner = owners[0];
+    if (!owner || owner === "local") return { kind: "local" };
+    const resident = owner.residents?.find(r => nameKey(r.name) === nameKey(name));
+    return { kind: "remote", host: owner.host, url: owner.url, unreachable: owner.unreachable,
+      liveAvailable: !owner.unreachable && resident?.liveAvailable === true };
+  }
+
+  /** Every discovered remote resident (possibly from the saved roster), never awaiting a station. */
+  remoteResidents(): { name: string; host: string; unreachable: boolean; liveAvailable: boolean; state: ResidentsReply["residents"][number]["state"] }[] {
+    this.reload();
+    return this.stations.flatMap(s => (s.residents ?? []).map(r => {
+      const unique = this.owners(r.name).length === 1;
+      return { name: r.name, host: s.host, unreachable: s.unreachable,
+        liveAvailable: unique && !s.unreachable && r.liveAvailable === true, state: unique && !s.unreachable ? r.state : null };
+    }));
+  }
+
+  /** The station's last overlay source for one of its residents; refreshed in the background. */
+  overlaySource(name: string): { value: unknown; current: boolean } | undefined {
+    const owners = this.owners(name), owner = owners[0];
+    if (owners.length !== 1 || !owner || owner === "local") return undefined;
+    const path = `overlay/source?${new URLSearchParams({ resident: name })}`, entry = owner.cache.get(path);
+    void this.fetchStation(owner, path);
+    return { value: parse<unknown>(entry), current: !owner.unreachable && entry?.status === 200 };
   }
 
   private map(local: MapReply): MapReply {

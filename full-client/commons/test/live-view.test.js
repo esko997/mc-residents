@@ -76,7 +76,7 @@ function liveRig() {
     stop: () => [200, status()],
   };
   const fetch = mock(async (url, init) => {
-    const route = url.split("/").pop(), body = init?.body ? JSON.parse(init.body) : undefined;
+    const route = url.split("/").pop().split("?")[0], body = init?.body ? JSON.parse(init.body) : undefined;
     calls.push({ route, body });
     const [code, data] = routes[route](body);
     return { ok: code < 400, status: code, json: async () => data };
@@ -156,7 +156,7 @@ async function watchGary(rig, view, find) {
 const BETWEEN = "Between worlds; holding the last picture.";
 
 describe("federated Live controls", () => {
-  test("local-only Live status never enables Watch for a remote resident", async () => {
+  test("a remote resident whose station reports Live unavailable cannot be watched; status is never read for it", async () => {
     await withLiveView(async ({ view, find, fetchStatus }) => {
       view.updateResidents(reply([resident("Gary", "inspiron", true), resident("Wren", "chungus1", false)]));
       view.setActive(true);
@@ -171,13 +171,17 @@ describe("federated Live controls", () => {
       expect(fetchStatus).not.toHaveBeenCalled();
       await view.loadStatus();
       expect(fetchStatus).toHaveBeenCalledTimes(1);
-      expect(fetchStatus.mock.calls[0][0]).toBe("api/live/status");
+      expect(fetchStatus.mock.calls[0][0]).toBe("api/live/status?resident=Wren");
       expect(watch.disabled).toBe(true);
       expect(watch.textContent).toBe("Unavailable");
       select.value = "Gary";
       select.listeners.change();
       expect(watch.disabled).toBe(false);
       expect(watch.textContent).toBe("Watch");
+      // Selecting an available resident reads that resident's host channel.
+      await settle();
+      expect(fetchStatus.mock.calls.at(-1)[0]).toBe("api/live/status?resident=Gary");
+      expect(watch.disabled).toBe(false);
     });
   });
 
@@ -198,16 +202,43 @@ describe("federated Live controls", () => {
     });
   });
 
-  test("stations do not poll the disabled Live endpoint", async () => {
+  test("a remote resident is watchable when its station reports Live; status follows its host and the disabled reason names it", async () => {
+    await withLiveView(async ({ view, find, fetchStatus }) => {
+      fetchStatus.mockImplementation(async url => ({ ok: true, json: async () => url.endsWith("resident=Wren")
+        ? { enabled: false, state: "disabled", resident: null, generation: 0, viewers: 0, detail: "Live video is disabled on host chungus1.", host: "chungus1" }
+        : { enabled: true, state: "idle", resident: null, generation: 3, viewers: 0, detail: "", host: "inspiron" } }));
+      view.updateResidents(reply([resident("Gary", "inspiron", true), resident("Wren", "chungus1", true)]));
+      view.setActive(true);
+      const select = find("#live-resident"), watch = find("#live-watch");
+      await view.loadStatus();
+      expect(find("#live-channel").textContent).toContain("Channel on inspiron");
+      select.value = "Wren";
+      select.listeners.change();
+      expect(watch.disabled).toBe(false);
+      await settle();
+      expect(fetchStatus.mock.calls.at(-1)[0]).toBe("api/live/status?resident=Wren");
+      expect(find("#live-channel").textContent).toContain("disabled on chungus1");
+      expect(watch.disabled).toBe(true);
+      expect(find("#live-detail").textContent).toBe("Live video is disabled on host chungus1.");
+      // Back to a hub resident: the previous host's "disabled" must not linger on Watch.
+      select.value = "Gary";
+      select.listeners.change();
+      expect(watch.disabled).toBe(false);
+      await settle();
+      expect(fetchStatus.mock.calls.at(-1)[0]).toBe("api/live/status?resident=Gary");
+      expect(find("#live-channel").textContent).toContain("Channel on inspiron");
+      expect(watch.disabled).toBe(false);
+    });
+  });
+
+  test("a station dashboard watches its own residents when the station enables Live", async () => {
     await withLiveView(async ({ view, find, fetchStatus }) => {
       view.updateResidents(reply([resident("Wren", "chungus1", true)], "station"));
       view.setActive(true);
       await view.loadStatus();
-      expect(fetchStatus).not.toHaveBeenCalled();
-      expect(find("#live-watch").disabled).toBe(true);
-      expect(find("#live-watch").textContent).toBe("Unavailable");
-      expect(find("#live-channel").textContent).toContain("disabled on stations");
-      expect(find("#live-detail").textContent).toContain("Use the Commons hub");
+      expect(fetchStatus.mock.calls[0][0]).toBe("api/live/status?resident=Wren");
+      expect(find("#live-watch").disabled).toBe(false);
+      expect(find("#live-watch").textContent).toBe("Watch");
     });
   });
 
@@ -362,6 +393,10 @@ describe("Live recovery", () => {
       expect(detail.textContent).toBe("Reconnecting (1 of 3)…");
       expect(rig.released()).toEqual(["lease-1", "lease-2", "lease-3"]);
       expect(rig.watches()).toHaveLength(3);
+      // Every lease request names its resident so a hub can route it to that resident's host.
+      const leased = rig.calls.filter(call => ["heartbeat", "offer", "stop"].includes(call.route));
+      expect(leased.length).toBeGreaterThan(0);
+      expect(leased.every(call => call.body.resident === "Gary")).toBe(true);
     }, rig.globals);
   });
 

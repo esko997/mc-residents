@@ -22,7 +22,7 @@ Commons observations, plans, chat, alarms, places, caretaker notes
 
 The native framebuffer is captured, never the desktop. H.264 encoding is an explicit host setting, not an automatic GPU probe or fallback chain. A missing encoder, device or audio source is an error. The `h264_amf` FFmpeg entry alone does not establish usable AMF drivers on Linux; this branch uses VAAPI for AMD instead.
 
-The existing shared channel remains on demand: explicit Watch, four viewer leases maximum, heartbeat every ten seconds, expiry after thirty seconds. Stop, navigation, hidden preview or final lease expiry stops capture and encoding. Switching a resident changes the shared generation and invalidates old leases. Errors require explicit Watch; there is no automatic media retry. The relay can be idle without a publisher.
+Each host has one on-demand channel for its own residents: explicit Watch, four viewer leases maximum, heartbeat every ten seconds, expiry after thirty seconds. Stop, navigation, hidden preview or final lease expiry stops capture and encoding. Switching to another resident on the same host changes that host's generation and invalidates its old leases. A recoverable ending re-Watches the same resident at most three times in two minutes (see the Commons README); the server never restarts a failed channel. The relay can be idle without a publisher.
 
 RTSP readers do **not** own Commons leases. Keep a visible Commons preview or Live window watching while OBS pulls the clean feed. Closing or hiding the last viewing window intentionally stops OBS's upstream source too. This is a safety invariant, not an unattended broadcast scheduler.
 
@@ -64,7 +64,7 @@ All routes are relative to the existing private `/<token>/` Commons base:
 - `overlay/control`: second-window scene editor.
 - `overlay/preview`: WebRTC video plus the same overlay renderer, explicit Watch/Stop and sound control.
 
-Choose 1920×1080 or 1280×720. Toggle each widget, drag it on the stage or enter numeric coordinates, then set scale and theme. Widgets: vitals, position/dimension, plan focus/next step, chat, alarms, nearby residents, map, caretaker note, title/now playing. Exploring, building and chat-heavy presets provide starting layouts. The selected resident must be locally available to the existing Live service; this branch does not tunnel video through the federation hub or promote stations into shared-database authorities.
+Choose 1920×1080 or 1280×720. Toggle each widget, drag it on the stage or enter numeric coordinates, then set scale and theme. Widgets: vitals, position/dimension, plan focus/next step, chat, alarms, nearby residents, map, caretaker note, title/now playing. Exploring, building and chat-heavy presets provide starting layouts. The selected resident may live on the hub or on a station: the hub proxies Live signaling to the station (media flows from the station's MediaMTX) and projects the station's overlay source through the same privacy filter. Overlay state stays on the hub. See "Live on stations" in the Commons README.
 
 Scene state is saved server-side beside the Commons database in its `.overlay.json` file, with private permissions and atomic replacement. Revision checks reject stale concurrent edits rather than silently overwriting another control window. Open pages receive saved state and data through SSE. Preserve this file in backups; deleting it deliberately resets the scene to defaults.
 
@@ -157,7 +157,7 @@ The real PipeWire null sink was created and final cleanup removed it. All owned 
 ### Integration tomorrow
 
 1. Review/merge the branch only when authorized; back up private configuration and preserve the production URL token and database.
-2. Decide topology first: only locally configured residents can publish through this Live channel. Station video remains disabled; this is not a remote-agent routing implementation.
+2. Decide topology first: each resident publishes from its own host's Commons, with that host's explicit encoder (Inspiron `h264_nvenc`, Chungus1 `h264_vaapi`). OBS pulls RTSP from the publishing host only; a station's RTSP stays loopback unless a LAN listener is configured there (see "OBS on another LAN machine").
 3. Rehearse with a stopped/disposable client before changing a resident launcher. Configure a unique dedicated audio sink and confirm no speaker/microphone capture or default-device change.
 4. Select the host's explicit encoder. Verify NVENC on Inspiron and VAAPI/render-device access on Chungus1 separately; an error must remain visible, never silently fall back.
 5. Inspect the native game HUD for private text, then verify clean RTSP video **and** Opus audio in the actual OBS installation. Opus support can vary with the OBS/FFmpeg build.
@@ -165,4 +165,4 @@ The real PipeWire null sink was created and final cleanup removed it. All owned 
 7. Measure real-client sync for several minutes and calibrate only from that measurement. Check load, sleep/silence behavior, reconnects and LAN opt-in/security before any public stream.
 8. Stop the rehearsal, verify encoder/client process groups and owned null sinks disappear, then authorize a controlled live rollout separately.
 
-Open questions: station/hub source topology; atomic OBS scene/source switching; acceptable fixed A/V offset and latency; real-game encoder capacity; native HUD privacy policy; which OBS builds ingest Opus over RTSP reliably. No production deployment is part of this branch.
+Open questions: atomic OBS scene/source switching (especially across hosts); acceptable fixed A/V offset and latency; real-game encoder capacity; native HUD privacy policy; which OBS builds ingest Opus over RTSP reliably. No production deployment is part of this branch.
