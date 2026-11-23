@@ -7,15 +7,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TickRequestsTest {
+    private static final WatchList.ResidentSpec GARY = new WatchList.ResidentSpec("Gary", Fixtures.GARY);
+    private static final WatchList.ResidentSpec MARGO = new WatchList.ResidentSpec("Margo", Fixtures.MARGO);
+
     @Test
     void enqueuingDoesNotReadAndOnlyOneRequestRunsPerTick() throws Exception {
         Fixtures.Clock clock = new Fixtures.Clock();
         Fixtures.FakeWorld world = new Fixtures.FakeWorld(clock);
-        ObserverConfig config = Fixtures.config("", 0);
+        ObserverConfig config = Fixtures.config("");
         Sampler sampler = Fixtures.sampler(config, world, new ArrayList<>());
         world.sightResult = new BridgeAccess.Sight(false, 12.0, "blocked");
-        var first = sampler.request(b -> b.sight(config.resident("Gary"), config.resident("Margo")));
-        var second = sampler.request(b -> b.sight(config.resident("Gary"), config.resident("Margo")));
+        var first = sampler.request(b -> b.sight(GARY, MARGO));
+        var second = sampler.request(b -> b.sight(GARY, MARGO));
         assertEquals(0, world.bridgeReads);
         assertFalse(first.result.isDone());
         sampler.onServerTick();
@@ -69,9 +72,9 @@ class TickRequestsTest {
     void pauseAndTripRejectPendingRequestsWithoutReading() {
         Fixtures.Clock clock = new Fixtures.Clock();
         Fixtures.FakeWorld world = new Fixtures.FakeWorld(clock);
-        ObserverConfig config = Fixtures.config("\"failureTripCount\":1,", 0);
+        ObserverConfig config = Fixtures.config("\"failureTripCount\":1,");
         Sampler sampler = Fixtures.sampler(config, world, new ArrayList<>());
-        var pending = sampler.request(b -> b.sight(config.resident("Gary"), config.resident("Margo")));
+        var pending = sampler.request(b -> b.sight(GARY, MARGO));
         sampler.setPaused(true);
         sampler.onServerTick();
         assertThrows(CompletionException.class, pending.result::join);
@@ -80,7 +83,7 @@ class TickRequestsTest {
                 () -> sampler.request(b -> 1)).code);
         sampler.setPaused(false);
         world.bridgeThrows = true;
-        var failing = sampler.request(b -> b.sight(config.resident("Gary"), config.resident("Margo")));
+        var failing = sampler.request(b -> b.sight(GARY, MARGO));
         sampler.onServerTick();
         assertThrows(CompletionException.class, failing.result::join);
         assertTrue(sampler.status().tripped());
@@ -92,10 +95,10 @@ class TickRequestsTest {
     void aBridgeReadOverrunIsCountedAndFacilitiesWaitForAnotherTick() {
         Fixtures.Clock clock = new Fixtures.Clock();
         Fixtures.FakeWorld world = new Fixtures.FakeWorld(clock);
-        ObserverConfig config = Fixtures.config("", 1);
-        Sampler sampler = Fixtures.sampler(config, world, new ArrayList<>());
+        ObserverConfig config = Fixtures.config("");
+        Sampler sampler = Fixtures.watched(config, world, new ArrayList<>(), 1);
         world.readCostNanos = 600_000;
-        sampler.request(b -> b.sight(config.resident("Gary"), config.resident("Margo")));
+        sampler.request(b -> b.sight(GARY, MARGO));
         sampler.onServerTick();
         assertEquals(1, sampler.status().overBudgetTicks());
         assertEquals(600, sampler.status().lastTickMicros());

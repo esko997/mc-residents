@@ -16,8 +16,8 @@ class JsonViewsTest {
 
     private final Fixtures.Clock clock = new Fixtures.Clock();
     private final Fixtures.FakeWorld world = new Fixtures.FakeWorld(clock);
-    private final ObserverConfig config = Fixtures.config("\"intervalTicks\":1,", 2);
-    private final Sampler sampler = Fixtures.sampler(config, world, new ArrayList<>());
+    private final ObserverConfig config = Fixtures.config("\"intervalTicks\":1,");
+    private final Sampler sampler = Fixtures.watched(config, world, new ArrayList<>(), 2);
 
     private JsonObject snapshotFor(String consumer) {
         String text = JsonViews.toJson(JsonViews.snapshot(Fixtures.consumer(config, consumer), sampler.snapshot(),
@@ -114,7 +114,10 @@ class JsonViewsTest {
                 sampler.state(clock.ms), clock.ms, sampler.heartbeatAtMs());
         JsonObject st = o.getAsJsonObject("status");
         assertEquals(500, st.get("budgetMicros").getAsInt());
-        assertEquals(2, st.get("residentsConfigured").getAsInt());
+        assertEquals(2, st.get("residentsWatched").getAsInt());
+        assertEquals("r1", st.get("watchRevision").getAsString());
+        assertEquals(sampler.bootId(), st.get("bootId").getAsString());
+        assertTrue(st.getAsJsonObject("library").has("scans"));
         String text = o.toString();
         for (ObserverConfig.ConsumerSpec c : config.consumers()) {
             assertFalse(text.contains(c.tokenSha256()), "no token hashes in output");

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Block place/break changes attributed to configured residents, in two bounded forms. Pure and
+ * Block place/break changes attributed to watched residents, in two bounded forms. Pure and
  * single-threaded: only the server thread calls it (listeners, the sampler tick and tick-queued reads).
  *
  * <ul>
@@ -113,7 +113,7 @@ public final class BlockLog {
         return enabled;
     }
 
-    /** Server thread. One accepted change by a configured resident. */
+    /** Server thread. One accepted change by a watched resident. */
     public void record(String resident, boolean place, String dimension, int x, int y, int z, String block,
                        long nowMs, long gameTime) {
         if (!enabled) return;
@@ -194,6 +194,17 @@ public final class BlockLog {
         over.sort(Comparator.comparingLong(Overflow::hourMs).thenComparing(Overflow::resident));
         return new HoursPage(out, over, offset, total, offset + out.size() < total, sinceHourMs,
                 retainedFromHour, evictedThroughHour);
+    }
+
+    /**
+     * Server thread, when a new watch list is applied: hour cells and overflow of residents no longer watched
+     * are dropped; those still watched keep theirs. The detail ring is a log and keeps its entries until they
+     * are overwritten.
+     */
+    public void retainResidents(java.util.Set<String> names) {
+        boolean removed = cells.keySet().removeIf(k -> !names.contains(k.resident()));
+        removed |= overflow.keySet().removeIf(k -> !names.contains(k.resident()));
+        if (removed) publishMetrics();
     }
 
     private void count(String resident, boolean place, String dimension, int chunkX, int chunkZ, long hour,

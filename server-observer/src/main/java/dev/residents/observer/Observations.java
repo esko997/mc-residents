@@ -20,7 +20,7 @@ public final class Observations {
     }
 
     /**
-     * A configured resident. {@code body} is set when online; {@code lastSeen} is the last
+     * A watched resident. {@code body} is set when online; {@code lastSeen} is the last
      * online body (from this server run) when offline, or {@code null} if never seen.
      */
     public record Resident(String name, UUID uuid, boolean online, long checkedAtMs, Body body, Body lastSeen) {
@@ -52,7 +52,7 @@ public final class Observations {
         OBSERVED,
         /** Its chunk (or a neighbouring chunk) is not loaded; the observer never loads chunks. */
         UNLOADED,
-        /** The configured dimension does not exist on this server. */
+        /** The dimension does not exist on this server. */
         NO_LEVEL,
         /** Loaded, but there is no block entity at the position (block broken or replaced?). */
         NO_BLOCK_ENTITY,
@@ -66,23 +66,33 @@ public final class Observations {
         }
     }
 
+    /** One read of a position: {@code block} is the block id whenever the chunk was loaded; contents only when observed. */
+    public record BlockRead(FacilityStatus status, String detail, String block, Contents contents) {
+        public BlockRead {
+            if (status != FacilityStatus.OBSERVED) contents = null;
+        }
+    }
+
     /**
-     * One registered facility. {@code contents} only when {@code OBSERVED}; otherwise
+     * One watched facility. {@code contents} only when {@code OBSERVED}; otherwise
      * {@code lastKnown}/{@code lastObservedAtMs} carry the last observation as history.
      */
-    public record Facility(ObserverConfig.FacilitySpec spec, FacilityStatus status, String detail,
+    public record Facility(WatchList.FacilitySpec spec, FacilityStatus status, String detail,
                            long checkedAtMs, long gameTime, Contents contents,
                            Contents lastKnown, Long lastObservedAtMs) {
 
-        public static Facility pending(ObserverConfig.FacilitySpec spec) {
+        public static Facility pending(WatchList.FacilitySpec spec) {
             return new Facility(spec, FacilityStatus.PENDING, "not read yet", 0L, 0L, null, null, null);
         }
 
         /** A fresh read result (from the world reader), before history is carried forward. */
-        public static Facility read(ObserverConfig.FacilitySpec spec, FacilityStatus status, String detail,
-                                    long checkedAtMs, long gameTime, Contents contents) {
-            return new Facility(spec, status, detail, checkedAtMs, gameTime,
-                    status == FacilityStatus.OBSERVED ? contents : null, null, null);
+        public static Facility read(WatchList.FacilitySpec spec, BlockRead r, long checkedAtMs, long gameTime) {
+            return new Facility(spec, r.status(), r.detail(), checkedAtMs, gameTime, r.contents(), null, null);
+        }
+
+        /** The same observation and history under a newer spec of the same place (a changed label). */
+        Facility withSpec(WatchList.FacilitySpec newer) {
+            return new Facility(newer, status, detail, checkedAtMs, gameTime, contents, lastKnown, lastObservedAtMs);
         }
 
         /** This read, with the previous view's history kept when this read observed nothing. */
@@ -119,10 +129,12 @@ public final class Observations {
     /**
      * Observer health, published alongside snapshots. {@code lagStreak}: cycles in a row that began before the
      * previous facility pass finished. {@code recorderProblem}: non-null once block recording stopped itself.
+     * {@code watchRevision}/{@code watchAppliedAtMs}: the watch list in use (null before Commons pushed one).
      */
-    public record Status(long startedAtMs, long lastPublishAtMs, long ticks, long lastTickMicros, long maxTickMicros,
-                         int budgetMicros, long overBudgetTicks, int intervalTicks, long lagCycles, int lagStreak,
-                         int consecutiveFailures, int failureTripCount, String lastError, boolean tripped,
-                         boolean paused, int residentsConfigured, int facilitiesConfigured, String recorderProblem) {
+    public record Status(long startedAtMs, String bootId, long lastPublishAtMs, long ticks, long lastTickMicros,
+                         long maxTickMicros, int budgetMicros, long overBudgetTicks, int intervalTicks, long lagCycles,
+                         int lagStreak, int consecutiveFailures, int failureTripCount, String lastError, boolean tripped,
+                         boolean paused, String watchRevision, Long watchAppliedAtMs, int residentsWatched,
+                         int facilitiesWatched, String recorderProblem, ShelfScan.Metrics library) {
     }
 }

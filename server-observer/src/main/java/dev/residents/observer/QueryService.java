@@ -124,7 +124,7 @@ public final class QueryService {
     }
 
     private JsonElement blocks(QueryVocabulary.Request r) {
-        ObserverConfig.ResidentSpec only = r.resident();
+        WatchList.ResidentSpec only = r.resident();
         SeqRing.Page<BlockLog.Change> page = SeqRing.page(sampler.blocks().detail(), r.number("after"),
                 (int) r.number("limit"), c -> only == null || only.name().equals(c.resident()));
         JsonObject o = pageHeader(page);
@@ -140,7 +140,7 @@ public final class QueryService {
     }
 
     private JsonElement hours(QueryVocabulary.Request r, TickReader tick) {
-        ObserverConfig.ResidentSpec only = r.resident();
+        WatchList.ResidentSpec only = r.resident();
         long since = r.number("sinceHour");
         int offset = (int) r.number("offset"), limit = (int) r.number("limit");
         BlockLog log = sampler.blocks();
@@ -152,13 +152,13 @@ public final class QueryService {
     }
 
     private JsonElement flows(QueryVocabulary.Request r) {
-        ObserverConfig.FacilitySpec only = r.facility();
+        WatchList.FacilitySpec only = r.facility();
         SeqRing.View<Flows.Flow> view = sampler.flows();
         SeqRing.Page<Flows.Flow> page = SeqRing.page(view, r.number("after"), (int) r.number("limit"),
                 f -> only == null || only.id().equals(f.facility()));
         JsonObject o = pageHeader(page);
         o.addProperty("dropped", view.dropped());
-        o.addProperty("evidence", "proximity of configured residents only; human players, hoppers, pipes and machines are not observed");
+        o.addProperty("evidence", "proximity of watched residents only; human players, hoppers, pipes and machines are not observed");
         JsonArray flows = new JsonArray();
         for (SeqRing.Entry<Flows.Flow> e : page.entries()) {
             JsonObject j = GSON.toJsonTree(e.value()).getAsJsonObject();

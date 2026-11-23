@@ -20,7 +20,7 @@ class PlayerFilesTest {
     @TempDir
     Path world;
 
-    private final ObserverConfig.ResidentSpec gary = new ObserverConfig.ResidentSpec("Gary", Fixtures.GARY);
+    private final WatchList.ResidentSpec gary = new WatchList.ResidentSpec("Gary", Fixtures.GARY);
 
     private static final String STATS = """
             {"stats":{"minecraft:custom":{"minecraft:walk_one_cm":123456,"minecraft:deaths":2,"minecraft:play_time":72000,
