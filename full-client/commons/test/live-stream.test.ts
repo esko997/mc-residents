@@ -18,7 +18,7 @@ function fixture(ignoreTerm = false) {
   let now = 1000, cancelled = 0, active = 0, peak = 0;
   const requests: { url: string; method: string }[] = [];
   const controllers: ReadableStreamDefaultController<Uint8Array>[] = [];
-  const children: { encoder: EncoderProcess; exit: (code: number) => void; kills: string[]; writes: number[] }[] = [];
+  const children: { encoder: EncoderProcess; exit: (code: number) => void; kills: string[]; writes: number[]; data: Buffer[] }[] = [];
   const commands: string[][] = [];
   let intercept: ((url: string, init?: RequestInit) => Promise<Response> | undefined) | undefined;
   const stream = new LiveStream(config, {
@@ -49,18 +49,18 @@ function fixture(ignoreTerm = false) {
       commands.push(args);
       active++; peak = Math.max(peak, active);
       const done = gate<number | null>(), progress = new PassThrough(), errors = new PassThrough();
-      const kills: string[] = [], writes: number[] = [];
+      const kills: string[] = [], writes: number[] = [], data: Buffer[] = [];
       let ended = false;
       const exit = (code: number) => { if (!ended) { ended = true; active--; done.resolve(code); } };
       const input = new Writable({ write(bytes, _encoding, callback) {
-        writes.push(bytes.byteLength);
+        writes.push(bytes.byteLength); data.push(Buffer.from(bytes));
         progress.write("frame=1\nout_time_us=66667\nprogress=continue\n");
         callback();
       } });
       const encoder: EncoderProcess = { input, progress, errors, exited: done.promise,
         kill(signal) { kills.push(signal); if (signal === "SIGKILL" || !ignoreTerm) exit(0); },
       };
-      children.push({ encoder, exit, kills, writes });
+      children.push({ encoder, exit, kills, writes, data });
       return encoder;
     },
   });
@@ -413,5 +413,160 @@ test("audio failure stays sanitized and does not fall back to video-only or anot
     expect(f.children).toHaveLength(1);
     await f.stream.shutdown();
     expect(f.counts().active).toBe(0);
+  } finally { await f.close(); }
+});
+
+// Source resume: Synapse ends /video/raw on dimension change, respawn or a 5 s gap.
+// The held-frame cadence and polling are real 500 ms timers interleaved with web
+// streams and abort signals; the "nothing more happens" checks need a real interval.
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+async function until(condition: () => boolean, ms = 3000) {
+  for (const end = Date.now() + ms; !condition();) {
+    if (Date.now() > end) throw new Error("Condition not reached");
+    await wait(10);
+  }
+}
+function between(f: ReturnType<typeof fixture>, size = { width: 4, height: 2 }) {
+  let mode: "available" | "loading" | "resized" = "available";
+  f.intercept(url => {
+    if (url !== "http://127.0.0.1:9/video/info" || mode === "available") return undefined;
+    return Promise.resolve(Response.json({ ok: true, data: {
+      protocol: 1, fps: 15, pixelFormat: "bgra", origin: "bottom-left",
+      ...(mode === "resized" ? { width: size.width + 2, height: size.height, available: true }
+        : { ...size, available: false, reason: "Player and level must be loaded." }),
+    } }));
+  });
+  return (next: typeof mode) => { mode = next; };
+}
+const infoPolls = (f: ReturnType<typeof fixture>, host = "127.0.0.1:9") =>
+  f.requests.filter(item => item.url === `http://${host}/video/info`).length;
+
+test("a world change holds the last whole frame on the same encoder, then resumes the source", async () => {
+  const f = fixture(), set = between(f);
+  try {
+    const a = await f.stream.watch("Gary");
+    const child = f.children[0];
+    expect(child.writes).toEqual([32]);
+    set("loading");
+    f.controllers[0].enqueue(new Uint8Array(20).fill(7)); // Partial trailing frame, then the source ends.
+    f.controllers[0].close();
+    await until(() => f.stream.status().resuming);
+    expect(f.stream.status()).toMatchObject({ state: "live", resuming: true, viewers: 1 });
+    expect(f.stream.status().detail).toContain("between worlds");
+    await until(() => child.writes.length >= 3);
+    expect(f.stream.heartbeat(a.lease, a.generation)).toMatchObject({ state: "live", resuming: true });
+    expect(infoPolls(f)).toBeGreaterThan(2);
+    set("available");
+    await until(() => f.controllers.length === 2);
+    f.controllers[1].enqueue(new Uint8Array(12).fill(9));
+    f.controllers[1].enqueue(new Uint8Array(20).fill(9));
+    await until(() => child.data.some(frame => frame[0] === 9));
+    expect(f.stream.status()).toMatchObject({ state: "live", resuming: false, generation: a.generation });
+    expect(f.stream.status().detail).not.toContain("between worlds");
+    // Only whole frames: the held picture, the new source's first frame, then the split one.
+    expect(child.writes.every(size => size === 32)).toBe(true);
+    expect(child.data.every(frame => frame.every(byte => byte === 0) || frame.every(byte => byte === 9))).toBe(true);
+    expect(f.children).toHaveLength(1);
+    expect(child.kills).toEqual([]);
+    expect(f.requests.filter(item => item.url.includes("/video/raw?"))).toHaveLength(2);
+  } finally { await f.close(); }
+});
+
+test("a raw stream that ends at once is reopened at a bounded rate while held frames keep flowing", async () => {
+  const f = fixture();
+  const raws = () => f.requests.filter(item => item.url.includes("/video/raw?")).length;
+  // Info stays available, but every reopened raw stream ends before sending a byte.
+  f.intercept(url => url.includes("/video/raw?") && raws() > 1 ? Promise.resolve(new Response(new ReadableStream<Uint8Array>({
+    start(controller) { controller.close(); },
+  }), { headers: {
+    "Content-Type": "application/octet-stream", "X-Video-Protocol": "1", "X-Video-Width": "4", "X-Video-Height": "2",
+    "X-Video-Fps": "15", "X-Video-Pixel-Format": "bgra", "X-Video-Origin": "bottom-left",
+  } })) : undefined);
+  try {
+    await f.stream.watch("Gary");
+    const child = f.children[0];
+    f.controllers[0].close();
+    await until(() => f.stream.status().resuming);
+    const opened = raws(), written = child.writes.length;
+    await wait(1600);
+    // About one attempt per 500 ms, not a tight loop; held frames still go out on time.
+    expect(raws() - opened).toBeGreaterThanOrEqual(2);
+    expect(raws() - opened).toBeLessThanOrEqual(5);
+    expect(child.writes.length - written).toBeGreaterThanOrEqual(2);
+    expect(child.data.every(frame => frame.byteLength === 32 && frame.every(byte => byte === 0))).toBe(true);
+    expect(f.stream.status()).toMatchObject({ state: "live", resuming: true });
+    expect(f.children).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+test("a different framebuffer size during resume fails the channel instead of feeding the old encoder", async () => {
+  const f = fixture(), set = between(f);
+  try {
+    await f.stream.watch("Gary");
+    set("resized");
+    f.controllers[0].close();
+    await f.children[0].encoder.exited;
+    expect(f.stream.status()).toMatchObject({ state: "error", viewers: 0, resuming: false });
+    expect(f.stream.status().detail).toContain("size changed");
+    expect(f.children[0].kills).toEqual(["SIGTERM"]);
+    expect(f.requests.filter(item => item.url.includes("/video/raw?"))).toHaveLength(1);
+    expect(f.children).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+test("the resume window is bounded even while viewers keep their leases", async () => {
+  const f = fixture(), set = between(f);
+  try {
+    const a = await f.stream.watch("Gary");
+    set("loading");
+    f.controllers[0].close();
+    await until(() => f.stream.status().resuming);
+    for (let step = 0; step < 4; step++) {
+      f.advance(25_000);
+      f.stream.heartbeat(a.lease, a.generation);
+    }
+    await f.children[0].encoder.exited;
+    expect(f.stream.status()).toMatchObject({ state: "error", viewers: 0, resuming: false });
+    expect(f.stream.status().detail).toContain("90 seconds");
+    const polls = infoPolls(f);
+    await wait(700);
+    expect(infoPolls(f)).toBe(polls);
+  } finally { await f.close(); }
+});
+
+test("the last viewer leaving during resume stops the encoder, keepalives and polling", async () => {
+  const f = fixture(), set = between(f);
+  try {
+    const a = await f.stream.watch("Gary");
+    set("loading");
+    f.controllers[0].close();
+    await until(() => f.children[0].writes.length >= 2);
+    expect((await f.stream.stop(a.lease, a.generation))).toMatchObject({ state: "idle", resuming: false, viewers: 0 });
+    expect(f.children[0].kills).toEqual(["SIGTERM"]);
+    expect(f.counts().active).toBe(0);
+    const polls = infoPolls(f), writes = f.children[0].writes.length;
+    await wait(700);
+    expect(infoPolls(f)).toBe(polls);
+    expect(f.children[0].writes).toHaveLength(writes);
+  } finally { await f.close(); }
+});
+
+test("switching resident during resume replaces the publisher without overlap and fences old polling", async () => {
+  const f = fixture(), set = between(f);
+  try {
+    const a = await f.stream.watch("Gary");
+    set("loading");
+    f.controllers[0].close();
+    await until(() => f.stream.status().resuming);
+    const b = await f.stream.watch("Margo");
+    expect(b).toMatchObject({ resident: "Margo", state: "live", resuming: false });
+    expect(b.generation).toBeGreaterThan(a.generation);
+    expect(f.children[0].kills).toEqual(["SIGTERM"]);
+    expect(f.counts().peak).toBe(1);
+    expect(() => f.stream.heartbeat(a.lease, a.generation)).toThrow("lease expired");
+    const polls = infoPolls(f), writes = f.children[0].writes.length;
+    await wait(700);
+    expect(infoPolls(f)).toBe(polls);
+    expect(f.children[0].writes).toHaveLength(writes);
   } finally { await f.close(); }
 });

@@ -2,6 +2,12 @@
 
 // One explicit viewing session. Polling reads status; only Watch acquires a lease.
 // A cancelled watch request is allowed to finish so its late lease can be released.
+// A session that ends for a recoverable reason re-Watches the same resident while the
+// user still wants it: at most three attempts (1 s, 3 s, 8 s) in a rolling two minutes.
+const RETRY_DELAYS = [1000, 3000, 8000], RETRY_WINDOW = 120000;
+const RESUMING = "Between worlds; holding the last picture.";
+const fatal = message => Object.assign(new Error(message), { fatal: true });
+
 export function createLiveView(root, { now, stamp, colour }) {
   const find = selector => root.querySelector(selector);
   const select = find("#live-resident"), watch = find("#live-watch"), stop = find("#live-stop");
@@ -13,6 +19,8 @@ export function createLiveView(root, { now, stamp, colour }) {
   const supported = typeof RTCPeerConnection === "function";
   let active = false, enabled = null, current = null, pendingWatch = false, revision = 0;
   let residents = [], sampleSeconds = 5, mode = "idle", station = false;
+  // Watch intent that survives one session: { resident, attempts, timer }.
+  let wanted = null;
 
   async function request(route, body, { signal, timeout = 8000, keepalive = false } = {}) {
     const controller = new AbortController();
@@ -33,7 +41,11 @@ export function createLiveView(root, { now, stamp, colour }) {
         const message = response.status === 409 ? "The channel changed or your viewing lease expired. Press Watch to join again."
           : typeof data?.error === "string" ? data.error.slice(0, 500)
           : `Live service answered ${response.status}. Press Watch to try again.`;
-        throw new Error(message);
+        // Retrying a refused request cannot help; a changed channel, a busy viewer
+        // slot or a server/proxy failure may recover.
+        const error = new Error(message);
+        error.fatal = response.status >= 400 && response.status < 500 && ![408, 409, 429].includes(response.status);
+        throw error;
       }
       if (!data || typeof data !== "object") throw new Error("Live service returned an unreadable response.");
       return data;
@@ -64,7 +76,10 @@ export function createLiveView(root, { now, stamp, colour }) {
     const message = unavailableMessage();
     if (message) {
       if (current) end(message, "disabled");
-      else setState("disabled", message);
+      else {
+        cancelRetry();
+        setState("disabled", message);
+      }
     } else if (!current && mode === "disabled") setState("idle", "Choose a resident, then press Watch.");
   }
 
@@ -73,7 +88,7 @@ export function createLiveView(root, { now, stamp, colour }) {
     watch.disabled = !active || document.hidden || !!unavailable || !!current || pendingWatch;
     watch.textContent = unavailable ? "Unavailable" : "Watch";
     watch.title = unavailable || (pendingWatch && !current ? "Waiting for the cancelled start request to finish and release its lease." : "");
-    stop.disabled = !current;
+    stop.disabled = !current && !wanted?.timer;
     select.disabled = residents.length === 0;
     fullscreen.disabled = !current?.playing;
     audioButton.disabled = !current?.playing || !current.audio;
@@ -117,13 +132,13 @@ export function createLiveView(root, { now, stamp, colour }) {
     void request("stop", { lease, generation }, { keepalive: true }).then(data => {
       if (revision === expectedRevision && !current) showChannel(data);
     }).catch(() => {
-      if (revision === expectedRevision && !current) {
+      if (revision === expectedRevision && !current && !wanted) {
         detail.textContent = "Playback stopped here; the server did not confirm release. The viewing lease expires within 30 seconds of its last heartbeat.";
       }
     });
   }
 
-  function end(message = "Stopped. Press Watch when you want to watch again.", next = "idle") {
+  function teardown() {
     const session = current;
     current = null;
     revision++;
@@ -140,7 +155,72 @@ export function createLiveView(root, { now, stamp, colour }) {
       if (session.lease) release(session.lease, session.generation, revision);
     }
     clearMedia();
+  }
+
+  function cancelRetry() {
+    clearTimeout(wanted?.timer);
+    wanted = null;
+  }
+
+  // Every user or availability ending: no automatic Watch follows.
+  function end(message = "Stopped. Press Watch when you want to watch again.", next = "idle") {
+    cancelRetry();
+    teardown();
     setState(next, message);
+  }
+
+  function canRetry(resident) {
+    return !!wanted && wanted.resident === resident && select.value === resident
+      && active && !document.hidden && !unavailableMessage();
+  }
+
+  const reconnecting = attempt => `Reconnecting (${attempt} of ${RETRY_DELAYS.length})…`;
+
+  // A recoverable ending. Only a session that held a lease, or an automatic attempt,
+  // re-Watches; a failed manual Watch reports its error instead.
+  function lost(session, message) {
+    if (current !== session) return;
+    if (!session.recoverable || !canRetry(session.resident)) {
+      end(message, "error");
+      return;
+    }
+    const at = Date.now(), attempts = wanted.attempts.filter(time => at - time < RETRY_WINDOW);
+    if (attempts.length >= RETRY_DELAYS.length) {
+      end(`Gave up reconnecting to ${session.resident} after ${RETRY_DELAYS.length} attempts in 2 minutes. ${message}${
+        /Press Watch/.test(message) ? "" : " Press Watch to try again."}`, "error");
+      return;
+    }
+    teardown();
+    attempts.push(at);
+    const intent = wanted, attempt = attempts.length;
+    intent.attempts = attempts;
+    intent.timer = setTimeout(() => {
+      if (wanted !== intent) return;
+      intent.timer = 0;
+      void start(attempt);
+    }, RETRY_DELAYS[attempt - 1]);
+    setState("connecting", reconnecting(attempt));
+  }
+
+  function failed(session, error) {
+    if (current !== session) return;
+    if (error instanceof DOMException) end("WebRTC could not connect. Check browser and network support, then press Watch.", "error");
+    else if (error.fatal) end(error.message, "error");
+    else lost(session, error.message);
+  }
+
+  function liveMessage(session) {
+    if (session.resuming) return RESUMING;
+    return session.audio ? "Receiving live video and dedicated game audio. Audio starts muted; use Unmute game audio to listen."
+      : "Receiving live video. Video only; no audio is captured or played.";
+  }
+
+  // The server keeps the channel live and repeats its last frame while the
+  // resident changes worlds; only the message changes.
+  function setResuming(session, value) {
+    if (session.resuming === value) return;
+    session.resuming = value;
+    if (session.playing) setState("live", liveMessage(session));
   }
 
   function matches(session, data) {
@@ -193,7 +273,7 @@ export function createLiveView(root, { now, stamp, colour }) {
     session.heartbeat = setTimeout(async () => {
       if (current !== session) return;
       if (Date.now() >= session.expiresAt) {
-        end("Your viewing lease expired. Press Watch to join again.", "error");
+        lost(session, "Your viewing lease expired. Press Watch to join again.");
         return;
       }
       // Use request start, not response arrival, as the conservative lease clock.
@@ -201,14 +281,16 @@ export function createLiveView(root, { now, stamp, colour }) {
       try {
         const data = await request("heartbeat", { lease: session.lease, generation: session.generation }, { signal: session.controller.signal });
         if (current !== session) return;
+        showChannel(data);
         if (!matches(session, data)) {
-          end("The shared channel changed or ended. Press Watch to join again.", "error");
+          lost(session, "The shared channel changed or ended. Press Watch to join again.");
           return;
         }
+        setResuming(session, data.resuming === true);
         session.expiresAt = sentAt + 30000;
         scheduleHeartbeat(session);
       } catch (error) {
-        if (current === session) end(error.message, "error");
+        failed(session, error);
       }
     }, 10000);
   }
@@ -232,20 +314,45 @@ export function createLiveView(root, { now, stamp, colour }) {
     });
   }
 
-  async function start() {
-    if (watch.disabled) return;
-    end();
-    const session = { resident: select.value, controller: new AbortController(), peer: null, lease: null, playing: false };
+  // attempt 0 is the user's Watch; 1-3 are automatic re-Watches of the same resident.
+  async function start(attempt = 0) {
+    if (attempt) {
+      if (current) return;
+      if (!canRetry(wanted?.resident)) {
+        const unavailable = unavailableMessage();
+        end(unavailable || "Stopped reconnecting. Press Watch to try again.", unavailable ? "disabled" : "idle");
+        return;
+      }
+      if (pendingWatch) {
+        // A cancelled request still owns the only Watch slot; try once it settles.
+        const intent = wanted;
+        intent.timer = setTimeout(() => {
+          if (wanted !== intent) return;
+          intent.timer = 0;
+          void start(attempt);
+        }, 1000);
+        buttons();
+        return;
+      }
+      teardown();
+    } else {
+      if (watch.disabled) return;
+      cancelRetry();
+      teardown();
+      wanted = { resident: select.value, attempts: [], timer: 0 };
+    }
+    const session = { resident: wanted.resident, controller: new AbortController(), peer: null, lease: null, playing: false,
+      resuming: false, recoverable: attempt > 0 };
     current = session;
     pendingWatch = true;
-    setState("connecting", `Starting ${session.resident}'s video…`);
+    setState("connecting", attempt ? reconnecting(attempt) : `Starting ${session.resident}'s video…`);
     try {
       // Do not abort this request on selection/navigation: collect and release a
       // late lease. No second Watch is sent until this request has settled.
       let data;
       try { data = await request("watch", { resident: session.resident }, { timeout: 35000 }); }
       finally { pendingWatch = false; buttons(); }
-      if (typeof data.lease !== "string" || !Number.isSafeInteger(data.generation)) throw new Error("Live service returned an invalid viewing lease.");
+      if (typeof data.lease !== "string" || !Number.isSafeInteger(data.generation)) throw fatal("Live service returned an invalid viewing lease.");
       if (current !== session) {
         release(data.lease, data.generation, revision);
         return;
@@ -254,12 +361,14 @@ export function createLiveView(root, { now, stamp, colour }) {
       revision++;
       session.lease = data.lease;
       session.generation = data.generation;
-      if (!matches(session, data)) throw new Error("The shared channel changed before viewing started. Press Watch to join again.");
+      session.recoverable = true;
       showChannel(data);
+      if (!matches(session, data)) throw new Error("The shared channel changed before viewing started. Press Watch to join again.");
+      session.resuming = data.resuming === true;
       session.expiresAt = Date.now() + 30000;
       scheduleHeartbeat(session);
       session.deadline = setTimeout(() => {
-        if (current === session) end("No video arrived within 25 seconds. Check the live service and network, then press Watch.", "error");
+        lost(session, "No video arrived within 25 seconds. Check the live service and network, then press Watch.");
       }, 25000);
       const peer = session.peer = new RTCPeerConnection({ iceServers: [] });
       peer.addTransceiver("video", { direction: "recvonly" });
@@ -268,19 +377,19 @@ export function createLiveView(root, { now, stamp, colour }) {
       peer.onconnectionstatechange = () => {
         if (current !== session) return;
         if (["failed", "disconnected", "closed"].includes(peer.connectionState)) {
-          end("The video connection ended. Press Watch to reconnect.", "error");
+          lost(session, "The video connection ended. Press Watch to reconnect.");
         }
       };
       peer.ontrack = event => {
         if (current !== session || (event.track.kind !== "video" && !(session.audio && event.track.kind === "audio"))) { event.track.stop(); return; }
         event.track.onended = () => {
-          if (current === session) end(`The ${event.track.kind} track ended. Press Watch to reconnect.`, "error");
+          lost(session, `The ${event.track.kind} track ended. Press Watch to reconnect.`);
         };
         if (!video.srcObject) video.srcObject = new MediaStream();
         video.srcObject.addTrack(event.track);
         if (event.track.kind === "audio") return;
         event.track.onmute = () => {
-          if (current === session && session.playing) end("Video is no longer arriving. Press Watch to reconnect.", "error");
+          if (session.playing) lost(session, "Video is no longer arriving. Press Watch to reconnect.");
         };
         video.onplaying = () => {
           if (current !== session || video.readyState < 2) return;
@@ -291,26 +400,25 @@ export function createLiveView(root, { now, stamp, colour }) {
           find("#live-name").textContent = session.resident;
           stage.style.setProperty("--who", colour(session.resident));
           mediaNote.textContent = session.audio ? "Dedicated game audio · No recording" : "Video only · No audio · No recording";
-          setState("live", session.audio ? "Receiving live video and dedicated game audio. Audio starts muted; use Unmute game audio to listen."
-            : "Receiving live video. Video only; no audio is captured or played.");
+          setState("live", liveMessage(session));
           renderContext();
         };
         void video.play().catch(() => {
           if (current === session) end("The browser could not play the video. Press Watch to try again.", "error");
         });
       };
-      setState("connecting", `Connecting to ${session.resident}'s video…`);
+      if (!attempt) setState("connecting", `Connecting to ${session.resident}'s video…`);
       await peer.setLocalDescription(await peer.createOffer());
       await gatherIce(peer, session.controller.signal);
       if (current !== session) return;
       const sdp = peer.localDescription?.sdp;
-      if (!sdp || sdp.length > 65536) throw new Error("The browser generated an invalid or oversized video offer.");
+      if (!sdp || sdp.length > 65536) throw fatal("The browser generated an invalid or oversized video offer.");
       const answer = await request("offer", { lease: session.lease, generation: session.generation, sdp }, { signal: session.controller.signal, timeout: 12000 });
       if (current !== session) return;
-      if (typeof answer.sdp !== "string" || answer.sdp.length > 65536) throw new Error("Live service returned an invalid video answer.");
+      if (typeof answer.sdp !== "string" || answer.sdp.length > 65536) throw fatal("Live service returned an invalid video answer.");
       await peer.setRemoteDescription({ type: "answer", sdp: answer.sdp });
     } catch (error) {
-      if (current === session) end(error instanceof DOMException ? "WebRTC could not connect. Check browser and network support, then press Watch." : error.message, "error");
+      failed(session, error);
     }
   }
 
@@ -347,7 +455,7 @@ export function createLiveView(root, { now, stamp, colour }) {
     fullscreen.textContent = document.fullscreenElement === stage ? "Exit fullscreen" : "Fullscreen";
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden && current) end("Stopped while this page was hidden. Press Watch to resume.");
+    if (document.hidden && (current || wanted)) end("Stopped while this page was hidden. Press Watch to resume.");
     buttons();
   });
   window.addEventListener("pagehide", () => end("Stopped when leaving this page. Press Watch to resume."));
@@ -374,7 +482,8 @@ export function createLiveView(root, { now, stamp, colour }) {
       if (options.length !== select.options.length || options.some((option, index) =>
         select.options[index].value !== option.value || select.options[index].text !== option.text)) {
         const selected = select.value;
-        if (current && !residents.some(entry => entry.name === current.resident)) end("This resident is no longer configured.", "error");
+        const watching = current?.resident ?? wanted?.resident;
+        if (watching && !residents.some(entry => entry.name === watching)) end("This resident is no longer configured.", "error");
         select.replaceChildren(...options);
         if (residents.some(entry => entry.name === selected)) select.value = selected;
       }
@@ -394,8 +503,8 @@ export function createLiveView(root, { now, stamp, colour }) {
         if (!active || document.hidden || station || revision !== expectedRevision) return;
         showChannel(data);
         if (current?.lease && (!matches(current, data) || Date.now() >= current.expiresAt)) {
-          end("The shared channel changed, ended, or your lease expired. Press Watch to join again.", "error");
-        }
+          lost(current, "The shared channel changed, ended, or your lease expired. Press Watch to join again.");
+        } else if (current?.lease) setResuming(current, data.resuming === true);
         updateAvailability();
         buttons();
         renderContext();
@@ -403,10 +512,10 @@ export function createLiveView(root, { now, stamp, colour }) {
         if (!active || document.hidden || station || revision !== expectedRevision) return;
         channel.textContent = "Live service status is unavailable.";
         enabled = null;
-        if (current) end(error.message, "error");
+        if (current) failed(current, error);
         else {
           if (unavailableMessage()) updateAvailability();
-          else detail.textContent = error.message;
+          else if (!wanted) detail.textContent = error.message;
           buttons();
         }
       }

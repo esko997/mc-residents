@@ -65,11 +65,16 @@ export function parseClientChat(raw: string): { hours: number; minutes: number; 
   return found && { hours: Number(found[1]), minutes: Number(found[2]), seconds: Number(found[3]), message: found[4] };
 }
 
-/** The latest moment with this local wall-clock time that is not after `reference` (a minute of slack for clocks). */
+/**
+ * The latest moment with this local wall-clock time that is not after `reference` (a minute
+ * of slack for clocks). Just before midnight, a stamp a few seconds past midnight is tomorrow's.
+ */
 export function clockTime(hours: number, minutes: number, seconds: number, reference: number): number {
+  const latest = reference + 60_000;
   const date = new Date(reference);
+  date.setDate(date.getDate() + 1);
   date.setHours(hours, minutes, seconds, 0);
-  if (date.getTime() > reference + 60_000) date.setDate(date.getDate() - 1);
+  while (date.getTime() > latest) date.setDate(date.getDate() - 1);
   return date.getTime();
 }
 

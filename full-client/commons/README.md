@@ -219,8 +219,26 @@ The **Live** panel selects any configured local resident. Watch starts one share
 channel; selecting another resident switches it for all viewers. Up to four
 viewers may share that channel. Stop, leaving Live, or hiding the page releases
 that viewer; capture and encoding stop when the last viewer leaves. Lost viewers
-expire after 30 seconds. Errors require an explicit Watch, not an automatic
-reconnect. Audio is opt-in; there is no recording or desktop capture.
+expire after 30 seconds. Audio is opt-in; there is no recording or desktop capture.
+
+Loading screens do not end the channel. When the resident changes dimension,
+respawns or the client stops sending frames for 5 seconds, Synapse ends its raw
+stream. Commons then keeps the same FFmpeg process, publisher and viewers, and
+re-sends the last complete frame every 0.5 seconds while it polls `/video/info`
+every 0.5 seconds. Live status stays `live` with `resuming: true` and the page
+says "Between worlds; holding the last picture." When the same framebuffer size
+is available again, capture resumes. Only whole frames reach the encoder; a
+partial frame left by the ended stream is discarded. The channel fails after 90
+seconds of resuming, or at once if the framebuffer size changes (a new size
+needs a new encoder), or on authentication or incompatible-header errors. The
+server never restarts a failed channel.
+
+When a session still ends for a recoverable reason (channel ended or failed,
+track ended, connection failed) while the page is visible and the viewer has not
+pressed Stop or chosen another resident, the browser presses Watch again for the
+same resident after 1, 3 and 8 seconds, at most three attempts per two minutes,
+then shows a final message. It never reconnects after Stop, a resident change, a
+hidden page, or when Live is disabled or unsupported.
 
 The path is the client's main framebuffer → authenticated loopback raw frames
 → FFmpeg → loopback RTSP → MediaMTX → WebRTC. Only encoded WebRTC media listens

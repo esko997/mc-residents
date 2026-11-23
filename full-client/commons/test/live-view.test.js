@@ -7,6 +7,7 @@ class Element {
   options = [];
   listeners = {};
   style = { setProperty() {}, removeProperty() {} };
+  dataset = {};
   addEventListener(type, listener) { this.listeners[type] = listener; }
   replaceChildren(...children) {
     this.options = children;
@@ -50,6 +51,109 @@ async function withLiveView(run, overrides = {}) {
 
 const resident = (name, host, liveAvailable, extra = {}) => ({ name, host, liveAvailable, hostUnreachable: false, hostLastSeen: 1234, ...extra });
 const reply = (residents, role = "hub") => ({ residents, role, sampleSeconds: 5, federationErrors: [] });
+
+// Drains promise chains between fake timer callbacks; setImmediate is never faked.
+const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
+
+// Fake clock, timers, Live service and WebRTC peer for reconnect tests.
+function liveRig() {
+  let clock = 1_000_000, nextTimer = 1;
+  const timers = new Map(), peers = [], calls = [], listeners = { document: {}, window: {} };
+  const service = { state: "live", enabled: true, resuming: false, generation: 0, watchStatus: 200, resident: null };
+  const status = () => ({ enabled: service.enabled, state: service.state, resident: service.resident, generation: service.generation,
+    viewers: 1, detail: "", audio: false, videoOnly: true, resuming: service.resuming });
+  const routes = {
+    watch: body => {
+      if (service.watchStatus !== 200) return [service.watchStatus, { error: "Resident framebuffer unavailable." }];
+      service.generation++;
+      service.state = "live";
+      service.resident = body.resident;
+      return [200, { ...status(), lease: `lease-${service.generation}` }];
+    },
+    heartbeat: () => [200, status()],
+    status: () => [200, status()],
+    offer: () => [200, { sdp: "v=0" }],
+    stop: () => [200, status()],
+  };
+  const fetch = mock(async (url, init) => {
+    const route = url.split("/").pop(), body = init?.body ? JSON.parse(init.body) : undefined;
+    calls.push({ route, body });
+    const [code, data] = routes[route](body);
+    return { ok: code < 400, status: code, json: async () => data };
+  });
+  class Peer {
+    iceGatheringState = "complete";
+    connectionState = "new";
+    constructor() { peers.push(this); }
+    addTransceiver() {}
+    async createOffer() { return { type: "offer", sdp: "v=0" }; }
+    async setLocalDescription(offer) { this.localDescription = offer; }
+    async setRemoteDescription() { this.connected = true; }
+    getReceivers() { return []; }
+    close() { this.closed = true; }
+  }
+  class Stream {
+    tracks = [];
+    addTrack(track) { this.tracks.push(track); }
+    getTracks() { return this.tracks; }
+    getVideoTracks() { return this.tracks.filter(track => track.kind === "video"); }
+  }
+  class FakeDate extends Date { static now() { return clock; } }
+  const on = target => (type, listener) => { (listeners[target][type] ??= []).push(listener); };
+  const document = { hidden: false, fullscreenElement: null, addEventListener: on("document"), createElement: () => new Element() };
+  return {
+    service, peers, calls, document,
+    watches: () => calls.filter(call => call.route === "watch"),
+    released: () => calls.filter(call => call.route === "stop").map(call => call.body.lease),
+    dispatch(target, type) { for (const listener of listeners[target][type] ?? []) listener(); },
+    globals: {
+      Date: FakeDate,
+      setTimeout: (callback, delay = 0) => {
+        const id = nextTimer++;
+        timers.set(id, { at: clock + Math.max(0, delay), callback });
+        return id;
+      },
+      clearTimeout: id => { timers.delete(id); },
+      fetch, document, window: { addEventListener: on("window") },
+      RTCPeerConnection: Peer, MediaStream: Stream,
+      location: { pathname: "/commons/overlay/preview" },
+    },
+    async advance(ms) {
+      const target = clock + ms;
+      for (;;) {
+        const [id, timer] = [...timers].filter(([, entry]) => entry.at <= target)
+          .sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0] ?? [];
+        if (!timer) break;
+        timers.delete(id);
+        clock = timer.at;
+        timer.callback();
+        await settle();
+      }
+      clock = target;
+    },
+  };
+}
+
+// Completes the latest negotiation and plays one video track.
+async function playLatest(rig, video) {
+  await settle();
+  const peer = rig.peers.at(-1), track = { kind: "video", stop() {} };
+  expect(peer.connected).toBe(true);
+  peer.ontrack({ track });
+  video.readyState = 2;
+  video.videoWidth = 640;
+  video.onplaying();
+  return { peer, track };
+}
+
+async function watchGary(rig, view, find) {
+  view.updateResidents(reply([resident("Gary", "inspiron", true), resident("Wren", "chungus1", true)]));
+  view.setActive(true);
+  find("#live-watch").listeners.click();
+  return playLatest(rig, find("#live-video"));
+}
+
+const BETWEEN = "Between worlds; holding the last picture.";
 
 describe("federated Live controls", () => {
   test("local-only Live status never enables Watch for a remote resident", async () => {
@@ -176,4 +280,227 @@ test("Live receives optional audio without replacing video and requires explicit
       }
     }, { RTCPeerConnection: Peer, MediaStream: Stream });
   }
+});
+
+describe("Live recovery", () => {
+  test("a resuming channel stays live with a between-worlds message until frames return", async () => {
+    const rig = liveRig();
+    await withLiveView(async ({ view, find }) => {
+      await watchGary(rig, view, find);
+      const status = find("#live-status"), detail = find("#live-detail");
+      expect(status.textContent).toBe("Live");
+      rig.service.resuming = true;
+      await rig.advance(10000);
+      expect(status.textContent).toBe("Live");
+      expect(detail.textContent).toBe(BETWEEN);
+      expect(find("#live-video").hidden).toBe(false);
+      expect(find("#live-stop").disabled).toBe(false);
+      rig.service.resuming = false;
+      await view.loadStatus();
+      expect(detail.textContent).toContain("Receiving live video");
+      rig.service.resuming = true;
+      await view.loadStatus();
+      expect(detail.textContent).toBe(BETWEEN);
+      rig.service.resuming = false;
+      await rig.advance(10000);
+      expect(status.textContent).toBe("Live");
+      expect(detail.textContent).toContain("Receiving live video");
+      expect(rig.released()).toEqual([]);
+      expect(rig.watches()).toHaveLength(1);
+    }, rig.globals);
+  });
+
+  test("a lost channel re-Watches the same resident after 1 s, 3 s and 8 s, then gives up", async () => {
+    const rig = liveRig();
+    await withLiveView(async ({ view, find }) => {
+      await watchGary(rig, view, find);
+      const detail = find("#live-detail");
+      rig.service.state = "error";
+      await rig.advance(10000);
+      expect(detail.textContent).toBe("Reconnecting (1 of 3)…");
+      expect(find("#live-status").textContent).toBe("Connecting");
+      expect(find("#live-stop").disabled).toBe(false);
+      expect(rig.released()).toEqual(["lease-1"]);
+      rig.service.watchStatus = 503;
+      for (const [attempt, delay] of [[1, 1000], [2, 3000], [3, 8000]]) {
+        await rig.advance(delay - 1);
+        expect(rig.watches()).toHaveLength(attempt);
+        await rig.advance(1);
+        expect(rig.watches()).toHaveLength(attempt + 1);
+        if (attempt < 3) expect(detail.textContent).toBe(`Reconnecting (${attempt + 1} of 3)…`);
+      }
+      expect(find("#live-status").textContent).toBe("Error");
+      expect(detail.textContent).toContain("Gave up reconnecting to Gary after 3 attempts in 2 minutes.");
+      expect(detail.textContent).toContain("Press Watch");
+      expect(find("#live-stop").disabled).toBe(true);
+      expect(find("#live-watch").disabled).toBe(false);
+      await rig.advance(300000);
+      expect(rig.watches()).toHaveLength(4);
+      expect(rig.watches().every(call => call.body.resident === "Gary")).toBe(true);
+    }, rig.globals);
+  });
+
+  test("a reconnect resumes playback, keeps heartbeats and lets attempts roll out of the window", async () => {
+    const rig = liveRig();
+    await withLiveView(async ({ view, find }) => {
+      const video = find("#live-video"), detail = find("#live-detail");
+      let { peer, track } = await watchGary(rig, view, find);
+      track.onended();
+      expect(detail.textContent).toBe("Reconnecting (1 of 3)…");
+      await rig.advance(1000);
+      ({ peer, track } = await playLatest(rig, video));
+      expect(find("#live-status").textContent).toBe("Live");
+      peer.connectionState = "failed";
+      peer.onconnectionstatechange();
+      expect(detail.textContent).toBe("Reconnecting (2 of 3)…");
+      await rig.advance(3000);
+      ({ peer, track } = await playLatest(rig, video));
+      await rig.advance(121000);
+      expect(find("#live-status").textContent).toBe("Live");
+      expect(rig.calls.filter(call => call.route === "heartbeat" && call.body.lease === "lease-3").length).toBeGreaterThan(10);
+      track.onmute();
+      expect(detail.textContent).toBe("Reconnecting (1 of 3)…");
+      expect(rig.released()).toEqual(["lease-1", "lease-2", "lease-3"]);
+      expect(rig.watches()).toHaveLength(3);
+    }, rig.globals);
+  });
+
+  test("no automatic Watch follows Stop, a hidden page, a switch, leaving Live, unavailability or navigation", async () => {
+    const actions = {
+      stop: ({ find }) => find("#live-stop").listeners.click(),
+      hidden: ({ rig }) => { rig.document.hidden = true; rig.dispatch("document", "visibilitychange"); },
+      switch: ({ find }) => { const select = find("#live-resident"); select.value = "Wren"; select.listeners.change(); },
+      inactive: ({ view }) => view.setActive(false),
+      disabled: ({ view }) => view.updateResidents(reply([resident("Gary", "inspiron", false), resident("Wren", "chungus1", true)])),
+      pagehide: ({ rig }) => rig.dispatch("window", "pagehide"),
+    };
+    const results = {}, expected = {};
+    for (const [name, act] of Object.entries(actions)) {
+      for (const when of ["live", "backoff"]) {
+        const rig = liveRig();
+        await withLiveView(async ({ view, find }) => {
+          const { track } = await watchGary(rig, view, find);
+          if (when === "backoff") track.onended();
+          act({ rig, view, find });
+          // A late failure from the ended session must not restart it either.
+          track.onended();
+          await rig.advance(60000);
+          results[`${name}/${when}`] = { watches: rig.watches().length, released: rig.released(), stop: find("#live-stop").disabled,
+            reconnecting: find("#live-detail").textContent.includes("Reconnecting") };
+          expected[`${name}/${when}`] = { watches: 1, released: ["lease-1"], stop: true, reconnecting: false };
+        }, rig.globals);
+      }
+    }
+    expect(results).toEqual(expected);
+  });
+
+  test("a host-disabled channel and a refused first Watch do not retry", async () => {
+    let rig = liveRig();
+    await withLiveView(async ({ view, find }) => {
+      await watchGary(rig, view, find);
+      rig.service.enabled = false;
+      await view.loadStatus();
+      expect(find("#live-status").textContent).toBe("Unavailable");
+      await rig.advance(60000);
+      expect(rig.watches()).toHaveLength(1);
+    }, rig.globals);
+    rig = liveRig();
+    rig.service.watchStatus = 503;
+    await withLiveView(async ({ view, find }) => {
+      view.updateResidents(reply([resident("Gary", "inspiron", true)]));
+      view.setActive(true);
+      find("#live-watch").listeners.click();
+      await settle();
+      expect(find("#live-status").textContent).toBe("Error");
+      expect(find("#live-detail").textContent).toBe("Resident framebuffer unavailable.");
+      await rig.advance(60000);
+      expect(rig.watches()).toHaveLength(1);
+    }, rig.globals);
+  });
+});
+
+describe("overlay preview recovery", () => {
+  async function withOverlay(run) {
+    const rig = liveRig();
+    await withLiveView(async () => {
+      // overlay-core reads location at import, so import only after globals exist.
+      const { createPreviewMedia } = await import("../public/overlay-media.js");
+      const parts = Object.fromEntries(["video", "blank", "watch", "stop", "audio", "fullscreen", "stage", "status"].map(key => [key, new Element()]));
+      let who = "Gary";
+      const media = createPreviewMedia({ ...parts, resident: () => who });
+      media.availability(true);
+      await run({
+        rig, media, parts,
+        watchAndPlay: async () => { parts.watch.listeners.click(); return playLatest(rig, parts.video); },
+        switchTo: name => { who = name; media.selectionChanged(); },
+      });
+    }, rig.globals);
+  }
+
+  test("resuming shows the held-picture message without ending the session", async () => {
+    await withOverlay(async ({ rig, parts, watchAndPlay }) => {
+      await watchAndPlay();
+      expect(parts.status.dataset.state).toBe("live");
+      rig.service.resuming = true;
+      await rig.advance(10000);
+      expect(parts.status.textContent).toBe(BETWEEN);
+      expect(parts.status.dataset.state).toBe("live");
+      expect(parts.stop.disabled).toBe(false);
+      rig.service.resuming = false;
+      await rig.advance(10000);
+      expect(parts.status.textContent).toBe("Live video only. Audio capture is not enabled for this channel.");
+      expect(rig.released()).toEqual([]);
+    });
+  });
+
+  test("a lost channel retries at most three times in two minutes", async () => {
+    await withOverlay(async ({ rig, parts, watchAndPlay }) => {
+      await watchAndPlay();
+      rig.service.state = "error";
+      await rig.advance(10000);
+      expect(parts.status.textContent).toBe("Reconnecting (1 of 3)…");
+      expect(parts.status.dataset.state).toBe("connecting");
+      expect(parts.stop.disabled).toBe(false);
+      rig.service.watchStatus = 503;
+      await rig.advance(1000);
+      expect(parts.status.textContent).toBe("Reconnecting (2 of 3)…");
+      await rig.advance(3000);
+      expect(parts.status.textContent).toBe("Reconnecting (3 of 3)…");
+      await rig.advance(7999);
+      expect(rig.watches()).toHaveLength(3);
+      await rig.advance(1);
+      expect(rig.watches()).toHaveLength(4);
+      expect(parts.status.textContent).toContain("Gave up reconnecting after 3 attempts in 2 minutes.");
+      expect(parts.status.dataset.state).toBe("error");
+      await rig.advance(300000);
+      expect(rig.watches()).toHaveLength(4);
+      expect(rig.released()).toEqual(["lease-1"]);
+    });
+  });
+
+  test("Stop, a hidden page, a resident switch, unavailability and navigation cancel retries", async () => {
+    const actions = {
+      stop: ({ parts }) => parts.stop.listeners.click(),
+      hidden: ({ rig }) => { rig.document.hidden = true; rig.dispatch("document", "visibilitychange"); },
+      switch: ({ switchTo }) => switchTo("Wren"),
+      unavailable: ({ media }) => media.availability(false),
+      pagehide: ({ rig }) => rig.dispatch("window", "pagehide"),
+    };
+    const results = {}, expected = {};
+    for (const [name, act] of Object.entries(actions)) {
+      await withOverlay(async context => {
+        const { track } = await context.watchAndPlay();
+        // Teardown clears track handlers, so keep the ended session's own callback.
+        const ended = track.onended;
+        ended();
+        const reconnecting = context.parts.status.textContent;
+        act(context);
+        ended();
+        await context.rig.advance(60000);
+        results[name] = { reconnecting, watches: context.rig.watches().length, stop: context.parts.stop.disabled };
+        expected[name] = { reconnecting: "Reconnecting (1 of 3)…", watches: 1, stop: true };
+      });
+    }
+    expect(results).toEqual(expected);
+  });
 });

@@ -1,5 +1,5 @@
 // One shared, on-demand channel. Generation identity fences every asynchronous result.
-// No source request or encoder exists until watch(); errors never restart automatically.
+// Source gaps resume in place; a failed channel never restarts without watch().
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
@@ -9,6 +9,7 @@ import type { Config, LiveConfig, ResidentConfig } from "./config.ts";
 import { buildEncoderArgs } from "./live-encoder.ts";
 
 const TTL = 30_000, HEARTBEAT = 10_000, START_TIMEOUT = 15_000, IO_TIMEOUT = 5_000;
+const RESUME_WINDOW = 90_000, RESUME_POLL = 500;
 // JSON may encode each SDP character as six-byte \\uXXXX; the decoded SDP still
 // has its own 64 KiB limit. Leave bounded space for lease/generation and field names.
 const SDP_LIMIT = 65_536, BODY_LIMIT = SDP_LIMIT * 6 + 8192, MAX_VIEWERS = 4;
@@ -22,6 +23,7 @@ export interface LiveStatus {
   detail: string;
   videoOnly: boolean;
   audio: boolean;
+  resuming: boolean;
 }
 export interface EncoderProcess {
   input: Writable;
@@ -110,6 +112,7 @@ interface Channel {
   tasks: Set<Promise<unknown>>;
   process?: EncoderProcess;
   reader?: ReadableStreamDefaultReader<Uint8Array>;
+  resuming?: boolean;
 }
 
 export class LiveStream {
@@ -142,6 +145,7 @@ export class LiveStream {
       enabled: this.source?.enabled === true, state: this.state,
       resident: this.state === "idle" || this.state === "disabled" ? null : this.channel?.resident.name ?? null,
       generation: this.generation, viewers: this.channel?.leases.size ?? 0, detail: this.detail, videoOnly: !audio, audio,
+      resuming: this.state === "live" && this.channel?.resuming === true,
     };
   }
 
@@ -304,6 +308,8 @@ export class LiveStream {
 
   private async run(channel: Channel, previous?: Promise<void>): Promise<void> {
     let startup: ReturnType<typeof setTimeout> | undefined;
+    let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+    let sourceAbort: AbortController | undefined;
     try {
       // Never overlap publishers, including when a previous SIGKILL failed to reap.
       await previous;
@@ -334,31 +340,55 @@ export class LiveStream {
       if (!secret) throw new LiveError(503, "No readable Synapse token is configured for this resident.");
       const headers = { "X-Synapse-Token": secret };
       const base = channel.resident.synapseUrl.replace(/\/$/, "");
-      const info = await this.request(`${base}/video/info`, { headers, signal: channel.abort.signal });
-      if (!info.ok) { void info.body?.cancel().catch(() => {}); throw new LiveError(502, "Synapse refused video metadata. Check authentication and enable screenshotEnabled and videoEnabled."); }
-      const envelope = object(JSON.parse(await textLimited(info.body, 16_384, channel.abort.signal)));
-      const data = object(envelope.data), width = data.width, height = data.height;
-      if (envelope.ok !== true || data.available !== true) throw new LiveError(503, "Resident framebuffer unavailable. Enable video and wait until the resident is in a world.");
-      if (data.protocol !== 1 || data.fps !== 15 || data.pixelFormat !== "bgra" || data.origin !== "bottom-left"
-        || typeof width !== "number" || typeof height !== "number" || !Number.isInteger(width) || !Number.isInteger(height)
-        || width <= 0 || height <= 0 || width > 1920 || height > 1080) {
-        throw new LiveError(502, "Unsupported framebuffer metadata (expected protocol 1, BGRA, 15 fps, at most 1920×1080).");
-      }
-      this.assertCurrent(channel);
-      const raw = await this.request(`${base}/video/raw?width=${width}&height=${height}`, { headers, signal: channel.abort.signal });
-      const expected: Record<string, string> = {
-        "X-Video-Protocol": "1", "X-Video-Width": String(width), "X-Video-Height": String(height),
-        "X-Video-Fps": "15", "X-Video-Pixel-Format": "bgra", "X-Video-Origin": "bottom-left",
+      // While resuming, Synapse answers 409 (out of world), 400 (old subscriber still
+      // closing) or 504 for ordinary loading screens. Authentication never recovers.
+      const transient = (response: Response, resuming: boolean) => resuming && response.status !== 401 && response.status !== 403;
+      const metadata = async (resuming: boolean) => {
+        const info = await this.request(`${base}/video/info`, { headers, signal: channel.abort.signal });
+        if (!info.ok) {
+          void info.body?.cancel().catch(() => {});
+          if (transient(info, resuming)) return null;
+          throw new LiveError(502, "Synapse refused video metadata. Check authentication and enable screenshotEnabled and videoEnabled.");
+        }
+        const envelope = object(JSON.parse(await textLimited(info.body, 16_384, channel.abort.signal)));
+        const data = object(envelope.data), width = data.width, height = data.height;
+        if (envelope.ok !== true || data.available !== true) return null;
+        if (data.protocol !== 1 || data.fps !== 15 || data.pixelFormat !== "bgra" || data.origin !== "bottom-left"
+          || typeof width !== "number" || typeof height !== "number" || !Number.isInteger(width) || !Number.isInteger(height)
+          || width <= 0 || height <= 0 || width > 1920 || height > 1080) {
+          throw new LiveError(502, "Unsupported framebuffer metadata (expected protocol 1, BGRA, 15 fps, at most 1920×1080).");
+        }
+        return { width, height };
       };
-      if (!raw.ok || raw.headers.get("content-type")?.split(";")[0].trim() !== "application/octet-stream"
-        || Object.entries(expected).some(([key, value]) => raw.headers.get(key) !== value) || !raw.body) {
-        void raw.body?.cancel().catch(() => {});
-        throw new LiveError(502, "Synapse refused raw video or returned incompatible frame headers.");
-      }
-      channel.reader = raw.body.getReader();
+      const initial = await metadata(false);
+      if (!initial) throw new LiveError(503, "Resident framebuffer unavailable. Enable video and wait until the resident is in a world.");
+      const { width, height } = initial;
+      const openRaw = async (resuming: boolean) => {
+        this.assertCurrent(channel);
+        sourceAbort = new AbortController();
+        const raw = await this.request(`${base}/video/raw?width=${width}&height=${height}`, {
+          headers, signal: AbortSignal.any([channel.abort.signal, sourceAbort.signal]),
+        });
+        const expected: Record<string, string> = {
+          "X-Video-Protocol": "1", "X-Video-Width": String(width), "X-Video-Height": String(height),
+          "X-Video-Fps": "15", "X-Video-Pixel-Format": "bgra", "X-Video-Origin": "bottom-left",
+        };
+        if (!raw.ok && transient(raw, resuming)) {
+          void raw.body?.cancel().catch(() => {});
+          return false;
+        }
+        if (!raw.ok || raw.headers.get("content-type")?.split(";")[0].trim() !== "application/octet-stream"
+          || Object.entries(expected).some(([key, value]) => raw.headers.get(key) !== value) || !raw.body) {
+          void raw.body?.cancel().catch(() => {});
+          throw new LiveError(502, "Synapse refused raw video or returned incompatible frame headers.");
+        }
+        this.assertCurrent(channel);
+        channel.reader = raw.body.getReader();
+        return true;
+      };
+      if (!await openRaw(false)) throw new LiveError(503, "Resident framebuffer unavailable. Wait until the resident is in a world.");
       this.assertCurrent(channel);
-      // Preserve the actual arrival cadence; never manufacture missing frames.
-      // Both audio/video use one epoch, rather than independently zeroing PTS.
+      // Arrival timestamps (including held pictures) share the audio/video epoch.
       const args = buildEncoderArgs(source, { width, height }, { audioSink: channel.resident.audioSink, epochMs: Date.now() });
       const encoder = channel.process = this.spawnEncoder(source.ffmpeg, args);
       let progress = "", errorTail = "";
@@ -369,7 +399,7 @@ export class LiveStream {
         if (lines.some(line => /^frame=\s*[1-9]\d*\s*$/.test(line)) && !channel.abort.signal.aborted) {
           clearTimeout(startup);
           this.state = "live";
-          this.detail = `Live framebuffer via ${setup}. One shared channel; no recording.`;
+          if (!channel.resuming) this.detail = `Live framebuffer via ${setup}. One shared channel; no recording.`;
           channel.ready.resolve();
         }
       });
@@ -384,17 +414,115 @@ export class LiveStream {
         source.audio && /pulse|monitor|libopus|audio|opus/i.test(errorTail)
           ? `Resident audio setup failed with ${source.encoder}. Check the dedicated Pulse null sink, monitor capture and FFmpeg Opus support; no software fallback was used.`
           : `${source.encoder} encoder failed. Check its FFmpeg support, hardware/driver access and MediaMTX${source.audio ? ", plus dedicated Pulse monitor audio and Opus" : ""}; no software fallback was used.`)));
-      // One HTTP chunk held at a time, at most two frames. Writes are <=64 KiB and
-      // await the writable callback: no frame accumulation or unbounded stdin queue.
-      const maxChunk = Math.max(65_536, width * height * 8);
+      // Two reusable frame buffers: one last complete picture, one assembly buffer.
+      // Only whole frames enter stdin, and only this loop writes. A source's partial
+      // tail is discarded; it can never prefix the next subscription's first frame.
+      const frameBytes = width * height * 4, maxChunk = Math.max(65_536, frameBytes * 2);
+      let assembling = new Uint8Array(frameBytes), held = new Uint8Array(frameBytes);
+      let filled = 0, haveFrame = false, resumeUntil = 0;
+      // Real-time cadence across operations (the injected clock governs leases and the
+      // resume window): one held frame per 500 ms and one source attempt per 500 ms,
+      // even when each read or reopen settles quickly (e.g. a raw stream that ends at once).
+      let lastWrite = Date.now(), lastAttempt = 0;
+      const expired = () => new LiveError(504, "The framebuffer did not return within 90 seconds. Press Watch to reconnect.");
+      const check = () => {
+        this.expire();
+        this.assertCurrent(channel);
+        if (channel.resuming && this.now() >= resumeUntil) throw expired();
+      };
+      const writeFrame = async (bytes: Uint8Array) => {
+        check();
+        await bounded(new Promise<void>((resolve, reject) =>
+          encoder.input.write(bytes, error => error ? reject(error) : resolve())), IO_TIMEOUT, channel.abort.signal);
+        lastWrite = Date.now();
+      };
+      // Keep packets flowing even while a metadata request, raw headers or stalled
+      // read is pending. A 5 s source deadline alone would race MediaMTX's 5 s timeout.
+      const holding = async <T>(operation: Promise<T>): Promise<T> => {
+        const settled = operation.then(value => ({ value }), error => ({ error }));
+        for (;;) {
+          let tick: ReturnType<typeof setTimeout> | undefined;
+          const due = Math.max(0, lastWrite + RESUME_POLL - Date.now());
+          const result = await Promise.race([settled, new Promise<null>(resolve => {
+            tick = setTimeout(() => resolve(null), due);
+          })]).finally(() => clearTimeout(tick));
+          check();
+          if (result !== null) {
+            if ("error" in result) throw result.error;
+            return result.value;
+          }
+          if (haveFrame) await writeFrame(held);
+          else lastWrite = Date.now();
+        }
+      };
+      const pause = (ms: number) => {
+        const wait = deferred<void>();
+        const abort = () => { clearTimeout(timer); wait.reject(changed()); };
+        const timer = setTimeout(() => { channel.abort.signal.removeEventListener("abort", abort); wait.resolve(); }, ms);
+        channel.abort.signal.addEventListener("abort", abort, { once: true });
+        if (channel.abort.signal.aborted) abort();
+        return wait.promise;
+      };
+      const resume = async () => {
+        check();
+        if (!channel.resuming) {
+          channel.resuming = true;
+          resumeUntil = this.now() + RESUME_WINDOW;
+          resumeTimer = setTimeout(() => this.fail(channel, expired()), RESUME_WINDOW);
+          this.detail = "The resident is between worlds; holding the last picture.";
+        }
+        filled = 0;
+        sourceAbort?.abort();
+        if (channel.reader) {
+          void channel.reader.cancel().catch(() => {});
+          // A stalled read may still be pending; release must not fail the resume.
+          try { channel.reader.releaseLock(); } catch { /* cancelled reader */ }
+          channel.reader = undefined;
+        }
+        await holding((async () => {
+          for (;;) {
+            const due = lastAttempt + RESUME_POLL - Date.now();
+            if (due > 0) await pause(due);
+            lastAttempt = Date.now();
+            check();
+            try {
+              const next = await metadata(true);
+              check();
+              if (next) {
+                if (next.width !== width || next.height !== height) {
+                  throw new LiveError(502, "The framebuffer size changed. A different size needs a new encoder; press Watch to reconnect.");
+                }
+                if (await openRaw(true)) return;
+              }
+            } catch (error) {
+              check();
+              // Transport errors/timeouts are temporary; incompatible metadata,
+              // authentication or frame headers are not.
+              if (error instanceof LiveError && error.status !== 504) throw error;
+            }
+            sourceAbort?.abort();
+          }
+        })());
+      };
       for (;;) {
-        const next = await bounded(channel.reader.read(), IO_TIMEOUT, channel.abort.signal);
-        if (next.done) throw new LiveError(502, "The framebuffer stream closed (world unloaded or resolution changed). Press Watch to reconnect.");
+        // A source read with no bytes for 5 s is a stall (Synapse's own watchdog
+        // cancels at 5 s); held pictures cover the wait for it.
+        const next = await holding(bounded(channel.reader!.read(), IO_TIMEOUT, channel.abort.signal).catch(() => null));
+        if (!next || next.done) { await resume(); continue; }
         if (next.value.byteLength > maxChunk) throw new LiveError(502, "The framebuffer source exceeded its buffer limit.");
-        for (let offset = 0; offset < next.value.byteLength; offset += 65_536) {
-          this.assertCurrent(channel);
-          const bytes = next.value.subarray(offset, offset + 65_536);
-          await bounded(new Promise<void>((resolve, reject) => encoder.input.write(bytes, error => error ? reject(error) : resolve())), IO_TIMEOUT, channel.abort.signal);
+        for (let offset = 0; offset < next.value.byteLength;) {
+          const count = Math.min(frameBytes - filled, next.value.byteLength - offset);
+          assembling.set(next.value.subarray(offset, offset + count), filled);
+          offset += count; filled += count;
+          if (filled !== frameBytes) continue;
+          await writeFrame(assembling);
+          [held, assembling] = [assembling, held];
+          filled = 0; haveFrame = true;
+          if (channel.resuming) {
+            channel.resuming = false;
+            clearTimeout(resumeTimer);
+            this.detail = `Live framebuffer via ${setup}. One shared channel; no recording.`;
+          }
         }
       }
     } catch (error) {
@@ -402,8 +530,13 @@ export class LiveStream {
         `Unable to stream with ${this.source!.encoder}${this.source!.audio ? " and dedicated Pulse monitor audio/Opus" : " (video only)"}. Check source, encoder setup and MediaMTX; no software fallback was used.`));
     } finally {
       clearTimeout(startup);
+      clearTimeout(resumeTimer);
+      sourceAbort?.abort();
       this.cancel(channel);
-      if (channel.reader) { void channel.reader.cancel().catch(() => {}); channel.reader.releaseLock(); }
+      if (channel.reader) {
+        void channel.reader.cancel().catch(() => {});
+        try { channel.reader.releaseLock(); } catch { /* a pending read must not skip encoder reaping */ }
+      }
       const encoder = channel.process;
       if (encoder) {
         try { await bounded(encoder.exited, 1500); }

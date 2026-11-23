@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { appendFileSync, renameSync } from "node:fs";
+import { appendFileSync, renameSync, utimesSync } from "node:fs";
 import { createApp, type App, type Replies } from "../src/app.ts";
 import { classify, clockTime, Console, ConsoleFeed, gameNoise, parseClientChat, parseServerLine, plain, serverNoise } from "../src/console.ts";
 import { clientLogLine, fakePhoneChat, fixture, serverLogLine, tempHome, type FakePhoneChat, type Home } from "./helpers.ts";
@@ -14,6 +14,11 @@ const serverLine = (ms: number, message: string, level?: string, logger?: string
 const clientLine = (ms: number, message: string) => clientLogLine(T + ms, message);
 const texts = (stream: Console, after = 0) => stream.since(after).lines.map(line => line.text);
 const phoneChat = () => { const fake = fakePhoneChat(); fakes.push(fake); return fake; };
+/**
+ * A client log's first read dates its clock stamps by the file's write time, so a test
+ * file must look written at the test's clock, not whenever the suite happens to run.
+ */
+const writtenAt = (path: string, t: number) => utimesSync(path, new Date(t), new Date(t));
 
 test("a server log line gives its time (the stamp is UTC), level, logger and message", () => {
   expect(parseServerLine("[21Nov2026 16:11:23.456] [Server thread/INFO] [net.minecraft.server.MinecraftServer/]: <Gary> hello")).toEqual({
@@ -45,6 +50,13 @@ test("a client's clock time becomes the latest such moment not after the referen
   expect(clockTime(23, 50, 0, reference)).toBe(new Date(2026, 10, 20, 23, 50, 0).getTime());
   // A few seconds ahead is clock drift, not yesterday.
   expect(clockTime(10, 30, 20, reference)).toBe(new Date(2026, 10, 21, 10, 30, 20).getTime());
+  // Across midnight the same holds: just before it, a stamp a few seconds past it is tomorrow's ...
+  const late = new Date(2026, 10, 21, 23, 59, 50).getTime();
+  expect(clockTime(0, 0, 20, late)).toBe(new Date(2026, 10, 22, 0, 0, 20).getTime());
+  // ... a stamp more than a minute ahead is not drift, so it was this morning ...
+  expect(clockTime(0, 1, 0, late)).toBe(new Date(2026, 10, 21, 0, 1, 0).getTime());
+  // ... and just after it, a stamp from just before it is yesterday's.
+  expect(clockTime(23, 59, 58, new Date(2026, 10, 22, 0, 0, 2).getTime())).toBe(new Date(2026, 10, 21, 23, 59, 58).getTime());
 });
 
 test("messages are sorted into chat, things that happened to players, and the rest", () => {
@@ -244,6 +256,8 @@ test("the feed reads what each resident's client showed, without Baritone's chat
   home.put("resident/margo/memory.md", "# Margo\n");
   const margoLog = home.put("game-Margo/logs/latest.log", fixture("client-chat.log"));
   const garyLog = home.put("game/logs/latest.log", `${clientLine(-5000, "[System] [CHAT] Margo joined the game")}\n${clientLine(-4000, "half a li")}`);
+  writtenAt(margoLog, clock);
+  writtenAt(garyLog, clock);
   const stream = new Console(false, { now: () => clock });
   const feed = new ConsoleFeed(stream, home.config(), () => clock);
   await feed.readClients();
@@ -262,11 +276,36 @@ test("the feed reads what each resident's client showed, without Baritone's chat
   await feed.readClients();
   expect(texts(stream).filter(text => text.includes("hello"))).toEqual(["<Margo> hello Gary"]);
   // A session start deletes the client's log and the client writes a new one.
-  home.put("game-Margo/logs/new.log", `${clientLine(2000, "[System] [CHAT] Gary has made the advancement [Stone Age]")}\n`);
-  renameSync(`${home.dir}/game-Margo/logs/new.log`, margoLog);
+  const restarted = home.put("game-Margo/logs/new.log", `${clientLine(2000, "[System] [CHAT] Gary has made the advancement [Stone Age]")}\n`);
+  writtenAt(restarted, clock);
+  renameSync(restarted, margoLog);
   await feed.readClients();
   expect(stream.since().lines.at(-1)).toMatchObject({ text: "Gary has made the advancement [Stone Age]", kind: "players", seenBy: ["Margo"] });
   expect(stream.since().lines.length).toBe(5);
+});
+
+test("a resident who played across midnight is read in order, from a log left from last night and live", async () => {
+  const at = (day: number, hours: number, minutes: number, seconds: number) => new Date(2026, 10, day, hours, minutes, seconds).getTime();
+  // The client stopped just after midnight; this app first reads its log nearly a day later, when
+  // last night's stamps are again just ahead of the clock. The log's write time dates them, not now.
+  const log = home.put("game/logs/latest.log", [
+    clientLogLine(at(21, 23, 59, 50), "[System] [CHAT] Gary has made the advancement [Stone Age]"),
+    clientLogLine(at(22, 0, 0, 10), "[CHAT] <Gary> past midnight"),
+  ].join("\n") + "\n");
+  writtenAt(log, at(22, 0, 0, 10) + 500);
+  clock = at(22, 23, 59, 30);
+  const stream = new Console(false, { now: () => clock });
+  const feed = new ConsoleFeed(stream, home.config(), () => clock);
+  await feed.readClients();
+  // Live: a line stamped just before midnight and read just after it is yesterday's.
+  appendFileSync(log, `${clientLogLine(at(22, 23, 59, 59), "[CHAT] <Margo> nearly midnight")}\n`);
+  clock = at(23, 0, 0, 1);
+  await feed.readClients();
+  expect(stream.since().lines.map(line => [line.t, line.text])).toEqual([
+    [at(21, 23, 59, 50), "Gary has made the advancement [Stone Age]"],
+    [at(22, 0, 0, 10), "<Gary> past midnight"],
+    [at(22, 23, 59, 59), "<Margo> nearly midnight"],
+  ]);
 });
 
 test("a command goes to the server machine and comes back in the stream; refusals are told apart", async () => {
