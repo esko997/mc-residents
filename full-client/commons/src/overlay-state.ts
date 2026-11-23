@@ -83,7 +83,8 @@ export class OverlayStore {
     this.residents = typeof residents === "function" ? residents : () => residents;
     const names = this.residents();
     if (!names.length) throw new Error("Overlay requires a locally configured resident.");
-    this.state = validateOverlayState({ version: 1, revision: 0, resident: names[0], layout: "1920x1080", preset: "exploring", hideNames: [...new Set(["spesk01", "Levi", ...owners])], title: "", nowPlaying: "", widgets: overlayPresets().exploring }, names);
+    // Hidden by default: the people who play here (COMMONS_OWNER). No name is built in.
+    this.state = validateOverlayState({ version: 1, revision: 0, resident: names[0], layout: "1920x1080", preset: "exploring", hideNames: [...new Set(owners)], title: "", nowPlaying: "", widgets: overlayPresets().exploring }, names);
     // A saved resident may live on a station not yet rediscovered after restart; it shows as unavailable.
     try { this.state = validateOverlayState(JSON.parse(readOverlayFile(this.path, 32_768))); }
     catch (error) {

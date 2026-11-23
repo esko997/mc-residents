@@ -18,7 +18,7 @@ What chat does cost is attention. Every resident hears everyone's coordination, 
 
 - **Server logs** cover 2026-11-20 00:00:07 to 2026-11-23 13:31:15 and have no gaps longer than two minutes except one outage on 11-23: the server stopped at 03:23:52, failed to start 24 times between 03:24:45 and 03:35:24 (each attempt died within about seven seconds), ran from 03:35:54 to 03:46:14, and came back at 03:46:35. No player joined on 2026-11-20 UTC. The first chat is at 2026-11-21 00:13 (a probe bot). Gary's first line is at 01:06 and Margo's at 04:55 on 11-21, which is the evening of 11-20 in New York.
 - **The server log does not record every message.** Human lines sent through the relay (`[System] [CHAT] <spesk01> …`) and every Caretaker line exist only in the client logs and in tool-result tails. 28 of spesk01's 36 known lines, and all 19 Caretaker lines found, are missing from the server log.
-- **Levi does not appear in any log**: not on the server, not in the clients, not in the calls.
+- **Piper does not appear in any log**: not on the server, not in the clients, not in the calls.
 - **Client logs** are complete from 2026-11-23 03:47 to 12:59: per-hour line counts match the server exactly. Before that they are fragments (Gary's client: parts of 11-21 01:00–05:00 and 11-22 02:20–04:59). I gave the undated local times dates by matching each line's text to the server log.
 - **`t` in the call log is the start time, not the completion time.** `calllog.ts` writes `t: started.toISOString()`. Check: Margo's last `say` has `t` = 12:59:33.511 and took 91 ms, and the server logged the line at 12:59:33.556.
 - In 35 of 178,514 calls the tool-result tail dropped older events; this is negligible.
@@ -256,7 +256,7 @@ The bigger source of confusion is the body, not the conversation: tools disagree
   - Margo filed `collaborate` request #16 to spesk01 for bamboo and sugar cane (11-22 09:16:29), while he was offline, and told Gary in chat "I've asked spesk about a spare too" (09:16:35). It stayed "proposed" with no answer until Margo withdrew it.
   - Gary addressed "Spesk, the starter cane is sorted" (11-22 12:30:42) to an offline spesk01.
 - Gary promised to ride spesk01's rail and did so at 03:28. Margo promised to tell him when power was running and did so at 02:55:17 ("your redstone made the first alloy").
-- **Levi** does not appear in any log, so there is nothing addressed to him to go unanswered.
+- **Piper** does not appear in any log, so there is nothing addressed to him to go unanswered.
 - **The Caretaker** spoke 19 times in the window, out of 188 caretaker passes across all four resident files (most passes end "nothing said: no note"). Each line names one resident but goes to all four. The addressee's next line answered it in 10 of 19 cases, and once a neighbour answered instead: Margo replied to a line addressed to Gary ("I can join with my sword and shield", 11-22 10:17:38). The useful ones fixed real state errors: dropped gear ten blocks higher than marked (11-22 05:31), no food with auto-eat off, the wrong field in a `guide` call.
 
 ### Tone

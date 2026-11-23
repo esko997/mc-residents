@@ -12,12 +12,12 @@ test("an unseen player nearby and speaking is in no tool reply, event or wake; a
   const f = await fixture({ unseen: ["lantern_"] }); await f.body.tail.start();
   f.state.nearbyEntities = [
     { id: 50, type: "minecraft:player", player: true, name: "Lantern_", pos: [3, 64, 0], distance: 3 },
-    { id: 51, type: "minecraft:player", player: true, name: "Levi", pos: [0, 64, 6], distance: 6 },
+    { id: 51, type: "minecraft:player", player: true, name: "Piper", pos: [0, 64, 6], distance: 6 },
   ];
   f.state.lookingAt = { type: "entity", entity: "minecraft:player", entityId: 50 };
   await f.body.poll();
   const arrived = f.body.events.consume();
-  expect(arrived).toContain("player_near name=Levi distance=6");
+  expect(arrived).toContain("player_near name=Piper distance=6");
   // Everything the game says of it, with nothing else in between, wakes no wait and leaves no trace.
   const waiting = f.tools.call("wait", { seconds: 1 });
   await appendFile(f.log, [
@@ -30,7 +30,7 @@ test("an unseen player nearby and speaking is in no tool reply, event or wake; a
   ].map(line => `[12:00:00] [Render thread/INFO]: ${line}\n`).join(""));
   const waited = text(await waiting);
   expect(waited).toBe("Time is up.\n\nSince last time:\nnone");
-  await appendFile(f.log, "[CHAT] <Levi> hello Gary\n[CHAT] Levi left the game\n");
+  await appendFile(f.log, "[CHAT] <Piper> hello Gary\n[CHAT] Piper left the game\n");
   await f.body.tail.read();
   const replies = [
     arrived,
@@ -44,19 +44,19 @@ test("an unseen player nearby and speaking is in no tool reply, event or wake; a
   expect(replies[2]).toContain("Error: Player Lantern_ is not nearby.");
   expect(replies[3]).toContain("Error: Player Lantern_ is not nearby.");
   expect(f.requests.some(r => String(r.body.text).startsWith("#follow"))).toBe(false);
-  // The crosshair on it reads as nothing there, and attack sends no click that would hit it. Levi and his lines remain.
-  expect(replies[1]).toContain("Players: Levi 6m");
+  // The crosshair on it reads as nothing there, and attack sends no click that would hit it. Piper and his lines remain.
+  expect(replies[1]).toContain("Players: Piper 6m");
   expect(replies[1]).toContain("Looking miss");
   expect(replies[4]).toContain("Nothing in your sights was in reach; nothing was hit.");
   expect(f.requests.some(r => r.body.action === "attack")).toBe(false);
-  expect(replies[1]).toContain("chat from=Levi text=hello Gary");
-  expect(replies[1]).toContain("system text=Levi left the game");
+  expect(replies[1]).toContain("chat from=Piper text=hello Gary");
+  expect(replies[1]).toContain("system text=Piper left the game");
   // The event numbers run on without a gap where its lines were.
   const numbers = [...all.matchAll(/^(\d+) /gm)].map(match => Number(match[1]));
   expect(numbers).toEqual(numbers.map((_, index) => numbers[0]! + index));
   // Every reader of the body's state, skills and suggestions included, gets the same filtered list.
   const full = await f.body.api.state(true);
-  expect(full.nearbyEntities?.map(entity => entity.name)).toEqual(["Levi"]);
+  expect(full.nearbyEntities?.map(entity => entity.name)).toEqual(["Piper"]);
 });
 
 test("RESIDENT_UNSEEN_PLAYERS: Lantern_ by default, a comma-separated list, empty for none, a bad name refused", () => {

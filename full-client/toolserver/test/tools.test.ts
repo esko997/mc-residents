@@ -62,7 +62,7 @@ describe("log and events", () => {
   test("phone-style chat preserves the sender", () => {
     expect(parseLogLine("[21:15:02] [Render thread/INFO]: [System] [CHAT] <spesk01> hello gary", "Gary")).toEqual({ type: "chat", fields: { from: "spesk01", text: "hello gary" } });
     expect(parseLogLine("[CHAT] [Baritone] Going to: GoalXZ{x=165,z=-240}", "Gary")?.type).toBe("baritone");
-    expect(parseLogLine("[System] [CHAT] Levi joined the game", "Gary")?.type).toBe("system");
+    expect(parseLogLine("[System] [CHAT] Piper joined the game", "Gary")?.type).toBe("system");
   });
   test("tail survives replacement and in-place truncate/rewrite", async () => {
     const f = await fixture(); await f.body.tail.start();
@@ -118,9 +118,9 @@ describe("navigation and observation", () => {
   test("mine/follow/explore and stop commands", async () => {
     const f = await fixture();
     await f.tools.call("mine", { block: "minecraft:iron_ore", count: 3 });
-    await f.tools.call("follow", { player: "Levi" }); await f.tools.call("explore"); await f.tools.call("stop");
+    await f.tools.call("follow", { player: "Piper" }); await f.tools.call("explore"); await f.tools.call("stop");
     expect(f.requests.filter(r => r.path === "/chat" && /^#(mine|follow|explore)\b/.test(String(r.body.text)))
-      .map(r => r.body.text)).toEqual(["#mine 3 minecraft:iron_ore", "#follow player Levi", "#explore"]);
+      .map(r => r.body.text)).toEqual(["#mine 3 minecraft:iron_ore", "#follow player Piper", "#explore"]);
     expect(f.baritone.active).toBe(false);
     expect(f.requests.some(r => r.body.action === "release")).toBe(true); expect(f.body.navigation).toBeUndefined();
   });
@@ -142,10 +142,10 @@ describe("navigation and observation", () => {
   });
   test("hurt/death/hunger and player arrival/departure", async () => {
     const f = await fixture(); await f.body.poll();
-    f.state.health = 0; f.state.food = 6; f.state.nearbyEntities = [{ id: 3, type: "minecraft:player", name: "Levi", player: true, pos: [1, 64, 0], distance: 1 }];
+    f.state.health = 0; f.state.food = 6; f.state.nearbyEntities = [{ id: 3, type: "minecraft:player", name: "Piper", player: true, pos: [1, 64, 0], distance: 1 }];
     await f.body.poll(); const events = f.body.events.consume();
     for (const type of ["hurt", "died", "hungry", "player_near"]) expect(events).toContain(type);
-    f.state.nearbyEntities = []; f.tick(1000); await f.body.poll(); expect(f.body.events.consume()).toContain("player_gone name=Levi");
+    f.state.nearbyEntities = []; f.tick(1000); await f.body.poll(); expect(f.body.events.consume()).toContain("player_gone name=Piper");
   });
 });
 
@@ -213,7 +213,7 @@ describe("reflexes and interactions", () => {
     const f = await fixture(); f.state.hotbar = [{ slot: 0, count: 1, item: "minecraft:iron_sword" }]; await f.body.poll();
     f.state.health = 18;
     f.state.nearbyEntities = [
-      { id: 3, type: "minecraft:player", player: true, hostile: true, name: "Levi", pos: [0, 64, 1], distance: 1 },
+      { id: 3, type: "minecraft:player", player: true, hostile: true, name: "Piper", pos: [0, 64, 1], distance: 1 },
       { id: 4, type: "minecraft:cow", pos: [1, 64, 0], distance: 1, health: 10 },
     ];
     f.state.lookingAt = { type: "entity", entity: "minecraft:cow", entityId: 4 };
@@ -232,7 +232,7 @@ describe("reflexes and interactions", () => {
   });
   test("never fights players, even when they are hurt nearby", async () => {
     const f = await fixture(); await f.body.poll(); f.state.health = 18;
-    f.state.nearbyEntities = [{ id: 3, type: "minecraft:player", player: true, hostile: true, name: "Levi", pos: [0, 64, 1], distance: 1 }];
+    f.state.nearbyEntities = [{ id: 3, type: "minecraft:player", player: true, hostile: true, name: "Piper", pos: [0, 64, 1], distance: 1 }];
     await f.body.poll(); await f.body.poll(); expect(f.requests.some(r => r.body.action === "attack" || r.body.text === "#pause")).toBe(false);
   });
   test("fight will not swing when a player crosses the raycast", async () => {
@@ -325,7 +325,7 @@ describe("reflexes and interactions", () => {
     const facility = { name: "n".repeat(60), purpose: "p".repeat(160), capabilities: Array.from({ length: 8 }, (_, i) => `${i}${"c".repeat(47)}`), x: 100, y: 64, z: -200, dimension: "minecraft:overworld", access_terms: "a".repeat(200) };
     const argumentsByTool: Record<string, unknown> = {
       wait: { seconds: 1 }, go_to: { x: 10, z: 10 }, mine: { block: "minecraft:stone" }, find_block: { block: "supplementaries:wild_flax", radius: 96, limit: 16 },
-      follow: { player: "Levi" }, say: { text: "hello" }, look: { yaw: 0, pitch: 0 },
+      follow: { player: "Piper" }, say: { text: "hello" }, look: { yaw: 0, pitch: 0 },
       use: { hold_ticks: 10 }, attack: { hold_ticks: 10 }, select_hotbar: { slot: 0 },
       eat: { item: "minecraft:bread" }, click_slot: { slot: 0 }, click_button: { index: 0 },
       type_text: { text: "hello" }, press_key: { key: "ENTER" }, write_sign: { lines: ["hello"] },
@@ -437,14 +437,14 @@ describe("live-run regressions", () => {
     expect(parseLogLine("[CHAT] [Baritone] Canceled", "Gary")).toEqual({ type: "baritone", fields: { text: "Canceled" } });
   });
   const independentTools: [string, object][] = [
-    ["go_to", { x: 20, z: 20 }], ["mine", { block: "oak_log" }], ["follow", { player: "Levi" }], ["explore", {}],
+    ["go_to", { x: 20, z: 20 }], ["mine", { block: "oak_log" }], ["follow", { player: "Piper" }], ["explore", {}],
     ["say", { text: "hi" }], ["wait", { seconds: 1 }], ["status", {}], ["inventory", {}], ["screen", {}],
     ["find_item", { query: "oak" }], ["recipes", { item: "oak_log" }], ["uses", { item: "copper_ingot" }], ["guide", { query: "oak" }],
   ];
   test.each(independentTools)("%s leaves an automatic meal running", async (tool, args) => {
     const f = await fixture(); const tools = new Tools(f.body, knowledgeFixture(f.dir));
     f.state.food = 8; f.state.hotbar = [{ slot: 1, item: "minecraft:bread", count: 3 }]; await f.body.poll();
-    f.body.events.add("chat", { from: "Levi", text: "hi" });
+    f.body.events.add("chat", { from: "Piper", text: "hi" });
     expect((await tools.call(tool, args)).isError).toBe(false);
     expect(f.requests.some(r => r.body.action === "release")).toBe(false);
     expect(f.requests.filter(r => r.body.action === "use")).toHaveLength(1);
@@ -455,7 +455,7 @@ describe("live-run regressions", () => {
     f.state.hotbar = [{ slot: 2, item: "minecraft:iron_sword", count: 1 }]; await f.body.poll(); f.state.health = 18;
     f.state.nearbyEntities = [{ id: 9, type: "minecraft:zombie", hostile: true, pos: [0, 64, 2], distance: 2 }];
     f.state.lookingAt = { type: "entity", entity: "minecraft:zombie", entityId: 9 };
-    await f.body.poll(); f.body.events.add("chat", { from: "Levi", text: "hi" });
+    await f.body.poll(); f.body.events.add("chat", { from: "Piper", text: "hi" });
     expect((await tools.call(tool, args)).isError).toBe(false);
     expect(f.requests.some(r => r.body.action === "release" || r.body.text === "#resume")).toBe(false);
     f.tick(700); await f.body.poll(); expect(f.requests.some(r => r.body.action === "attack")).toBe(true);

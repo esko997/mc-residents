@@ -59,15 +59,15 @@ test("actual watcher, local plan, console, alarm, map and caretaker sources proj
   fake = fakeSynapse({ token: "s3cret" });
   fake.state.nearbyEntities = [{ player: true, name: "SPESK01" }, { player: true, name: "Margo" }];
   home.put("synapse-token", "s3cret");
-  home.put("resident/gary/plan.json", JSON.stringify({ focus: "Coastal lights", plans: [{ name: "Coastal lights", goal: "PRIVATE GOAL", steps: [{ text: "Pack torches", state: "done", note: "PRIVATE NOTE" }, { text: "Ask Levi about lights", state: "doing" }] }], history: [{ name: "PRIVATE HISTORY" }] }));
+  home.put("resident/gary/plan.json", JSON.stringify({ focus: "Coastal lights", plans: [{ name: "Coastal lights", goal: "PRIVATE GOAL", steps: [{ text: "Pack torches", state: "done", note: "PRIVATE NOTE" }, { text: "Ask Piper about lights", state: "doing" }] }], history: [{ name: "PRIVATE HISTORY" }] }));
   home.put("resident/gary/places.json", JSON.stringify({ places: [{ name: "Coast shelter", x: 100, y: 70, z: 20, dimension: "minecraft:overworld", note: "PRIVATE MAP NOTE" }] }));
-  home.put("overseer/Gary.md", "## now\nNOTE: Place lights near Levi\nMAINTAINERS: PRIVATE MAINTAINERS\n");
-  const config = home.config({ GARY_SYNAPSE_URL: fake.url });
+  home.put("overseer/Gary.md", "## now\nNOTE: Place lights near Piper\nMAINTAINERS: PRIVATE MAINTAINERS\n");
+  const config = home.config({ GARY_SYNAPSE_URL: fake.url, COMMONS_OWNER: "spesk01, Piper" });
   app = createApp(config, TOKEN, () => clock, () => {});
   await app.watcher.sample();
-  for (const message of ["<Gary> Hello Levi", "<spesk01> Hidden speech", "<Margo> s3cret", `<Gary> ${TOKEN}`, "<Caretaker> INTERNAL CARETAKER", "[Server] INTERNAL SYSTEM", "<Gary> Walk to https://private.example/path"]) app.stream.addServer(serverLogLine(clock, message));
+  for (const message of ["<Gary> Hello Piper", "<spesk01> Hidden speech", "<Margo> s3cret", `<Gary> ${TOKEN}`, "<Caretaker> INTERNAL CARETAKER", "[Server] INTERNAL SYSTEM", "<Gary> Walk to https://private.example/path"]) app.stream.addServer(serverLogLine(clock, message));
   app.stream.addServer("INTERNAL COMMAND", { mark: "command", t: clock });
-  app.db.query("INSERT INTO resident_alarms(sender,bucket,at,event_json) VALUES(?,?,?,?)").run("Gary", "manual", clock, JSON.stringify({ sender: "Gary", reason: "Levi nearby", kind: "manual", at: clock, x: 1, y: 2, z: 3, dimension: "overworld", debug: "PRIVATE DEBUG" }));
+  app.db.query("INSERT INTO resident_alarms(sender,bucket,at,event_json) VALUES(?,?,?,?)").run("Gary", "manual", clock, JSON.stringify({ sender: "Gary", reason: "Piper nearby", kind: "manual", at: clock, x: 1, y: 2, z: 3, dimension: "overworld", debug: "PRIVATE DEBUG" }));
   const data = (await snapshot()).data;
   expect(data.online).toBe(true); expect(data.sampledAt).toBe(clock); expect(data.vitals?.health).toBe(2.7);
   expect(data.vitals?.air).toBe(300);
@@ -81,7 +81,7 @@ test("actual watcher, local plan, console, alarm, map and caretaker sources proj
   expect(data.alarms).toEqual([{ at: clock, text: "Gary: [hidden] nearby" }]);
   expect(data.caretaker).toBe("Place lights near [hidden]");
   const serialized = JSON.stringify(data);
-  for (const denied of ["spesk01", "Levi", "s3cret", TOKEN, config.home, fake.url, "PRIVATE", "INTERNAL", "synapseUrl", "clientUnit", "seenBy", "debug", "maxAir", "hotbar"]) expect(serialized).not.toContain(denied);
+  for (const denied of ["spesk01", "Piper", "s3cret", TOKEN, config.home, fake.url, "PRIVATE", "INTERNAL", "synapseUrl", "clientUnit", "seenBy", "debug", "maxAir", "hotbar"]) expect(serialized).not.toContain(denied);
   expect(Object.keys(data).sort()).toEqual(["alarms", "at", "caretaker", "chat", "map", "nearby", "nowPlaying", "online", "plan", "position", "resident", "sampledAt", "title", "vitals"].sort());
 });
 
@@ -152,7 +152,7 @@ test("station snapshots use real local sources and report Live only from the sta
 
 test("privacy fails closed for URLs, addresses, hostnames, paths, credentials and secret encodings", () => {
   for (const text of ["https://example.invalid/a", "192.168.1.1", "fe80::1234", "new-machine.local", "otherbox:8770", "/home/user/private", "notes/credentials.json", "Bearer abc", "token=abc", "password: abc", "a".repeat(64), "superSensitiveValue"]) expect(overlayText(text, [], ["superSensitiveValue"])).toBe("[private]");
-  expect(overlayText("Hello LEVI and spesk01", ["Levi", "spesk01"], [])).toBe("Hello [hidden] and [hidden]");
+  expect(overlayText("Hello PIPER and spesk01", ["Piper", "spesk01"], [])).toBe("Hello [hidden] and [hidden]");
 });
 
 test("known configured host, station URL tokens and symlinked short bearer values are redacted", () => {

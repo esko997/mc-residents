@@ -9,12 +9,12 @@ afterEach(() => { for (const home of homes.splice(0)) home.remove(); });
 function setup() {
   const home = tempHome(); homes.push(home);
   const path = join(home.dir, "commons", "test.sqlite");
-  return { home, path, store: new OverlayStore(path, ["Gary", "Margo"]) };
+  return { home, path, store: new OverlayStore(path, ["Gary", "Margo"], ["spesk01", "Piper", "spesk01"]) };
 }
 
 test("overlay state persists atomically with private permissions and reloads independently", () => {
   const { store, path } = setup(), state = store.get();
-  expect(state.hideNames).toEqual(["spesk01", "Levi"]);
+  expect(state.hideNames).toEqual(["spesk01", "Piper"]);
   state.title = "A walk along the coast";
   state.resident = "margo";
   const saved = store.replace(0, state);

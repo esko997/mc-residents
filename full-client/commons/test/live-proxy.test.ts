@@ -284,7 +284,7 @@ test("the overlay can put a station resident on air with the hub's privacy proje
     resident, online: true, sampledAt: clock - 1000,
     vitals: { health: 18, maxHealth: 20, food: 17, air: 300 },
     position: { x: 10, y: 64, z: 10, dimension: "minecraft:overworld" },
-    plan: { focus: "Visit Levi", next: "Carry bread" },
+    plan: { focus: "Visit Piper", next: "Carry bread" },
     nearby: [{ name: "spesk01", distance: 4 }, { name: "Tobin", distance: null }],
     places: [{ name: "Bakery", x: 12, z: 9, dimension: "overworld" }, { name: "Nether hub", x: 1, z: 1, dimension: "the_nether" }],
     trail: [{ x: 9, z: 9, dimension: "overworld" }, { x: 2, z: 2, dimension: "the_nether" }],
@@ -318,7 +318,7 @@ test("the overlay can put a station resident on air with the hub's privacy proje
   expect(text).not.toContain("chungus1");
   expect(text).not.toContain("station-synapse-secret");
   // The hide list itself is part of the saved state; the on-air data never contains hidden names.
-  for (const denied of ["spesk01", "Levi", "Nether"]) expect(JSON.stringify(wren.data)).not.toContain(denied);
+  for (const denied of ["spesk01", "Piper", "Nether"]) expect(JSON.stringify(wren.data)).not.toContain(denied);
 
   // A source with any field outside the projection is refused, never partially used.
   const tobin = await choose("Tobin");
@@ -339,7 +339,7 @@ test("a station serves its residents' overlay source filtered with its own secre
   const root = home();
   rmSync(join(root.dir, "resident/gary"), { recursive: true });
   root.put("instances/Wren.env", "SYNAPSE_URL=http://127.0.0.1:9\n");
-  root.put("resident/wren/plan.json", JSON.stringify({ focus: "Bread for chungus1", plans: [{ name: "Bread for chungus1", steps: [{ text: "Ask Levi", state: "doing" }] }] }));
+  root.put("resident/wren/plan.json", JSON.stringify({ focus: "Bread for chungus1", plans: [{ name: "Bread for chungus1", steps: [{ text: "Ask Piper", state: "doing" }] }] }));
   root.put("resident/wren/places.json", JSON.stringify({ places: [{ name: "Oven", x: 3, y: 64, z: 4, dimension: "overworld", note: "PRIVATE" }] }));
   root.put("overseer/Wren.md", "## now\nNOTE: Keep baking\nMAINTAINERS: PRIVATE\n");
   const station = createApp(root.config({ COMMONS_ROLE: "station", COMMONS_HOST_NAME: "chungus1" }), STATION, () => clock, () => {});
@@ -349,7 +349,7 @@ test("a station serves its residents' overlay source filtered with its own secre
   const body = await reply.json();
   // Station secrets are applied here; the hide list is the hub's job.
   expect(body).toEqual({ resident: "Wren", online: false, sampledAt: null, vitals: null, position: null,
-    plan: { focus: "[private]", next: "Ask Levi" }, nearby: [], places: [{ name: "Oven", x: 3, z: 4, dimension: "overworld" }], trail: [], caretaker: "Keep baking" });
+    plan: { focus: "[private]", next: "Ask Piper" }, nearby: [], places: [{ name: "Oven", x: 3, z: 4, dimension: "overworld" }], trail: [], caretaker: "Keep baking" });
   expect((await station.fetch(new Request(`http://station.test/${STATION}/api/overlay/source?resident=Gary`))).status).toBe(404);
   expect((await station.fetch(new Request(`http://station.test/wrong-token/api/overlay/source?resident=Wren`))).status).toBe(404);
 });

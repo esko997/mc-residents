@@ -45,9 +45,9 @@ describe("a walk-only trip", () => {
   test("one walk after another sets nothing again and stops nothing", async () => {
     const f = await fixture();
     await go(f, "go_to", { x: 10, z: 0 });
-    await go(f, "follow", { player: "Levi" });
+    await go(f, "follow", { player: "Piper" });
     await go(f, "explore");
-    expect(chats(f)).toEqual(["#stop", ...walkSets, "#goto 10 0", "#follow player Levi", "#explore"]);
+    expect(chats(f)).toEqual(["#stop", ...walkSets, "#goto 10 0", "#follow player Piper", "#explore"]);
   });
 
   test("excavate after a walk cancels the walk before allowing digging; excavate is said in the reply", async () => {
@@ -217,5 +217,5 @@ describe("a tool server stopped in the middle of a trip", () => {
 test("mode is optional and only walk or excavate", () => {
   expect(navigationDefinitions.go_to.schema.parse({ x: 1, z: 2 })).toEqual({ x: 1, z: 2 });
   expect(navigationDefinitions.go_to.schema.safeParse({ x: 1, z: 2, mode: "dig" }).success).toBe(false);
-  expect(navigationDefinitions.follow.schema.safeParse({ player: "Levi", mode: "excavate" }).success).toBe(true);
+  expect(navigationDefinitions.follow.schema.safeParse({ player: "Piper", mode: "excavate" }).success).toBe(true);
 });
