@@ -34,7 +34,7 @@ class HudTest(unittest.TestCase):
             self.assertIn("renderDistance:4\n", options)
             self.assertIn("key_aircraft.dismount:key.keyboard.f6\n", options)
             self.assertEqual((game / "config/xaero/minimap/profiles/personal.cfg").read_text(),
-                             "profile_name = My map\ndisplay_minimap = false\ndeathpoints = true\n")
+                             "profile_name = My map\ndisplay_minimap = false\ndeathpoints = false\n")
             self.assertEqual((game / "config/xaero/minimap/profiles/default.cfg").read_text(), "display_minimap = true\n")
             config = tomllib.loads((game / "config/synapse-client.toml").read_text())
             self.assertEqual(config, {"server": {"port": 25610, "authToken": "keep-me"}, "features": {

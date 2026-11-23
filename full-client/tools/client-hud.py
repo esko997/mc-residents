@@ -75,9 +75,15 @@ def plan(game, enable_video=False):
     minimap = game / "config/xaero/minimap/profiles" / f"{match[1]}.cfg"
     options = game / "options.txt"
     synapse = game / "config/synapse-client.toml"
+    hud = setting(minimap.read_text(), "display_minimap", "false")
+    # Death markers clutter the resident's view and the stream; the body already
+    # reports each death's coordinates. Older profiles may lack these keys.
+    for key in ("deathpoints", "old_deathpoints"):
+        if re.search(r"^\s*" + key + r"\s*=", hud, re.MULTILINE):
+            hud = setting(hud, key, "false")
     return {
         options: profile.apply_options(options.read_text(), HUD_OPTIONS),
-        minimap: setting(minimap.read_text(), "display_minimap", "false"),
+        minimap: hud,
         synapse: synapse_features(synapse.read_text(), enable_video),
     }
 
