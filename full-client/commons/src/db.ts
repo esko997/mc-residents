@@ -4,6 +4,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { migratePositions } from "./positions.ts";
+import { migrateLegacyLibrary, setAsideLegacyLibrary } from "./library.ts";
 import { record } from "./json.ts";
 import { AUTO, LOOKED } from "./reviews.ts";
 
@@ -16,8 +17,11 @@ export function openCommons(path: string, schemaPath: string): Database {
   try {
     // Before the schema: central caretaker jobs may hold the write lock.
     db.exec("PRAGMA busy_timeout = 3000;");
+    // The first book catalogue (one row per copy) is moved aside, the schema creates the new tables, then it is copied in.
+    setAsideLegacyLibrary(db);
     db.exec(schema);
     migratePositions(db);
+    migrateLegacyLibrary(db);
     db.exec("PRAGMA foreign_keys = ON;");
     return db;
   } catch (error) { db.close(); throw error; }

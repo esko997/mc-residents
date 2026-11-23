@@ -346,42 +346,61 @@ CREATE TABLE IF NOT EXISTS server_container_flows (
 CREATE INDEX IF NOT EXISTS server_container_flows_at ON server_container_flows(at);
 CREATE INDEX IF NOT EXISTS server_container_flows_facility ON server_container_flows(facility, at);
 
--- Book catalogue (library.ts; hub only). One row is one physical copy of a written book somewhere in the world, with
--- the text its registrant's body read from the item. content_hash is the server bridge's resident-book-v1 hash, so a
--- registered chiseled bookshelf read can confirm the copy is there; text_key (title, author, pages) groups copies.
--- Where a book is comes from residents' reports: location_by/location_source say who put it there in the catalogue.
+-- Book catalogue (library.ts, library-scan.ts; hub only; migrated from the first one-row-per-copy shape by
+-- migrateLibrary in library.ts). A book is one edition: content_hash is the server bridge's resident-book-v1 hash of
+-- kind, title, author, generation and pages, so a shelf read names it exactly; text_key (title, author, pages) groups
+-- the editions of one text (an original and its copies). Pages are what the server bridge or a resident's body read
+-- from the item, never typed; they stay null until read (the bridge's shelf list carries no pages).
 CREATE TABLE IF NOT EXISTS library_books (
   id INTEGER PRIMARY KEY,
-  content_hash TEXT NOT NULL,
-  text_key TEXT NOT NULL,
-  title TEXT NOT NULL, author TEXT NOT NULL, generation INTEGER NOT NULL,
-  pages_json TEXT NOT NULL, page_count INTEGER NOT NULL, text TEXT NOT NULL,
+  content_hash TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL CHECK (kind IN ('written', 'writable')),
+  title TEXT, author TEXT, generation INTEGER,
+  page_count INTEGER NOT NULL,
+  text_key TEXT, pages_json TEXT, text TEXT,
+  -- Who read the pages: 'server' or a resident's name; text_failed_at: the last server read of them that failed.
+  text_by TEXT, text_failed_at INTEGER,
   subjects_json TEXT NOT NULL DEFAULT '[]',
   note TEXT NOT NULL DEFAULT '',
-  registrant TEXT NOT NULL COLLATE NOCASE,
-  read_from TEXT NOT NULL CHECK (read_from IN ('inventory', 'lectern')),
-  x INTEGER NOT NULL, y INTEGER NOT NULL, z INTEGER NOT NULL, dimension TEXT NOT NULL,
-  holder TEXT,
-  facility_id INTEGER REFERENCES facilities(id) ON DELETE SET NULL,
-  location_by TEXT NOT NULL, location_source TEXT NOT NULL, location_at INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'listed' CHECK (status IN ('listed', 'withdrawn')),
+  -- The resident who gave it subjects or a note (book_register); null while only the server has seen it.
+  registrant TEXT COLLATE NOCASE,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS library_books_text ON library_books(text_key);
-CREATE INDEX IF NOT EXISTS library_books_place ON library_books(dimension, x, y, z);
--- Dated, never rewritten: registrations, residents' reports (found/missing/moved), edits, and the server bridge's
--- reads of registered chiseled bookshelves (observer 'server').
+-- One copy of a book at one place. source 'server': standing on a chiseled bookshelf or lectern where the server
+-- bridge saw it (slot as it saw it); only the bridge's read of that very position marks it gone, and a position it
+-- could not read changes nothing. source 'resident': where a resident said it is (a chest, a room the server does not
+-- list); their word, until the server sees the same book at the same place and takes the copy over.
+CREATE TABLE IF NOT EXISTS library_copies (
+  id INTEGER PRIMARY KEY,
+  book_id INTEGER NOT NULL REFERENCES library_books(id) ON DELETE CASCADE,
+  source TEXT NOT NULL CHECK (source IN ('server', 'resident')),
+  dimension TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, z INTEGER NOT NULL,
+  slot INTEGER,
+  holder TEXT,
+  state TEXT NOT NULL CHECK (state IN ('here', 'gone')),
+  -- server: the last time the bridge saw it there; resident: when it was reported there, and by whom.
+  seen_at INTEGER NOT NULL, seen_by TEXT NOT NULL,
+  -- The bridge's last read of this position and, when that read could not tell (unloaded, no_level, error), why.
+  checked_at INTEGER, check_status TEXT,
+  gone_at INTEGER, gone_reason TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS library_copies_place ON library_copies(dimension, x, y, z);
+CREATE INDEX IF NOT EXISTS library_copies_book ON library_copies(book_id, state);
+-- Dated, never rewritten: residents' descriptions and reports, and the server's sightings: a copy first seen at a
+-- place (server_seen), seen without it (server_gone), or its shelf gone (shelf_gone).
 CREATE TABLE IF NOT EXISTS library_observations (
   id INTEGER PRIMARY KEY,
   book_id INTEGER NOT NULL REFERENCES library_books(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('registered', 'found', 'missing', 'moved', 'edited', 'withdrawn', 'server_seen', 'server_not_seen')),
+  kind TEXT NOT NULL CHECK (kind IN ('registered', 'found', 'missing', 'edited', 'server_seen', 'server_gone', 'shelf_gone')),
   observer TEXT NOT NULL,
-  source TEXT NOT NULL,
   x INTEGER, y INTEGER, z INTEGER, dimension TEXT, slot INTEGER,
   note TEXT NOT NULL DEFAULT '',
   at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS library_observations_book ON library_observations(book_id, at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS library_observations_at ON library_observations(at);
 
 -- Residents' online/offline, dimension changes and deaths as the server bridge reported them (records-ingest.ts).
 -- `at` is this hub's clock (the bridge's time shifted by the reply's clock offset). Kept for history.

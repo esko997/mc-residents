@@ -15,8 +15,11 @@ import { libraryOperation, type LibraryDeps } from "./library.ts";
 import { recordsOperation, type RecordsDeps } from "./records.ts";
 import { MAX_LIMIT, residentFrontier, type FrontierOptions } from "./resident-advancements.ts";
 
-/** Book catalogue and records: the observer for shelf reads, the console's chat ring, players nobody perceives. */
-export interface HistoryOptions extends Pick<LibraryDeps, "observer" | "get">, Pick<RecordsDeps, "chat" | "unseen"> {}
+/** Book catalogue and records: the server bridge for shelf reads and positions, the console's chat ring, players nobody
+ * perceives, and who to tell when the facilities change (the bridge's watch list is built from them). */
+export interface HistoryOptions extends Pick<LibraryDeps, "observer" | "get">, Pick<RecordsDeps, "chat" | "unseen"> {
+  facilitiesChanged?: () => void;
+}
 
 const credentialSchema = z.array(z.object({ name: z.string().regex(/^\w{1,40}$/), role: z.enum(["resident", "caretaker"]), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict());
 type Credential = z.infer<typeof credentialSchema>[number];
@@ -43,7 +46,8 @@ export class ResidentApi {
     this.sight = new ResidentSight(sight);
   }
 
-  private authenticate(request: Request): Credential | undefined {
+  /** The credentials file, reread when it changes; false when it is missing, unsafe or invalid (nobody is known then). */
+  private load(): boolean {
     try {
       const stat = statSync(this.credentialsFile);
       if (!stat.isFile() || (stat.mode & 0o777) !== 0o600 || stat.size > 1024 * 1024) throw new Error();
@@ -53,7 +57,17 @@ export class ResidentApi {
         if (new Set(entries.map(c => c.sha256)).size !== entries.length || new Set(entries.map(c => c.name.toLowerCase())).size !== entries.length) throw new Error();
         this.credentials = entries; this.stamp = stamp;
       }
-    } catch { this.credentials = []; this.stamp = ""; return undefined; }
+      return true;
+    } catch { this.credentials = []; this.stamp = ""; return false; }
+  }
+
+  /** Every resident identity's name (caretakers excluded), wherever its body runs; null when the file cannot be read. */
+  residentNames(): string[] | null {
+    return this.load() ? this.credentials.filter(c => c.role === "resident").map(c => c.name) : null;
+  }
+
+  private authenticate(request: Request): Credential | undefined {
+    if (!this.load()) return undefined;
     const header = request.headers.get("Authorization") ?? "";
     if (!/^Bearer [^\s]{1,512}$/.test(header)) return undefined;
     const digest = createHash("sha256").update(header.slice(7)).digest();
@@ -139,11 +153,12 @@ export class ResidentApi {
       const result = group === "skills" ? skillsOperation(this.db, who.name, operation, args)
         : group === "society" ? societyOperation(this.db, who.name, operation, args)
         : group === "knowledge" ? knowledgeOperation(this.db, who.name, operation, args)
-        : group === "library" ? await libraryOperation(this.db, who.name, operation, args, { observer: this.history.observer ?? null, get: this.history.get })
+        : group === "library" ? await libraryOperation(this.db, who.name, operation, args, { observer: this.history.observer ?? null, get: this.history.get, unseen: this.history.unseen })
         : group === "records" ? recordsOperation(this.db, who.name, operation, args, { chat: this.history.chat, unseen: this.history.unseen, residents })
         : placesOperation(this.db, who.name, operation, args);
       if (this.acceptNotes && group === "skills" && operation === "note_share") autoAccept(this.db);
       if (group === "society" && ["collaborate", "update"].includes(operation)) this.collaborationEvent(who.name);
+      if (group === "society" && ["register", "updateFacility"].includes(operation)) this.history.facilitiesChanged?.();
       return response({ result });
     } catch (error) {
       if (error instanceof RangeError) return failure(413, "too_large", error.message);

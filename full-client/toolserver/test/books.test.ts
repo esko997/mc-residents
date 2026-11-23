@@ -6,6 +6,8 @@ import { fixture, type FakeOptions } from "./fake-synapse.ts";
 import { schemaFile, sharedHttp } from "./shared-http.ts";
 import type { Stack } from "../src/synapse.ts";
 import { when } from "../src/books.ts";
+import { LibraryScan } from "../../commons/src/library-scan.ts";
+import { fakeBridge, LECTERN, OVERWORLD, SHELF, written as bookOf } from "../../commons/test/fake-bridge.ts";
 
 const hubs: { close(): void }[] = [];
 const databases: Database[] = [];
@@ -58,7 +60,7 @@ test("write_book with draft keeps a book and quill unsigned", async () => {
   expect(f.options.books?.[0]).toEqual({ kind: "writable", pages: ["one", "two"] });
 });
 
-test("read_book reads whole pages from hand or lectern, continues long books, and explains a chiseled bookshelf", async () => {
+test("read_book reads whole pages from hand or lectern, and continues long books", async () => {
   const pages = Array.from({ length: 5 }, (_, i) => `${"x".repeat(380)} end of page ${i + 1}`);
   const f = await body([written(0)], { books: { 0: { kind: "written", title: "Long", author: "Tobin", generation: 1, pages } } });
   const first = text(await f.tools.call("read_book", {}));
@@ -70,9 +72,8 @@ test("read_book reads whole pages from hand or lectern, continues long books, an
   const lectern = await body([], { lectern: { kind: "written", title: "Rules", author: "Wren", generation: 0, pages: ["Shut the gate."] } });
   lectern.setScreen({ screen: "LecternScreen" });
   expect(text(await lectern.tools.call("read_book", {}))).toContain('"Rules" by Wren (original), 1 page; from the lectern, open at page 1.\n— page 1 —\nShut the gate.');
-  const shelf = await body([]);
-  shelf.state.lookingAt = { type: "block", block: "minecraft:chiseled_bookshelf", blockPos: [5, 64, 5] };
-  expect(text(await shelf.tools.call("read_book", {}))).toContain("cannot be read in place: use the shelf where the book stands");
+  const empty = await body([]);
+  expect(text(await empty.tools.call("read_book", {}))).toContain("You carry no written book or book and quill, and no lectern is open.");
 });
 
 test("read_book reads a page longer than one reply in parts, each bounded, with a handle to the next", async () => {
@@ -133,23 +134,78 @@ test("use says where a book taken from a chiseled bookshelf went when the hand s
   expect(text(await hand.tools.call("use", {}))).toContain("no screen opened. Your hand now holds 1 x minecraft:written_book.");
 });
 
-test("the catalogue through the body: text read from the item, place from the sights, reports by a neighbour", async () => {
+/** A hub over HTTP whose library sees a fake server bridge, a scan to fill the catalogue, and a resident body near or far. */
+async function library(pages: string[]) {
   const db = new Database(":memory:"); databases.push(db);
   db.exec(readFileSync(schemaFile, "utf8"));
-  const hub = sharedHttp(db); hubs.push(hub);
-  const tobin = await body([written(0), quill(1)], { name: "Tobin", ...hub.identity("Tobin"), books: { 0: { kind: "written", title: "The Mill", author: "Tobin", generation: 0, pages: [story] } } });
-  expect(text(await tobin.tools.call("book_register", {}))).toContain("Look at the shelf, lectern or chest");
-  tobin.state.lookingAt = { type: "block", block: "minecraft:chiseled_bookshelf", blockPos: [100, 64, -200] };
-  expect(text(await tobin.tools.call("book_register", { subjects: ["mill"] }))).toContain('Catalogued #1 "The Mill" by Tobin, 1 page at 100,64,-200 minecraft:overworld, minecraft:chiseled_bookshelf.');
-  expect(text(await tobin.tools.call("book_register", { from: 1 }))).toContain("a book and quill, not yet signed");
-  const piper = await body([written(3)], { name: "Piper", ...hub.identity("Piper"), books: { 3: { kind: "written", title: "The Mill", author: "Tobin", generation: 0, pages: [story] } } });
+  const bridge = fakeBridge(Date.now);
+  bridge.put(OVERWORLD, 100, 64, -200, { block: SHELF, slots: [null, null, bookOf("Ledger", "Tobin", pages)] });
+  bridge.put(OVERWORLD, 300, 64, -200, { block: LECTERN, slots: [bookOf("Mill rules", "Margo", ["Shut the gate."])] });
+  await new LibraryScan(db, bridge.source, { get: bridge.get, log: () => {} }).pass();
+  const hub = sharedHttp(db, { observer: bridge.source, get: bridge.get }); hubs.push(hub);
+  const piper = await body([], { name: "Piper", ...hub.identity("Piper") });
+  piper.state.pos = { x: 101, y: 64, z: -198 };
+  piper.state.lookingAt = { type: "block", block: SHELF, blockPos: [100, 64, -200] };
+  bridge.world.bodies.set("Piper", { x: 101, y: 64, z: -198 });
+  return { db, bridge, piper, hub };
+}
+
+test("read_book reads a book where it stands: from the shelf in the sights, by id, and says where to go when too far", async () => {
+  const { bridge, piper } = await library(["The wheel turns.", "Flour below."]);
+  // Nothing in hand, a chiseled bookshelf in the sights: its one book is read in place.
+  const inSights = text(await piper.tools.call("read_book", {}));
+  expect(inSights).toContain('"Ledger" by Tobin (original), 2 pages, catalogue #1; on slot 2 of the chiseled bookshelf at 100,64,-200, 2 blocks from you.\n— page 1 —\nThe wheel turns.\n— page 2 —\nFlour below.');
+  expect(text(await piper.tools.call("read_book", { id: 2 })))
+    .toContain('#2 "Mill rules" by Margo (original), 1 page is not within 4 blocks of you. Nearest copy: the lectern at 300,64,-200, 200 blocks east of you; seen there by the server just now. Go there and read_book {id: 2} again.');
+  bridge.world.bodies.set("Piper", { x: 299, y: 64, z: -199 });
+  expect(text(await piper.tools.call("read_book", { id: 2 }))).toContain('"Mill rules" by Margo (original), 1 page, catalogue #2; on the lectern at 300,64,-200, 2 blocks from you.\n— page 1 —\nShut the gate.');
+  // The body's own client says it stands at the shelf; the server does not see it online: nothing is read.
+  bridge.world.bodies.set("Piper", { x: 101, y: 64, z: -198, online: false });
+  expect(text(await piper.tools.call("read_book", { shelf: "sights", slot: 2 }))).toContain("The server does not see you online, so it cannot tell where you stand; nothing was read.");
+  piper.state.lookingAt = { type: "block", block: "minecraft:chest", blockPos: [99, 64, -200] };
+  expect(text(await piper.tools.call("read_book", { shelf: "sights" }))).toContain("No chiseled bookshelf or lectern in your sights (you look at minecraft:chest)");
+  expect(text(await piper.tools.call("read_book", { id: 1, from: 0 }))).toContain("Give at most one of from, id and shelf.");
+});
+
+test("a long book read at its shelf pages exactly with the event tail: following the handles rebuilds it", async () => {
+  const pages = [...Array.from({ length: 6 }, (_, i) => `${i + 1}: ${"river mill wheel flour ".repeat(11)}`.trim()), "z".repeat(3000), "the end"];
+  const { piper } = await library(pages);
+  const read: Record<number, string> = {};
+  let args: Record<string, unknown> = { id: 1 };
+  for (let guard = 0; guard < 60; guard++) {
+    for (let i = 0; i < 12; i++) piper.body.events.add("chat", { text: `<Margo> ${"so much to say about the weather today ".repeat(7)}${guard}.${i}` });
+    const reply = text(await piper.tools.call("read_book", args));
+    expect(reply.length).toBeLessThanOrEqual(1499);
+    expect(reply).not.toContain("remaining output omitted");
+    const content = reply.split("\n\nSince last time:")[0]!;
+    for (const [, page, from, piece] of content.matchAll(/— page (\d+)(?:, characters (\d+)-\d+ of \d+)? —\n([\s\S]*?)(?=\n— page |$)/g)) {
+      if (from) expect(Number(from) - 1).toBe((read[Number(page)] ?? "").length);
+      read[Number(page)] = (from && Number(from) > 1 ? read[Number(page)] ?? "" : "") + piece;
+    }
+    const next = /Continue: read_book \{shelf: \{x: 100, y: 64, z: -200\}, slot: 2, page: (\d+)(?:, at: (\d+))?\}/.exec(content);
+    if (!next) break;
+    args = { shelf: { x: 100, y: 64, z: -200 }, slot: 2, page: Number(next[1]), ...(next[2] ? { at: Number(next[2]) } : {}) };
+  }
+  expect(Object.keys(read).map(Number)).toEqual(pages.map((_, i) => i + 1));
+  pages.forEach((page, i) => expect(read[i + 1]).toBe(page));
+});
+
+test("the catalogue through the body: books on shelves are in it by themselves; a description and a chest report are residents' word", async () => {
+  const { piper, hub } = await library(["The wheel turns.", "Flour below."]);
   piper.state.pos = { x: 100, y: 64, z: -180 };
   const found = text(await piper.tools.call("book_find", { query: "flour" }));
-  expect(found).toContain("20 blocks north of you");
-  expect(found).toContain("flour");
-  piper.state.lookingAt = { type: "block", block: "minecraft:lectern", blockPos: [90, 64, -190] };
-  expect(text(await piper.tools.call("book_report", { id: 1, found: true, check: 3 }))).toContain("now listed at 90,64,-190 minecraft:overworld, minecraft:lectern (found there by you, text checked (inventory))");
-  expect(text(await piper.tools.call("book_update", { id: 1, withdraw: true }))).toContain("Only Tobin");
+  expect(found).toContain("at the chiseled bookshelf at 100,64,-200 (slot 2); 20 blocks north of you; seen there by the server");
+  expect(found).toContain("To read one, stand within 4 blocks of a copy and use read_book {id}");
+  const tobin = await body([written(0), quill(1)], { name: "Tobin", ...hub.identity("Tobin"), books: { 0: { kind: "written", title: "Ledger", author: "Tobin", generation: 0, pages: ["The wheel turns.", "Flour below."] } } });
+  expect(text(await tobin.tools.call("book_register", {}))).toContain("Look at the shelf, lectern or chest");
+  tobin.state.lookingAt = { type: "block", block: "minecraft:chest", blockPos: [90, 64, -190] };
+  expect(text(await tobin.tools.call("book_register", { subjects: ["mill"] })))
+    .toContain('Catalogued #1 "Ledger" by Tobin (original), 2 pages; subjects: mill.\nListed at 90,64,-190, chest on your word.');
+  expect(text(await tobin.tools.call("book_register", { from: 1 }))).toContain("a book and quill, not yet signed");
+  expect(text(await piper.tools.call("book_find", { id: 1 }))).toMatch(/the chest at 90,64,-190; 14 blocks north-west of you; Tobin said it is there just now \(their word\)/);
+  piper.state.lookingAt = { type: "block", block: "minecraft:chest", blockPos: [90, 64, -190] };
+  expect(text(await piper.tools.call("book_report", { id: 1, missing: true }))).toContain('Recorded: #1 "Ledger" by Tobin is no longer listed at 90,64,-190 (your report).');
+  expect(text(await piper.tools.call("book_update", { id: 1, note: "mine" }))).toContain("Only Tobin");
 });
 
 test("records: windows in words, the unseen spectator left out, and one's own finished projects", async () => {

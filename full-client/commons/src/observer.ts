@@ -1,6 +1,6 @@
 // Optional, read-only client for the server-side Resident Observer mod
 // (../../server-observer). It is an adjunct source: what the Minecraft server itself sees of
-// configured residents and registered facilities. It never replaces a resident client's own
+// the residents and facilities the hub pushes to it (watch.ts), and books on shelves. It never replaces a resident client's own
 // Synapse state, picture or health, and every value carries its source, time and the
 // observer's own health so an outage is shown, never hidden behind the other source.
 import { readFile } from "node:fs/promises";
@@ -41,8 +41,21 @@ const SCHEMA = 1;
 const SOURCE = "server-observer";
 
 /** One GET against the observer. The token goes only into the Authorization header. */
-export async function observerGet(
+export function observerGet(
   source: ObserverSource, path: string, timeoutMs = 4000, fetchImpl: typeof fetch = fetch, now: () => number = Date.now,
+): Promise<ObserverReach> {
+  return observerRequest(source, path, undefined, timeoutMs, fetchImpl, now);
+}
+
+/** One PUT of a JSON body (the watch list), answered like a GET. */
+export function observerPut(
+  source: ObserverSource, path: string, body: unknown, timeoutMs = 4000, fetchImpl: typeof fetch = fetch, now: () => number = Date.now,
+): Promise<ObserverReach> {
+  return observerRequest(source, path, JSON.stringify(body), timeoutMs, fetchImpl, now);
+}
+
+async function observerRequest(
+  source: ObserverSource, path: string, body: string | undefined, timeoutMs: number, fetchImpl: typeof fetch, now: () => number,
 ): Promise<ObserverReach> {
   let secret = "";
   try { secret = (await readFile(source.tokenFile, "utf8")).trim(); } catch { /* reported below */ }
@@ -50,23 +63,25 @@ export async function observerGet(
   let response: Response;
   try {
     response = await fetchImpl(`${source.url}${path}`, {
-      headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(timeoutMs),
+      method: body === undefined ? "GET" : "PUT",
+      headers: { Authorization: `Bearer ${secret}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+      body, signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     return { ok: false, status: "offline", detail: "The server observer did not answer (server down, tunnel down, or mod not loaded)." };
   }
-  let body: Record<string, unknown> | undefined;
-  try { body = record(await response.json()); } catch { /* not JSON */ }
-  const message = body ? String(record(body.error).message ?? `HTTP ${response.status}`) : `HTTP ${response.status} without JSON`;
-  const answered = { httpStatus: response.status, ...(typeof record(body?.error).code === "string" ? { code: record(body?.error).code as string } : {}) };
+  let reply: Record<string, unknown> | undefined;
+  try { reply = record(await response.json()); } catch { /* not JSON */ }
+  const message = reply ? String(record(reply.error).message ?? `HTTP ${response.status}`) : `HTTP ${response.status} without JSON`;
+  const answered = { httpStatus: response.status, ...(typeof record(reply?.error).code === "string" ? { code: record(reply?.error).code as string } : {}) };
   if (response.status === 401) return { ok: false, status: "unauthorized", detail: `The observer refused the token: ${message}`, ...answered };
   if (response.status === 403) return { ok: false, status: "forbidden", detail: `The observer refused this request: ${message}`, ...answered };
   if (!response.ok) return { ok: false, status: "error", detail: `Observer: ${message}`, ...answered };
-  if (!body) return { ok: false, status: "error", detail: `The observer answered ${message}.` };
-  if (body.source !== SOURCE || body.schema !== SCHEMA) {
-    return { ok: false, status: "incompatible", detail: `Expected ${SOURCE} schema ${SCHEMA}, got ${String(body.source)} schema ${String(body.schema)}.` };
+  if (!reply) return { ok: false, status: "error", detail: `The observer answered ${message}.` };
+  if (reply.source !== SOURCE || reply.schema !== SCHEMA) {
+    return { ok: false, status: "incompatible", detail: `Expected ${SOURCE} schema ${SCHEMA}, got ${String(reply.source)} schema ${String(reply.schema)}.` };
   }
-  return { ok: true, data: body, receivedAt: now() };
+  return { ok: true, data: reply, receivedAt: now() };
 }
 
 /** Typed replies retain the observer's health and grant, not just the requested value. */
@@ -84,19 +99,40 @@ export type ObserverResult<T> =
   | { ok: true; data: ObserverEnvelope & T; receivedAt: number }
   | Extract<ObserverReach, { ok: false }>;
 export interface ObserverSight { visible: boolean | null; distance: number | null; reason: string }
-export type LibraryStatus = "observed" | "unloaded" | "no_level" | "no_block_entity" | "unsupported"
+/** `no_shelf`: no chiseled bookshelf or lectern stands at that position (the shelf read by position, bridge 0.3). */
+export type LibraryStatus = "observed" | "unloaded" | "no_level" | "no_shelf" | "no_block_entity" | "unsupported"
   | "empty" | "not_readable" | "too_large" | "invalid" | "error";
 export interface BookInfo {
   slot: number;
-  kind: "written" | "writable" | "enchanted" | "plain";
+  /** `other`: an item a mod lets stand on a shelf or lectern (a guide book, an album); it has no text. */
+  kind: "written" | "writable" | "enchanted" | "plain" | "other";
+  /** The item's registry id, e.g. `minecraft:written_book` (bridge 0.3). */
+  item?: string;
   title: string | null;
   author: string | null;
   generation: number | null;
   pageCount: number;
   contentHash: string | null;
 }
-export interface ObserverShelf { facility: string; status: LibraryStatus; reason: string | null; slots: BookInfo[] }
-export interface ObserverBook { facility: string; status: LibraryStatus; reason: string | null; book: BookInfo | null; pages: string[] }
+/** A block in one dimension: what the bridge's library reads by position name. */
+export interface ShelfPlace { dimension: string; pos: [number, number, number] }
+/** `block`: the block id at that position as the bridge saw it (null when it could not look). */
+export interface ObserverShelf extends ShelfPlace { block: string | null; status: LibraryStatus; reason: string | null; slots: BookInfo[] }
+export interface ObserverBook extends ShelfPlace { status: LibraryStatus; reason: string | null; book: BookInfo | null; pages: string[] }
+/** One page of the bridge's list of chiseled bookshelves and lecterns holding a book, in loaded chunks only. An item
+ * whose `status` is not `observed` could not be listed completely (it has no slots): unknown, not empty. */
+export interface ObserverShelves {
+  items: (ShelfPlace & { block: string | null; status: LibraryStatus; slots: BookInfo[]; observedAt: number })[];
+  next: string | null;
+  /** Pass start and finish, on this machine's clock. Individual holders may be observed much later than the start. */
+  scannedAt: number;
+  completedAt: number;
+  truncated: boolean;
+}
+export interface WatchResident { name: string; uuid: string }
+export interface WatchFacility { id: string; label: string; dimension: string; pos: [number, number, number]; side: string | null }
+/** The residents and facilities the bridge watches, as Commons last pushed them since `bootId`'s server start. */
+export interface ObserverWatch { revision: string | null; residents: WatchResident[]; facilities: WatchFacility[]; bootId: string }
 export interface ObserverEventPage { events: ObservedEvent[]; oldestSeq: number; latestSeq: number; gap: boolean }
 export interface ObserverEventsArgs {
   after?: number;
@@ -112,29 +148,49 @@ const integerIn = (value: unknown, min: number, max = Number.MAX_SAFE_INTEGER): 
 const identifier = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 const nullableText = (value: unknown): value is string | null => value === null || typeof value === "string";
 const LIBRARY_STATUSES: Record<LibraryStatus, true> = {
-  observed: true, unloaded: true, no_level: true, no_block_entity: true, unsupported: true,
+  observed: true, unloaded: true, no_level: true, no_shelf: true, no_block_entity: true, unsupported: true,
   empty: true, not_readable: true, too_large: true, invalid: true, error: true,
 };
-const BOOK_KINDS: Record<BookInfo["kind"], true> = { written: true, writable: true, enchanted: true, plain: true };
+const BOOK_KINDS: Record<BookInfo["kind"], true> = { written: true, writable: true, enchanted: true, plain: true, other: true };
 const observerError = (detail: string): Extract<ObserverReach, { ok: false }> => ({ ok: false, status: "error", detail });
 
 function bookInfo(value: unknown): BookInfo | null {
   const raw = record(value);
   if (!integerIn(raw.slot, 0, 5) || typeof raw.kind !== "string" || !Object.hasOwn(BOOK_KINDS, raw.kind)
-    || !nullableText(raw.title) || !nullableText(raw.author) || !nullableText(raw.contentHash)
+    || !nullableText(raw.title) || !nullableText(raw.author) || !nullableText(raw.contentHash) || !(raw.item === undefined || typeof raw.item === "string")
     || !(raw.generation === null || integerIn(raw.generation, 0)) || !integerIn(raw.pageCount, 0)) return null;
   return {
-    slot: raw.slot, kind: raw.kind as BookInfo["kind"], title: raw.title, author: raw.author,
+    slot: raw.slot, kind: raw.kind as BookInfo["kind"], ...(typeof raw.item === "string" ? { item: raw.item } : {}), title: raw.title, author: raw.author,
     generation: raw.generation, pageCount: raw.pageCount, contentHash: raw.contentHash,
   };
 }
 
-function libraryHeader(value: unknown): Pick<ObserverShelf, "facility" | "status" | "reason"> | null {
+const blockPos = (value: unknown): [number, number, number] | null =>
+  Array.isArray(value) && value.length === 3 && value.every(n => integerIn(n, -30_000_000, 30_000_000)) ? value as [number, number, number] : null;
+
+/** Status, reason and place of a library reply; a reply that does not echo its place keeps the one asked about. */
+function libraryHeader(value: unknown, asked: ShelfPlace): (ShelfPlace & { status: LibraryStatus; reason: string | null }) | null {
   const raw = record(value);
-  if (typeof raw.facility !== "string" || !nullableText(raw.reason)
-    || typeof raw.status !== "string" || !Object.hasOwn(LIBRARY_STATUSES, raw.status)) return null;
-  return { facility: raw.facility, status: raw.status as LibraryStatus, reason: raw.reason };
+  if (!nullableText(raw.reason) || typeof raw.status !== "string" || !Object.hasOwn(LIBRARY_STATUSES, raw.status)) return null;
+  const pos = raw.pos === undefined ? asked.pos : blockPos(raw.pos);
+  const dimension = raw.dimension === undefined ? asked.dimension : raw.dimension;
+  if (!pos || typeof dimension !== "string") return null;
+  return { dimension, pos, status: raw.status as LibraryStatus, reason: raw.reason };
 }
+
+function bookSlots(value: unknown): BookInfo[] | null {
+  if (!Array.isArray(value) || value.length > 6) return null;
+  const slots: BookInfo[] = [];
+  for (const entry of value) {
+    const book = bookInfo(entry);
+    if (!book || slots.some(existing => existing.slot === book.slot)) return null;
+    slots.push(book);
+  }
+  return slots;
+}
+
+const placeQuery = (place: ShelfPlace) => ({ dimension: place.dimension, pos: place.pos.join(",") });
+const validPlace = (place: ShelfPlace) => identifier(place.dimension) && blockPos(place.pos) !== null;
 
 /** One typed GET: envelope checked, payload parsed by `parse` (null: invalid), failures passed through. */
 export async function observerRead<T>(
@@ -175,37 +231,82 @@ export async function observerSight(
   });
 }
 
-/** Only selected book metadata from a registered library; no arbitrary inventory or NBT. */
+/** What stands at one position: a shelf's or lectern's books (metadata only), or why the bridge cannot say. */
 export async function observerShelf(
-  source: ObserverSource, args: { facility: string }, get: typeof observerGet = observerGet,
+  source: ObserverSource, place: ShelfPlace, get: typeof observerGet = observerGet,
 ): Promise<ObserverResult<{ shelf: ObserverShelf }>> {
-  if (!identifier(args.facility)) return observerError("Shelf requires a facility id.");
-  return observerRead(source, `/v1/library/shelf?${new URLSearchParams({ facility: args.facility })}`, get, raw => {
-    const shelf = record(raw.shelf), header = libraryHeader(shelf);
-    if (!header || !Array.isArray(shelf.slots) || shelf.slots.length > 6) return null;
-    const slots: BookInfo[] = [];
-    for (const value of shelf.slots) {
-      const book = bookInfo(value);
-      if (!book || slots.some(existing => existing.slot === book.slot)) return null;
-      slots.push(book);
-    }
-    return { shelf: { ...header, slots } };
+  if (!validPlace(place)) return observerError("Shelf requires a dimension and a whole-block position.");
+  return observerRead(source, `/v1/library/shelf?${new URLSearchParams(placeQuery(place))}`, get, raw => {
+    const shelf = record(raw.shelf), header = libraryHeader(shelf, place), slots = bookSlots(shelf.slots);
+    if (!header || !slots || !(shelf.block === undefined || nullableText(shelf.block))) return null;
+    return { shelf: { ...header, block: shelf.block ?? null, slots } };
   });
 }
 
-/** Read one library slot, retaining empty/unloaded/not-readable outcomes as observations. */
+/** Read one slot's pages, retaining empty/unloaded/not-readable outcomes as observations. */
 export async function observerBook(
-  source: ObserverSource, args: { facility: string; slot: number }, get: typeof observerGet = observerGet,
+  source: ObserverSource, args: ShelfPlace & { slot: number }, get: typeof observerGet = observerGet,
 ): Promise<ObserverResult<{ book: ObserverBook }>> {
-  if (!identifier(args.facility) || !integerIn(args.slot, 0, 5)) return observerError("Book requires a facility id and an integer slot from 0 to 5.");
-  const query = new URLSearchParams({ facility: args.facility, slot: String(args.slot) });
+  if (!validPlace(args) || !integerIn(args.slot, 0, 5)) return observerError("Book requires a dimension, a whole-block position and an integer slot from 0 to 5.");
+  const query = new URLSearchParams({ ...placeQuery(args), slot: String(args.slot) });
   return observerRead(source, `/v1/library/book?${query}`, get, raw => {
-    const reply = record(raw.book), header = libraryHeader(reply);
+    const reply = record(raw.book), header = libraryHeader(reply, args);
     const book = reply.book === null ? null : bookInfo(reply.book);
     if (!header || (reply.book !== null && book === null) || !Array.isArray(reply.pages)
       || !reply.pages.every((page): page is string => typeof page === "string")) return null;
     return { book: { ...header, book, pages: reply.pages } };
   });
+}
+
+/** One page of the bridge's discovery list. A position missing from it means nothing: unloaded, or on a later page. */
+export async function observerShelves(
+  source: ObserverSource, args: { after?: string | null; limit: number }, get: typeof observerGet = observerGet,
+): Promise<ObserverResult<{ shelves: ObserverShelves }>> {
+  if (!integerIn(args.limit, 1, 200)) return observerError("Shelves take a limit from 1 to 200.");
+  const query = new URLSearchParams({ ...(args.after ? { after: args.after } : {}), limit: String(args.limit) });
+  return observerRead(source, `/v1/library/shelves?${query}`, get, (raw, shift) => {
+    const list = record(raw.shelves), scannedAtMs = finite(list.scannedAtMs), completedAtMs = finite(list.completedAtMs);
+    if (!Array.isArray(list.items) || scannedAtMs === undefined || completedAtMs === undefined || !nullableText(list.next) || typeof list.truncated !== "boolean") return null;
+    const items: ObserverShelves["items"] = [];
+    for (const entry of list.items) {
+      const item = record(entry), pos = blockPos(item.pos), slots = bookSlots(item.slots), observedAtMs = finite(item.observedAtMs);
+      const status = item.status ?? "observed";
+      if (!pos || !slots || observedAtMs === undefined || typeof item.dimension !== "string" || !nullableText(item.block ?? null)
+        || typeof status !== "string" || !Object.hasOwn(LIBRARY_STATUSES, status)) return null;
+      items.push({ dimension: item.dimension, pos, block: (item.block as string | null | undefined) ?? null, status: status as LibraryStatus, slots,
+        observedAt: observedAtMs + shift });
+    }
+    return { shelves: { items, next: list.next, scannedAt: scannedAtMs + shift, completedAt: completedAtMs + shift, truncated: list.truncated } };
+  });
+}
+
+function watchReply(raw: Record<string, unknown>): { watch: ObserverWatch } | null {
+  const watch = record(raw.watch);
+  if (!nullableText(watch.revision ?? null) || !identifier(watch.bootId) || !Array.isArray(watch.residents) || !Array.isArray(watch.facilities)) return null;
+  return { watch: {
+    revision: (watch.revision as string | null | undefined) ?? null, bootId: watch.bootId,
+    residents: watch.residents.flatMap(entry => {
+      const r = record(entry);
+      return typeof r.name === "string" && typeof r.uuid === "string" ? [{ name: r.name, uuid: r.uuid }] : [];
+    }),
+    facilities: watch.facilities.flatMap(entry => {
+      const f = record(entry), pos = blockPos(f.pos);
+      return typeof f.id === "string" && pos ? [{ id: f.id, label: text(f.label) ?? f.id, dimension: text(f.dimension) ?? "", pos, side: text(f.side) }] : [];
+    }),
+  } };
+}
+
+/** What the bridge watches now (scope `status`). */
+export function observerWatch(source: ObserverSource, get: typeof observerGet = observerGet): Promise<ObserverResult<{ watch: ObserverWatch }>> {
+  return observerRead(source, "/v1/watch", get, watchReply);
+}
+
+/** Replaces the bridge's whole watch list (scope `watch`); the reply is the list as the bridge now holds it. */
+export function observerPutWatch(
+  source: ObserverSource, list: { revision: string; residents: WatchResident[]; facilities: WatchFacility[] },
+  put: typeof observerPut = observerPut,
+): Promise<ObserverResult<{ watch: ObserverWatch }>> {
+  return observerRead(source, "/v1/watch", (s, path, timeoutMs) => put(s, path, list, timeoutMs), watchReply);
 }
 
 /** One bounded event read, not a new polling loop. Times use this reply's clock offset. */

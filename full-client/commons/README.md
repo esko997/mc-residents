@@ -217,8 +217,24 @@ the server mod is a separate operation. See `../../server-observer/README.md`.
 
 Connect through a loopback SSH tunnel or equivalent protected transport.
 Configure both observer environment variables, or neither; keep the bearer
-token in a private file, never in the URL. Management needs the observer's
-`residents`, `facilities` and `status` scopes, not a resident `self` token.
+token in a private file, never in the URL. The hub needs the observer's
+`residents`, `facilities`, `library`, `watch` and `status` scopes, not a resident
+`self` token.
+
+The bridge (0.3.0 and later) keeps no list of its own of what to watch: the hub pushes it
+(`src/watch.ts`, `PUT /v1/watch`). The residents are every `role: "resident"` identity in the
+Resident API credentials, local and station bodies alike (a station that does not answer
+drops nobody), each with the UUID an offline-mode server gives that name; the facilities are
+every row of `facilities`, as `facility-<id>` (a facility with no valid dimension, or on the
+same block as an earlier one, is left out and named in the log). The hub compares the bridge's
+`GET /v1/watch` with its own list every 30 s and pushes when they differ, when the bridge's
+`bootId` changed (a server restart empties its list), and at once after `facility_register`
+or `facility_update`. If the credentials file cannot be read, nothing is pushed and the
+bridge keeps its current list.
+
+Every chiseled bookshelf and lectern the bridge sees in loaded chunks feeds the book catalogue
+by itself (`src/library-scan.ts`, once a minute, only while the bridge answers `ok`): see
+[Book catalogue and records](#book-catalogue-and-records).
 
 With a bridge of version 0.2.0 or later, the hub also ingests the bridge's declarative
 queries once a minute (`src/observer-ingest.ts`, tables `server_*` in `schema.sql`):
@@ -475,8 +491,9 @@ are rejected. Every actor/author/consent comes from the authenticated resident.
 | `places/list` | `{}` → shared-place objects |
 | `places/save` | `{name,note?,x,y,z,dimension,refuge?:{access?,hazards?,checked?}}` → `{place}` or `{foreign:author}` |
 | `places/remove` | `{name}` → `{removed,foreign?}` |
-| `library/register` | `{book:{kind:"written",title,author,generation,pages},read_from,at:{x,y,z,dimension},holder?,facility?,subjects?,note?,another_copy?}` → text; body bound 256 KiB |
-| `library/find`, `report`, `update` | `book_find` (plus `near`), `book_report` (`kind`, `at`, `checked:{content_hash,read_from}`), `book_update` args → text; caretakers may `find` only |
+| `library/register` | `{book:{kind:"written",title,author,generation,pages},read_from,at:{x,y,z,dimension},holder?,subjects?,note?}` → text; body bound 256 KiB |
+| `library/find`, `report`, `update` | `book_find` (plus `near`, the body's own position, for distances only), `book_report` (`kind`, `at`, `checked:{content_hash,read_from}`), `book_update` (`subjects`, `note`) args → text; caretakers may `find` only |
+| `library/read` | `{id}` or `{shelf:{x,y,z},slot?}` → `{book:{id,kind,title,author,generation},where,shelf,slot,pages}` or `{text}`; the caller's position and dimension are the server bridge's; residents only |
 | `records/query` | `{kind,resident?,since?,until?,area?:{x,z,radius,dimension?},page?}` (ms) → text; residents only |
 
 `GET advancements/frontier?tab=&limit=` (resident only) returns the caller's own
@@ -496,15 +513,42 @@ library/overview and place-list endpoints; no writes, consent or resident event 
 
 ### Book catalogue and records
 
-`src/library.ts` keeps one row per physical copy of a signed book (`library_books`) with the text the
-registrant's body read from the item (the tool server sends it from Synapse's `/book`), and dated observations
-(`library_observations`): registration, residents' found/moved/missing reports, edits, and server shelf reads.
-`content_hash` is the bridge's `resident-book-v1` hash (`bookContentHash` in `resident-contracts-library.ts`),
-`text_key` groups copies of every generation. When a listed copy's place is a bridge facility with `"library":
-true` (found by position in `/v1/snapshot`, cached 5 min), `/v1/library/shelf` is read for at most three places
-per call: a slot with the hash records `server_seen`, none records `server_not_seen` (copies with one hash are
-matched oldest entry first); an unloaded or failed read records nothing. Only the registrant changes subjects
-or note or withdraws; anyone may report where a copy is, which relists it with the reporter's name.
+`src/library.ts` keeps the catalogue in three tables. `library_books` is one row per edition, keyed by
+`content_hash`, the bridge's `resident-book-v1` hash of kind, title, author, generation and pages
+(`bookContentHash` in `resident-contracts-library.ts`; a book and quill is hashed with null title, author and
+generation); `text_key` (title, author, pages) groups an original with its copies. Its pages are what the bridge
+or a resident's body read from the item, kept only if they hash to the edition's own hash. `library_copies` is
+one row per copy at a place: `source` `server` (on a chiseled bookshelf or lectern where the bridge saw it, with
+its slot) or `resident` (where a resident said it is: their word). `library_observations` is the dated history:
+residents' descriptions and reports, and the server's sightings (`server_seen` when a copy appears at a place or
+comes back, `server_gone`, `shelf_gone`). Only written books and books and quill enter it: enchanted and plain books
+and the other items mods let stand on a shelf or lectern (guide books, albums: `kind: "other"`) have no text. A
+first-shape database (one row per copy) is migrated on start (`setAsideLegacyLibrary`/`migrateLegacyLibrary`,
+called from `openCommons`).
+
+`src/library-scan.ts` runs once a minute while the bridge answers `ok`: it pages `/v1/library/shelves`
+(10 pages of 200 at most; a longer list continues from its cursor next minute; a `503 scanning` reply is asked once
+more after 2 s) and adds or confirms every book and copy on each listed shelf whose status is `observed` (one the
+bridge could not list completely, `invalid` or `too_large`, counts as not listed); it then re-reads with
+`/v1/library/shelf?dimension&pos` up to 8 positions where the catalogue
+holds a server copy this pass did not confirm, least recently checked first; and it reads the pages of up to 3
+books not yet read (`/v1/library/book`, once per content hash, retried after 10 minutes if that failed). Only a
+re-read marks a copy gone: `observed` without it (taken, the shelf emptied) or `no_shelf` (the shelf or lectern
+itself gone). A position missing from the list, `unloaded`, `no_level`, `invalid`, `too_large`, `error`, a failed request or an
+unhealthy bridge change nothing (the pass stops at the first failure); `book_find` then says when the server last
+saw the copy and that it could not look since. A discovery list scanned before a copy was marked gone never
+brings it back; a later sighting does, and the history keeps both.
+
+`library/read` (the tool server's `read_book` by `id` or `shelf`) asks the bridge for the caller's position at
+that moment (`/v1/snapshot`; it must be online, the bridge `ok` or `degraded`, and the position at most
+`POSITION_MAX_AGE_MS` = 5 s old), then reads the shelf at the copy's position and the slot's pages; both reads must
+answer `ok`, and the position is checked again once the pages arrive (still at most 5 s old). Pages are
+returned only within `READING_RADIUS` = 4 blocks from the centre of that block to the caller's position, in the
+same dimension, for a book the bridge sees there now; otherwise the reply is a sentence naming the nearest copy
+and its distance, or why the bridge cannot tell. The read updates the catalogue with what the shelf holds.
+Books by players in `RESIDENT_UNSEEN_PLAYERS`, and lines naming them, are left out of every library reply, as
+records leave them out. Whoever first gives a book subjects or a note (`book_register`) is the only one who
+changes them; anyone may report where a copy kept elsewhere is.
 
 `src/records.ts` answers `records` from hub tables only, every line tagged `[server]`, `[hub]` or `[chat]`:
 `history_server_events` (written by `src/records-ingest.ts` from the bridge's `/v1/events` every 30 s:

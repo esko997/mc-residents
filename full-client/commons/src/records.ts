@@ -130,13 +130,25 @@ export function createRecords(db: Database, resident: string, deps: RecordsDeps 
           .map(row => ({ at: row.updated_at, text: `${stamp(row.updated_at)} ${row.author} saved shared place "${row.name}" at ${row.place.x},${row.place.y},${row.place.z} ${row.place.dimension}${row.place.note ? `: ${row.place.note.slice(0, 80)}` : ""} [hub]` }));
       },
       books() {
-        // Where it was at the time: the observation's own place (registered, moved), else where it is listed now.
-        return db.query<{ id: number; title: string; author: string; x: number; y: number; z: number; dimension: string; kind: string; observer: string; at: number }, [number, number]>(
-          `SELECT b.id, b.title, b.author, COALESCE(o.x, b.x) AS x, COALESCE(o.y, b.y) AS y, COALESCE(o.z, b.z) AS z, COALESCE(o.dimension, b.dimension) AS dimension,
-             o.kind, o.observer, o.at FROM library_observations o JOIN library_books b ON b.id = o.book_id
-           WHERE o.kind IN ('registered', 'moved', 'withdrawn') AND o.at >= ? AND o.at < ? ORDER BY o.at`).all(since, until)
-          .filter(row => (!who || sameName(row.observer, who) || sameName(row.author, who)) && inArea(row.x, row.z, row.dimension))
-          .map(row => ({ at: row.at, text: `${stamp(row.at)} ${row.observer} ${row.kind === "registered" ? "catalogued" : row.kind === "moved" ? "found elsewhere" : "withdrew"} book #${row.id} "${row.title}" by ${row.author}${row.kind === "withdrawn" ? "" : ` at ${row.x},${row.y},${row.z}`} [hub]` }));
+        // Each line gives the place the observation itself names: where the book stood at that time.
+        const said: Record<string, (row: { observer: string; book: string; place: string }) => string> = {
+          registered: r => `${r.observer} described book ${r.book} [hub]`,
+          found: r => `${r.observer} reported book ${r.book}${r.place} [hub]`,
+          missing: r => `${r.observer} reported book ${r.book} missing${r.place} [hub]`,
+          server_seen: r => `the server saw book ${r.book}${r.place} [server]`,
+          server_gone: r => `the server saw that book ${r.book} is no longer${r.place} [server]`,
+          shelf_gone: r => `the server saw the shelf or lectern holding book ${r.book}${r.place} gone [server]`,
+        };
+        return db.query<{ id: number; kind: string; title: string | null; author: string | null; observer: string; x: number | null; y: number | null; z: number | null; dimension: string | null; note: string; at: number }, [number, number]>(
+          `SELECT b.id, o.kind, b.title, b.author, o.observer, o.x, o.y, o.z, o.dimension, o.note, o.at FROM library_observations o JOIN library_books b ON b.id = o.book_id
+           WHERE o.kind != 'edited' AND o.at >= ? AND o.at < ? ORDER BY o.at, o.id`).all(since, until)
+          .filter(row => (!who || sameName(row.observer, who) || sameName(row.author, who)) && (!area || (row.x !== null && inArea(row.x, row.z!, row.dimension!))))
+          .map(row => ({ at: row.at, text: `${stamp(row.at)} ${said[row.kind]!({
+            observer: row.observer,
+            book: `#${row.id} ${row.title === null ? "(an unsigned book and quill)" : `"${row.title}" by ${row.author}`}`,
+            place: row.x === null ? "" : ` at ${row.x},${row.y},${row.z}${row.note ? ` (${row.note})` : ""}`,
+          })}` }))
+          .filter(line => !mentionsUnseen(line.text));
       },
       sessions() {
         const rows = presence();
