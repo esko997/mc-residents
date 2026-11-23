@@ -504,7 +504,7 @@ players, large modded chunks and other dimensions loaded.
 ## Verification
 
 0.3.0 (2026-11-23): `gradlew build` on Inspiron (Forge 47.4.20, Java 17, the access transformer
-applied), BUILD SUCCESSFUL, **144 JUnit tests** pass (101 in 0.2.0): watch list parsing, caps and
+applied), BUILD SUCCESSFUL, **147 JUnit tests** pass (101 in 0.2.0): watch list parsing, caps and
 strictness; the PUT's refusals over the real JDK server (scope, Host, browser, content type, body limit
 with and without `Content-Length`, malformed and non-UTF-8 bodies, `library: true`, rate limit, methods)
 with nothing changed after each; atomic replacement while ticks run on another thread (no snapshot ever
@@ -512,7 +512,8 @@ mixes two lists, every push ends applied or superseded, no tick fails); history 
 across pushes; a server with no list yet; old config subjects ignored; the five shelf answers and
 "unloaded is never no_shelf or an empty shelf"; book reads; `other` items; discovery rules, cursor
 paging across a rescan; the scan's per-tick bound, one new book per unit and free rescans of unchanged
-books, dense chunks finished over several slices, a pass slower than 30 s still served with its real read
+books (the real book memo over real NBT, its work bounded by the page cap), dense chunks finished over
+several slices, a pass slower than 30 s still served with its real read
 times, caps, chunks and levels that vanish mid-scan, a throwing chunk contained, demand and the cache.
 The isolated server smoke (with measured costs) is described in the 0.3.0 runbook next to the built jar.
 
