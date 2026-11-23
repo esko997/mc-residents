@@ -29,6 +29,7 @@ import { alarmActivityText, recentAlarms } from "./resident-alarms.ts";
 import type { AlarmEvent } from "./resident-contracts-alarm.ts";
 import { Overlay } from "./overlay.ts";
 import { RunControl } from "./run-control.ts";
+import { RecordsIngest } from "./records-ingest.ts";
 
 /** The JSON each GET route under /<token>/api/ returns, for whoever reads it (the page, the tests). */
 export interface Replies {
@@ -79,7 +80,13 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   if (config.role === "hub") for (const event of recentAlarms(db, now() - config.activityDays * 86_400_000)) alarmActivity(event);
   const residentApi = config.role === "hub" ? new ResidentApi(db, config.credentialsFile, config.autoAccept, {
     now, command: command => feed.command(command), activity: alarmActivity,
-  }, { source: config.observer ?? null }) : undefined;
+  }, { source: config.observer ?? null }, {
+    // Book catalogue shelf reads, and the public chat a historian may read; the owner's spectator stays unseen.
+    observer: config.observer ?? null, chat: () => stream.since(0).lines,
+    unseen: (process.env.RESIDENT_UNSEEN_PLAYERS ?? "Lantern_").split(",").map(name => name.trim()).filter(Boolean),
+  }) : undefined;
+  // Residents' online/offline, dimension and death events from the bridge, kept for records.
+  const recordsIngest = config.role === "hub" && config.observer ? new RecordsIngest(db, config.observer) : undefined;
   // Server bridge queries (stats, advancements, block changes, container flows) into the hub database.
   const ingestOptions = config.role === "hub" && config.observer ? ingestOptionsFromEnv(process.env) : null;
   const ingest = ingestOptions ? new ObserverIngest(db, config.observer, { ...ingestOptions, now, log }) : undefined;
@@ -168,7 +175,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
       if (request.method !== "GET" || response.status >= 400) log(`${request.method} /<token>/${rest.join("/")} -> ${response.status}`);
       return response;
     },
-    start() { watcher.start(); if (config.role === "hub") feed.start(); federation?.start(); ingest?.start(); void context.readSessions(); },
+    start() { watcher.start(); if (config.role === "hub") feed.start(); federation?.start(); ingest?.start(); recordsIngest?.start(); void context.readSessions(); },
     stop() {
       overlay.stop();
       runControl.stop();
@@ -176,7 +183,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
       // Abort capture and signal FFmpeg now; TERM → KILL/reap continues boundedly.
       void live.shutdown().catch(() => log("Live video encoder cleanup failed; restart Commons before streaming again."));
       residentApi?.close();
-      ingest?.stop();
+      ingest?.stop(); recordsIngest?.stop();
       federation?.stop(); watcher.stop(); feed.stop(); db.close();
     },
   };

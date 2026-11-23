@@ -345,3 +345,48 @@ CREATE TABLE IF NOT EXISTS server_container_flows (
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS server_container_flows_at ON server_container_flows(at);
 CREATE INDEX IF NOT EXISTS server_container_flows_facility ON server_container_flows(facility, at);
+
+-- Book catalogue (library.ts; hub only). One row is one physical copy of a written book somewhere in the world, with
+-- the text its registrant's body read from the item. content_hash is the server bridge's resident-book-v1 hash, so a
+-- registered chiseled bookshelf read can confirm the copy is there; text_key (title, author, pages) groups copies.
+-- Where a book is comes from residents' reports: location_by/location_source say who put it there in the catalogue.
+CREATE TABLE IF NOT EXISTS library_books (
+  id INTEGER PRIMARY KEY,
+  content_hash TEXT NOT NULL,
+  text_key TEXT NOT NULL,
+  title TEXT NOT NULL, author TEXT NOT NULL, generation INTEGER NOT NULL,
+  pages_json TEXT NOT NULL, page_count INTEGER NOT NULL, text TEXT NOT NULL,
+  subjects_json TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  registrant TEXT NOT NULL COLLATE NOCASE,
+  read_from TEXT NOT NULL CHECK (read_from IN ('inventory', 'lectern')),
+  x INTEGER NOT NULL, y INTEGER NOT NULL, z INTEGER NOT NULL, dimension TEXT NOT NULL,
+  holder TEXT,
+  facility_id INTEGER REFERENCES facilities(id) ON DELETE SET NULL,
+  location_by TEXT NOT NULL, location_source TEXT NOT NULL, location_at INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'listed' CHECK (status IN ('listed', 'withdrawn')),
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS library_books_text ON library_books(text_key);
+CREATE INDEX IF NOT EXISTS library_books_place ON library_books(dimension, x, y, z);
+-- Dated, never rewritten: registrations, residents' reports (found/missing/moved), edits, and the server bridge's
+-- reads of registered chiseled bookshelves (observer 'server').
+CREATE TABLE IF NOT EXISTS library_observations (
+  id INTEGER PRIMARY KEY,
+  book_id INTEGER NOT NULL REFERENCES library_books(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('registered', 'found', 'missing', 'moved', 'edited', 'withdrawn', 'server_seen', 'server_not_seen')),
+  observer TEXT NOT NULL,
+  source TEXT NOT NULL,
+  x INTEGER, y INTEGER, z INTEGER, dimension TEXT, slot INTEGER,
+  note TEXT NOT NULL DEFAULT '',
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS library_observations_book ON library_observations(book_id, at DESC, id DESC);
+
+-- Residents' online/offline, dimension changes and deaths as the server bridge reported them (records-ingest.ts).
+-- `at` is this hub's clock (the bridge's time shifted by the reply's clock offset). Kept for history.
+CREATE TABLE IF NOT EXISTS history_server_events (
+  at INTEGER NOT NULL, seq INTEGER NOT NULL, type TEXT NOT NULL, resident TEXT NOT NULL, detail TEXT,
+  PRIMARY KEY (at, seq, type, resident)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS history_server_events_resident ON history_server_events(resident, at);

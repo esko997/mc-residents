@@ -426,6 +426,7 @@ Omit `--enable-video` to adjust only the HUD.
 | `COMMONS_OWNER` | `spesk01` | In-game names of the people who play on the server, space or comma separated. A mod's line that mentions one of them (or a resident, or anyone seen joining or chatting) is not treated as noise. |
 | `CHAT_URL` | unset | Address of the phone chat page on the server machine, `http://<host>:<port>/<its token>/`; adds a Chat tab that embeds it. |
 | `CONSOLE_URL` | `CHAT_URL` | The same phone-chat service, as the way to the server's console: its log is read from `console`, commands go to `command`. With neither set the Console shows only what residents' clients were shown, and the command box is off. |
+| `RESIDENT_UNSEEN_PLAYERS` | `Lantern_` | Hub: players nobody perceives (the owner's spectator); `records` leaves out every chat line naming one. Comma separated, as for the tool server. |
 
 Residents are Gary plus every `instances/<Name>.env` whose notes directory
 `resident/<name in lower case>/` exists (a test client has an instance file but
@@ -464,6 +465,9 @@ are rejected. Every actor/author/consent comes from the authenticated resident.
 | `places/list` | `{}` → shared-place objects |
 | `places/save` | `{name,note?,x,y,z,dimension,refuge?:{access?,hazards?,checked?}}` → `{place}` or `{foreign:author}` |
 | `places/remove` | `{name}` → `{removed,foreign?}` |
+| `library/register` | `{book:{kind:"written",title,author,generation,pages},read_from,at:{x,y,z,dimension},holder?,facility?,subjects?,note?,another_copy?}` → text; body bound 256 KiB |
+| `library/find`, `report`, `update` | `book_find` (plus `near`), `book_report` (`kind`, `at`, `checked:{content_hash,read_from}`), `book_update` args → text; caretakers may `find` only |
+| `records/query` | `{kind,resident?,since?,until?,area?:{x,z,radius,dimension?},page?}` (ms) → text; residents only |
 
 `GET events?after=<seq>&wait=<0..25>` returns
 `{result:{events:[{seq,type,fields}],seq,gap}}`. Payloads are a 512-entry memory ring;
@@ -476,6 +480,28 @@ object `{skills,collaborations,facilities,knowledge_requests,places}`. The first
 arrays contain up to eight recent rows; facility observations retain their dates and
 metadata-match labels. Caretakers can also call read-only skill library, reference
 library/overview and place-list endpoints; no writes, consent or resident event feeds.
+
+### Book catalogue and records
+
+`src/library.ts` keeps one row per physical copy of a signed book (`library_books`) with the text the
+registrant's body read from the item (the tool server sends it from Synapse's `/book`), and dated observations
+(`library_observations`): registration, residents' found/moved/missing reports, edits, and server shelf reads.
+`content_hash` is the bridge's `resident-book-v1` hash (`bookContentHash` in `resident-contracts-library.ts`),
+`text_key` groups copies of every generation. When a listed copy's place is a bridge facility with `"library":
+true` (found by position in `/v1/snapshot`, cached 5 min), `/v1/library/shelf` is read for at most three places
+per call: a slot with the hash records `server_seen`, none records `server_not_seen` (copies with one hash are
+matched oldest entry first); an unloaded or failed read records nothing. Only the registrant changes subjects
+or note or withdraws; anyone may report where a copy is, which relists it with the reporter's name.
+
+`src/records.ts` answers `records` from hub tables only, every line tagged `[server]`, `[hub]` or `[chat]`:
+`history_server_events` (written by `src/records-ingest.ts` from the bridge's `/v1/events` every 30 s:
+resident online/offline/dimension/died; restarts and overwritten events become `server_ingest_gaps`
+`server_events`), the `server_*` ingest tables, `resident_alarms`, collaborations (the caller's own and public
+ones only), facilities and observations, shared places (last save only), the book catalogue, and public chat
+from the Console ring (memory only: `<Name>` lines, `[Server]`, joins, leaves, advancements, deaths; never
+commands, RCON output, login/connection lines, `<Caretaker>` tellraw, or lines naming `RESIDENT_UNSEEN_PLAYERS`,
+default `Lantern_`), and only at times some resident was online. It reads no resident's notes, plans, journal
+or position trail. Pages are about 1,100 characters; a continuation repeats the exact window.
 
 ### Cutover and data checks
 

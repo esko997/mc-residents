@@ -21,6 +21,7 @@ import { executeNavigation, navigationDefinitions, navigationStatus } from "./na
 import { vehicleDefinitions, Vehicles, vehicleStatusLine } from "./vehicles.ts";
 import { alarmDefinition, alarmFromState } from "./alarms.ts";
 import { attackReport, bucketGuard, bucketKind, bucketReport, holdReport, lookReport, sightsText, writeSign } from "./aim.ts";
+import { bookDefinitions, Books } from "./books.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -52,6 +53,7 @@ export const definitions = {
   close_screen: { description: "Close the current screen, verify, and try ESCAPE if still open; report the actual result.", schema: z.object({}) },
   picture: { description: "See the client framebuffer as an image.", schema: z.object({}) },
   write_sign: { description: "Put the selected sign on the face of the block you look at (crouching, so a chest, barrel or door there is not opened), write up to four lines, finish. Says where it went, or why nothing was placed.", schema: z.object({ lines: z.array(z.string().max(90).refine(s => !/[\r\n]/.test(s), "One line per entry.")).min(1).max(4) }) },
+  ...bookDefinitions,
   find_item: { description: "Search modpack item ids and display names.", schema: z.object({ query: z.string().min(1).max(200) }) },
   recipes: { description: "Recipes producing an item id, including shaped grids.", schema: z.object({ item: itemId }) },
   craft: { description: "Craft an item in one call: looks up the recipe, lays it out in the grid and takes the result into your inventory; prefer it to click_slot. Works at an open crafting table (3x3); recipes that fit 2x2 also work with no screen open, because it opens your own inventory itself. count is the number of crafting operations, not items (one craft of sticks gives 4); default 1. The screen stays open afterwards.", schema: z.object({ item: itemId, count: z.number().int().min(1).max(16).optional() }).strict() },
@@ -107,9 +109,9 @@ const argumentHints: Partial<Record<string, Record<string, string>>> = {
 };
 const knowledgeNames = ["find_item", "recipes", "craft", "uses", "mods"];
 // attack takes the body itself, for the click only: see execute().
-const takeoverTools = ["look", "use", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "mount", "dismount", "vehicle_control", "vehicle_boost", "vehicle_inventory", ...machineToolNames];
+const takeoverTools = ["look", "use", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "write_book", "mount", "dismount", "vehicle_control", "vehicle_boost", "vehicle_inventory", ...machineToolNames];
 /** The resident's own actions on a screen. While one of these was called in the last 30 s, auto-eat leaves an open screen alone. */
-const screenTools = ["use", "open_inventory", "screen", "click_slot", "click_button", "craft", "type_text", "press_key", "close_screen", "write_sign", "vehicle_inventory", ...machineToolNames];
+const screenTools = ["use", "open_inventory", "screen", "click_slot", "click_button", "craft", "type_text", "press_key", "close_screen", "write_sign", "write_book", "vehicle_inventory", ...machineToolNames];
 const compass = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
 const livestock: Record<string, true> = { "minecraft:cow": true, "minecraft:sheep": true, "minecraft:pig": true, "minecraft:chicken": true };
 /** "9 blocks north-east, 3 up": north is -z, east is +x. */
@@ -158,6 +160,8 @@ export class Tools {
   readonly gaps: KnowledgeGaps;
   private readonly machines: Machines;
   private readonly vehicles: Vehicles;
+  /** Written books, the book catalogue and records. */
+  readonly books: Books;
   constructor(readonly body: Body, readonly knowledge?: Knowledge, private knowledgeError = "KNOWLEDGE_DB is not configured.") {
     const { residentDir, name } = body.config;
     this.machines = new Machines(body.api);
@@ -171,6 +175,7 @@ export class Tools {
     this.skills = new Skills(body, this.commons, (tool, args, signal, run) => this.run(tool, args, signal, run));
     this.plans = createPlans({ residentDir, now: () => this.now() });
     this.society = createSociety({ client: this.commons, resident: name });
+    this.books = new Books(body, this.commons);
     if (body.config.commonsUrl && body.config.commonsTokenFile) {
       void registerResidentTools(this.commons, name, this.registeredNames).catch(() => {});
       body.onAlarm = alarm => this.commons.alarm(alarm);
@@ -490,6 +495,13 @@ export class Tools {
       }
       case "picture": return { text: "Client view.", image: await api.picture() };
       case "write_sign": return writeSign(body, args.lines, this.signWaitMs);
+      case "write_book": return this.books.write(args);
+      case "read_book": return this.books.read(args);
+      case "book_register": return this.books.register(args);
+      case "book_find": return this.books.find(args);
+      case "book_report": return this.books.report(args);
+      case "book_update": return this.books.update(args);
+      case "records": return this.books.records(args);
       case "guide": return lookupGuide(args, this.knowledge, this.gaps);
       case "guide_feedback": return this.gaps.feedback(args);
       case "guide_updates": return this.gaps.updates(args);

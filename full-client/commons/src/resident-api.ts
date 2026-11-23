@@ -11,6 +11,11 @@ import { knowledgeOperation } from "./resident-knowledge.ts";
 import { alarmRequestSchema } from "./resident-contracts-alarm.ts";
 import { AlarmRateLimitError, ResidentAlarms, type ResidentAlarmOptions } from "./resident-alarms.ts";
 import { ResidentSight, type ResidentSightOptions } from "./resident-sight.ts";
+import { libraryOperation, type LibraryDeps } from "./library.ts";
+import { recordsOperation, type RecordsDeps } from "./records.ts";
+
+/** Book catalogue and records: the observer for shelf reads, the console's chat ring, players nobody perceives. */
+export interface HistoryOptions extends Pick<LibraryDeps, "observer" | "get">, Pick<RecordsDeps, "chat" | "unseen"> {}
 
 const credentialSchema = z.array(z.object({ name: z.string().regex(/^\w{1,40}$/), role: z.enum(["resident", "caretaker"]), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict());
 type Credential = z.infer<typeof credentialSchema>[number];
@@ -19,7 +24,10 @@ const failure = (status: number, code: string, message: string) => response({ er
 const reads: Record<string, readonly string[]> = {
   skills: ["find", "show", "notes_shared"], society: ["show", "showFacility", "snapshot"],
   knowledge: ["get", "list", "exact", "search", "overview", "capabilityOverview"], places: ["list"],
+  library: ["find"], records: [],
 };
+/** A written book can be about 100 KB of text; everything else stays within the default bound. */
+const LARGE_BODY: Record<string, number> = { "library/register": 256 * 1024 };
 const MAX_BODY = 64 * 1024;
 
 export class ResidentApi {
@@ -28,7 +36,7 @@ export class ResidentApi {
   private credentials: Credential[] = [];
   private alarms: ResidentAlarms;
   private sight: ResidentSight;
-  constructor(private db: Database, private credentialsFile: string, private acceptNotes = true, options: ResidentAlarmOptions = {}, sight: ResidentSightOptions = {}) {
+  constructor(private db: Database, private credentialsFile: string, private acceptNotes = true, options: ResidentAlarmOptions = {}, sight: ResidentSightOptions = {}, private history: HistoryOptions = {}) {
     this.events = new ResidentEvents(db);
     this.alarms = new ResidentAlarms(db, this.events, options);
     this.sight = new ResidentSight(sight);
@@ -53,9 +61,9 @@ export class ResidentApi {
     return found;
   }
 
-  private async body(request: Request, raw = false): Promise<unknown> {
+  private async body(request: Request, raw = false, limit = MAX_BODY): Promise<unknown> {
     if (!request.headers.get("Content-Type")?.toLowerCase().startsWith("application/json")) throw new SyntaxError("Expected application/json.");
-    if (Number(request.headers.get("Content-Length")) > MAX_BODY) throw new RangeError("Request body exceeds 65536 bytes.");
+    if (Number(request.headers.get("Content-Length")) > limit) throw new RangeError(`Request body exceeds ${limit} bytes.`);
     const reader = request.body?.getReader();
     if (!reader) throw new SyntaxError("Expected a JSON body.");
     const chunks: Uint8Array[] = []; let length = 0;
@@ -63,7 +71,7 @@ export class ResidentApi {
       while (true) {
         const chunk = await reader.read(); if (chunk.done) break;
         length += chunk.value.byteLength;
-        if (length > MAX_BODY) { await reader.cancel(); throw new RangeError("Request body exceeds 65536 bytes."); }
+        if (length > limit) { await reader.cancel(); throw new RangeError(`Request body exceeds ${limit} bytes.`); }
         chunks.push(chunk.value);
       }
     } finally { reader.releaseLock(); }
@@ -114,10 +122,13 @@ export class ResidentApi {
     // Caretakers read the library, not another resident's private collaborations or drafts.
     if (who.role === "caretaker" && (!(reads[group] ?? []).includes(operation) || group === "society")) return failure(403, "forbidden", "Caretaker credentials are read-only library/digest credentials.");
     try {
-      const args = await this.body(request);
+      const args = await this.body(request, false, LARGE_BODY[`${group}/${operation}`] ?? MAX_BODY);
+      const residents = () => this.credentials.filter(c => c.role === "resident").map(c => c.name);
       const result = group === "skills" ? skillsOperation(this.db, who.name, operation, args)
         : group === "society" ? societyOperation(this.db, who.name, operation, args)
         : group === "knowledge" ? knowledgeOperation(this.db, who.name, operation, args)
+        : group === "library" ? await libraryOperation(this.db, who.name, operation, args, { observer: this.history.observer ?? null, get: this.history.get })
+        : group === "records" ? recordsOperation(this.db, who.name, operation, args, { chat: this.history.chat, unseen: this.history.unseen, residents })
         : placesOperation(this.db, who.name, operation, args);
       if (this.acceptNotes && group === "skills" && operation === "note_share") autoAccept(this.db);
       if (group === "society" && ["collaborate", "update"].includes(operation)) this.collaborationEvent(who.name);

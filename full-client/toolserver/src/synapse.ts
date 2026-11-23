@@ -68,6 +68,12 @@ export interface BlockSearch {
   /** Chunk columns the radius touches, and how many of them the client holds; only those were searched. */
   chunksLoaded: number; chunksInRadius: number;
 }
+/** Synapse's `GET /book`: a written book or a book and quill the player can read now. */
+export interface BookRead {
+  source: "inventory" | "lectern"; slot?: number; page?: number; item: string; kind: "written" | "writable";
+  title?: string | null; author?: string | null; generation?: number; resolved?: boolean;
+  pages: string[]; pageCount: number;
+}
 export interface Config {
   url: string; tokenFile: string; log: string; residentDir: string;
   name: string; knowledgeDb?: string;
@@ -159,6 +165,16 @@ export class Synapse {
   /** Reads loaded chunks only: nothing moves, loads or breaks. radius 1..96, limit 1..32; an id that names no block is an error. */
   blocks(block: string, radius: number, limit: number) {
     return this.request<BlockSearch>(`/blocks?block=${encodeURIComponent(block)}&radius=${radius}&limit=${limit}`);
+  }
+  /** A book in the player's own inventory (0..35; 40 the offhand), or on the open lectern; pages as the book screen shows them. */
+  book(from: number | "lectern") {
+    return this.request<BookRead>(from === "lectern" ? "/book?source=lectern" : `/book?slot=${from}`);
+  }
+  /** Text split into pages the book-and-quill editor would hold (its own font and limits); nothing is written. */
+  bookLayout(text: string) { return this.request<{ pages: string[]; fits: boolean; maxPages: number }>("/book", { action: "layout", text }); }
+  /** What the editor's Sign and Close (or Done, unsigned) sends for the book and quill in hand; read the slot back after. */
+  bookWrite(pages: string[], title?: string) {
+    return this.request<{ sent: boolean; slot: number; signed: boolean; title?: string; pages: number }>("/book", title === undefined ? { action: "save", pages } : { action: "sign", pages, title });
   }
   async picture(): Promise<string> {
     const data = await this.request<{ image: string }>("/screenshot?format=base64");

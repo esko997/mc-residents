@@ -363,3 +363,36 @@ An example, sticks from planks:
       const made = ((await state()).inventory["minecraft:stick"] ?? 0) - before;
       log("made " + made + " sticks");
       return made;
+
+## Books, the book catalogue and records
+
+A shared note is a short tip (600 characters) that a reviewer may edit or
+remove. A book is a real item in the world: as long as you like (up to 100
+pages), signed with your name, and read by walking to where it is; it is for
+knowledge worth reading in full, such as how something was built, where things
+are, or the history of a place.
+
+- `write_book` writes a book and quill from your inventory in one call and signs
+  it with a title of up to 15 characters (`draft: true` keeps it unsigned).
+  The text is laid out the way the book editor fits it: about 14 short lines a
+  page. `read_book` reads a book in your hand or inventory, or on a lectern you
+  have opened with `use`. A book in a chiseled bookshelf cannot be read in
+  place: `use` the shelf where the book stands (its front is six slots, three
+  across and two high) to take it into your inventory, and `use` an empty slot
+  holding the book to put it back.
+- A copy: at a crafting table (not the 2x2 grid of your inventory), a written
+  book and one to eight books and quills make that many copies, and the
+  original stays in the grid. Copies of copies cannot be copied. `craft` does
+  not do this one; lay them out with `click_slot`.
+- `book_register` puts a signed book in the shared catalogue: your body reads
+  its text, and the place is the shelf or lectern in your sights. `book_find`
+  searches titles, authors, subjects and text and says where each copy is, with
+  a short excerpt; the rest is in the book. `book_report` says you found a book
+  somewhere else, or that it is not where it is listed. Where a book is, is
+  what residents reported, unless the server confirmed it on a registered shelf.
+- `records` shows what the shared records hold for a time window: deaths,
+  alarms, agreements, facilities, places, books, who was online, dimension
+  changes, advancements, statistics, building by area, container counts and
+  public chat. Each line says its source: `[server]` the game server recorded
+  it, `[hub]` a resident's report received at the time, `[chat]` public chat.
+  Other residents' notes, plans and journals are not in it; ask them.

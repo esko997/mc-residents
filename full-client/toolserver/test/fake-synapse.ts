@@ -3,7 +3,7 @@ import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Body } from "../src/body.ts";
-import { Synapse, defaultResidents, defaultUnseen, nonempty, type AttackHoldState, type BlockSearch, type Screen, type Stack, type State } from "../src/synapse.ts";
+import { Synapse, defaultResidents, defaultUnseen, nonempty, type AttackHoldState, type BlockSearch, type BookRead, type Screen, type Stack, type State } from "../src/synapse.ts";
 import { Tools } from "../src/tools.ts";
 
 export interface Request { path: string; body: Record<string, unknown> }
@@ -69,7 +69,18 @@ export interface FakeOptions {
   attackChecksTarget?: boolean;
   /** Every entity an attack click actually landed on, in order. */
   struck?: number[];
+  /** Book contents by inventory slot (0..35, 40 offhand); the item in that slot says whether it is a book. Updated by signing. */
+  books?: Record<number, FakeBook>;
+  /** The book on the lectern whose screen (LecternScreen) is open. */
+  lectern?: FakeBook;
+  /** false: a Synapse built before /book, which answers that it does not know the endpoint. */
+  bookEndpoint?: boolean;
+  /** Characters the fake editor fits on a page (the real one measures with the client's font). */
+  pageChars?: number;
+  /** false: the server never answers a signing (the slot keeps the book and quill). */
+  signWorks?: boolean;
 }
+export type FakeBook = Pick<BookRead, "kind" | "pages"> & Partial<Pick<BookRead, "title" | "author" | "generation">>;
 export interface Fixture {
   dir: string; log: string; state: State; requests: Request[]; body: Body; tools: Tools; options: FakeOptions;
   tick(ms: number): void; setScreen(value: Screen): void; setUnavailable(): void;
@@ -399,6 +410,47 @@ export async function fixture(options: FakeOptions = {}): Promise<Fixture> {
       else if (text === "#resume") baritone.paused = false;
       else if (text === "#stop") { baritone.active = false; baritone.paused = false; }
     } else if (url.pathname === "/wait") steer();
+    else if (url.pathname === "/book") {
+      const refuse = (message: string) => Response.json({ ok: false, error: { code: "BAD_REQUEST", message } }, { status: 400 });
+      if (options.bookEndpoint === false) return Response.json({ ok: false, error: { code: "BAD_REQUEST", message: "Unknown endpoint /book" } }, { status: 404 });
+      const stackAt = (slot: number) => slot === 40 ? state.inventory!.offhand : state.inventory!.main.find(stack => stack.slot === slot);
+      const describe = (book: FakeBook, item: string) => ({ item, kind: book.kind, ...(book.kind === "written" ? { title: book.title ?? null, author: book.author ?? null, generation: book.generation ?? 0, resolved: false } : {}), pages: book.pages, pageCount: book.pages.length });
+      if (req.method === "GET") {
+        if (url.searchParams.get("source") === "lectern") {
+          if (state.screen !== "LecternScreen" || !options.lectern) return refuse(`No lectern is open (screen: ${state.screen}).`);
+          data = { source: "lectern", page: 0, ...describe(options.lectern, options.lectern.kind === "written" ? "minecraft:written_book" : "minecraft:writable_book") };
+        } else {
+          const slot = Number(url.searchParams.get("slot")), stack = stackAt(slot);
+          if (!stack || !nonempty(stack) || !/^minecraft:writ(?:ten|able)_book$/.test(stack.item)) return refuse(`Inventory slot ${slot} holds ${stack && nonempty(stack) ? stack.item : "nothing"}, not a written book or a book and quill.`);
+          const book = options.books?.[slot] ?? { kind: stack.item === "minecraft:written_book" ? "written" : "writable", pages: [] };
+          data = { source: "inventory", slot, ...describe(book, stack.item) };
+        }
+      } else if (body.action === "layout") {
+        // Fills pages up to pageChars characters, breaking at the last space, as the editor's layout does with its font.
+        const size = options.pageChars ?? 200, pages: string[] = [];
+        let rest = String(body.text);
+        while (rest && pages.length <= 100) {
+          let end = Math.min(rest.length, size);
+          const space = rest.lastIndexOf(" ", end);
+          if (end < rest.length && space > 0) end = space;
+          pages.push(rest.slice(0, end)); rest = rest.slice(end).replace(/^ /, "");
+        }
+        data = { pages: pages.slice(0, 100), fits: pages.length <= 100, maxPages: 100 };
+      } else {
+        if (state.screen !== "none") return refuse(`Not written: a screen is open (${state.screen}).`);
+        const held = state.hotbar.find(stack => stack.slot === state.selectedSlot);
+        const slot = held?.item === "minecraft:writable_book" ? state.selectedSlot : state.inventory!.offhand.item === "minecraft:writable_book" ? 40 : undefined;
+        if (slot === undefined) return refuse("Not written: no book and quill in either hand.");
+        const pages = body.pages as string[], title = typeof body.title === "string" ? body.title.trim() : undefined;
+        if (body.action === "sign" && (!title || title.length > 15)) return refuse("Not signed: the title must be 1..15 characters.");
+        if (pages.length > 100 || pages.some(page => page.length > (options.pageChars ?? 200))) return refuse("Not written: page 1 does not fit.");
+        if (options.signWorks !== false) {
+          (options.books ??= {})[slot] = body.action === "sign" ? { kind: "written", title, author: options.name ?? "Gary", generation: 0, pages } : { kind: "writable", pages };
+          if (body.action === "sign") for (const stack of [stackAt(slot), state.hotbar.find(s => s.slot === slot)]) if (stack) stack.item = "minecraft:written_book";
+        }
+        data = { sent: true, slot, signed: body.action === "sign", ...(title ? { title } : {}), pages: pages.length };
+      }
+    }
     else return new Response("not found", { status: 404 });
     return Response.json({ ok: true, data });
   } });
