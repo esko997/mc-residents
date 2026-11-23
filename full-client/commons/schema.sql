@@ -81,12 +81,16 @@ CREATE TABLE IF NOT EXISTS feedback (
 ) WITHOUT ROWID;
 
 -- Where each resident was, sampled by the web app while its client is up (map trails).
+-- dimension is the client's id (minecraft:the_nether); sky is the sky light 0-15 at the
+-- body's feet, NULL when unknown (rows from before it was recorded). Older databases get
+-- sky from migratePositions (src/positions.ts), which keeps their rows.
 CREATE TABLE IF NOT EXISTS positions (
   resident TEXT NOT NULL,
   at INTEGER NOT NULL,
   x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
   dimension TEXT NOT NULL,
   health REAL, food INTEGER,
+  sky INTEGER,
   PRIMARY KEY (resident, at)
 ) WITHOUT ROWID;
 

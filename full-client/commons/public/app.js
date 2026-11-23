@@ -1,5 +1,5 @@
 "use strict";
-import { mergeMapTrail } from "./map-trails.js";
+import { coverOf, dimensionName as dimensionLabel, equivalent, heightColour, heightDomain, mapDimensions, mergeMapTrail, nearestIndex, passedPlaces, profileSeries, SEA_LEVEL, splitByHeight } from "./map-trails.js";
 import { createLiveView } from "./live-view.js";
 // The Shared Knowledge page. No framework and no build step: each panel fetches JSON from
 // api/<route> (relative, so the token in the address carries over) and patches
@@ -458,8 +458,26 @@ async function loadActivity() {
 }
 
 // ---------- Map ----------
+// One dimension at a time; trails coloured by height (or by resident), a two-ended height
+// filter, and a side-on elevation profile for one resident. Choices survive reloads.
+const MAP_KEY = "commons.map";
+const mapSaved = (() => { try { return JSON.parse(localStorage.getItem(MAP_KEY)) ?? {}; } catch { return {}; } })();
 const map = { hours: 6, data: null, cx: 0, cz: 0, scale: 2, fitted: false, pointers: new Map(), moved: 0,
-  features: [], trails: [], places: [], visiblePlaces: [], selected: null, who: "All", search: "", failedPicture: null, canvas: $("#map") };
+  features: [], trails: [], places: [], visiblePlaces: [], selected: null, who: "All", search: "", failedPicture: null, canvas: $("#map"),
+  dimensions: ["overworld"],
+  // The chosen dimension; while it has nothing in the window the Overworld is shown and the choice is kept.
+  want: typeof mapSaved.dimension === "string" ? mapSaved.dimension : "overworld", dimension: "overworld",
+  colourBy: mapSaved.colourBy === "resident" ? "resident" : "height",
+  heights: mapSaved.heights && typeof mapSaved.heights === "object" ? mapSaved.heights : {},
+  profileWho: typeof mapSaved.profileWho === "string" ? mapSaved.profileWho : null,
+  profileAxis: mapSaved.profileAxis === "distance" ? "distance" : "time",
+  profile: null, profileHover: -1, profileFeatures: [], profileCanvas: $("#map-profile"), pin: null, queued: false };
+function saveMap() {
+  try {
+    localStorage.setItem(MAP_KEY, JSON.stringify({ dimension: map.want, colourBy: map.colourBy, heights: map.heights,
+      profileWho: map.profileWho, profileAxis: map.profileAxis }));
+  } catch { /* private mode: choices last for this page only */ }
+}
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const canvasColour = name => css(name === "shared" ? "--shared" : `--c${Math.max(0, state.names.indexOf(name)) % 4}`);
 const toScreen = (x, z) => [(x - map.cx) * map.scale + map.canvas.clientWidth / 2, (z - map.cz) * map.scale + map.canvas.clientHeight / 2];
@@ -467,6 +485,59 @@ const toWorld = (sx, sy) => [(sx - map.canvas.clientWidth / 2) / map.scale + map
 const placeKey = place => JSON.stringify([place.owner, place.dimension, place.name]);
 const placeOwner = place => place.owner === "shared" ? `Shared${place.author ? ` · saved by ${place.author}` : ""}` : `${place.owner}'s place`;
 const placeCoordinates = place => `x ${place.x}, y ${place.y}, z ${place.z}`;
+/** "x 30, z -22 (Overworld ≈ 240, -176)": the linked dimension's equivalent, for portal building. */
+function whereText(dimension, x, z) {
+  const other = equivalent(dimension, x, z);
+  return `x ${Math.round(x)}, z ${Math.round(z)}${other ? ` (${dimensionLabel(other.dimension)} ≈ ${other.x}, ${other.z})` : ""}`;
+}
+const PORTAL = "#b07cff";
+const BAND_TINT = { the_nether: "rgba(229,100,90,.14)", the_end: "rgba(180,139,224,.16)" };
+
+function heightRange() {
+  const [min, max] = heightDomain(map.dimension), saved = map.heights[map.dimension];
+  const lo = Number.isFinite(saved?.[0]) ? Math.max(min, Math.min(max, saved[0])) : min;
+  const hi = Number.isFinite(saved?.[1]) ? Math.max(lo, Math.min(max, saved[1])) : max;
+  return [lo, hi];
+}
+/** Trails of the shown dimension inside the height filter, merged and grouped by drawing style. */
+function rebuildTrails() {
+  const [min, max] = heightDomain(map.dimension), [lo, hi] = heightRange();
+  const low = lo <= min ? -Infinity : lo, high = hi >= max ? Infinity : hi;
+  map.trails = (map.data?.residents ?? []).map(resident => {
+    const runs = resident.legs.filter(leg => leg.dimension === map.dimension).flatMap(leg => splitByHeight(leg.points, low, high));
+    const groups = new Map();
+    for (const edge of mergeMapTrail(runs)) {
+      const y = edge.y === null ? null : Math.round(edge.y / 4) * 4, key = `${y}|${edge.width}`;
+      if (!groups.has(key)) groups.set(key, { y, width: edge.width, edges: [] });
+      groups.get(key).edges.push(edge);
+    }
+    // Lower first, so higher routes are drawn over what lies beneath them.
+    return { name: resident.name, groups: [...groups.values()].sort((a, b) => (a.y ?? -Infinity) - (b.y ?? -Infinity)) };
+  });
+}
+function setDimension(dimension) {
+  map.want = map.dimension = dimension; map.fitted = false; saveMap();
+  $("#map-readout").textContent = `${dimensionLabel(dimension)}: move over the map for coordinates.`;
+  rebuildTrails();
+}
+function showOnMap(dimension, x, z) {
+  if (!map.dimensions.includes(dimension)) return;
+  if (dimension !== map.dimension) setDimension(dimension);
+  map.pin = { dimension, x, z };
+  map.cx = x; map.cz = z; map.scale = Math.max(map.scale, 1); map.fitted = true;
+  renderMap();
+}
+/** Coalesce slider and pointer input into one redraw per frame. */
+function scheduleMap(rebuild = false) {
+  map.rebuild ||= rebuild;
+  if (map.queued) return;
+  map.queued = true;
+  requestAnimationFrame(() => {
+    map.queued = false;
+    if (map.rebuild) { map.rebuild = false; rebuildTrails(); }
+    drawMap();
+  });
+}
 
 function renderMapSelection() {
   const panel = $("#map-selection"), place = map.places.find(place => place.key === map.selected);
@@ -475,8 +546,9 @@ function renderMapSelection() {
     setHtml(panel, html`<p class="fine">${map.selected ? "This saved place is no longer available." : "Select a dot or a place in the list to centre it on the map and read its note."}</p>`);
     return;
   }
-  const picture = place.picture;
-  setHtml(panel, html`<h3>${place.name}</h3><p class="data">${placeCoordinates(place)}</p>
+  const picture = place.picture, other = equivalent(place.dimension, place.x, place.z);
+  setHtml(panel, html`<h3>${place.name}</h3><p class="data">${placeCoordinates(place)} · ${dimensionLabel(place.dimension)}</p>
+    ${other ? html`<p class="meta">${dimensionLabel(other.dimension)} equivalent ≈ x ${other.x}, z ${other.z}</p>` : ""}
     <p class="meta">${placeOwner(place)}</p>
     ${map.visiblePlaces.some(item => item.key === place.key) ? "" : html`<p class="fine">This selection is hidden by the saved-place filter.</p>`}
     ${place.note ? html`<p class="map-place-note">${place.note}</p>` : ""}
@@ -498,11 +570,11 @@ function renderMapPlaces() {
   segmented($("#map-who"), [{ value: "All", label: "All" },
     ...owners.map(owner => ({ value: owner, label: owner, who: owner })), { value: "shared", label: "Shared", who: "shared" }],
   map.who, value => { map.who = value; renderMapPlaces(); drawMap(); });
-  const query = map.search.trim().toLocaleLowerCase();
-  map.visiblePlaces = map.places.filter(place => (map.who === "All" || map.who === place.owner) && (!query || place.search.includes(query)));
+  const query = map.search.trim().toLocaleLowerCase(), here = map.places.filter(place => place.dimension === map.dimension);
+  map.visiblePlaces = here.filter(place => (map.who === "All" || map.who === place.owner) && (!query || place.search.includes(query)));
   $("#map-place-count").textContent = map.visiblePlaces.length
-    ? `${map.visiblePlaces.length} of ${map.places.length} saved places`
-    : map.places.length ? "No saved places match. Change the owner filter or search." : "No saved places in the overworld yet.";
+    ? `${map.visiblePlaces.length} of ${here.length} saved places in the ${dimensionLabel(map.dimension)}`
+    : here.length ? "No saved places match. Change the owner filter or search." : `No saved places in the ${dimensionLabel(map.dimension)} yet.`;
   const grouped = new Map();
   for (const place of map.visiblePlaces) {
     if (!grouped.has(place.owner)) grouped.set(place.owner, []);
@@ -530,22 +602,25 @@ function renderMapPlaces() {
 function selectMapPlace(key) {
   const place = map.places.find(place => place.key === key);
   if (!place) return;
+  if (place.dimension !== map.dimension && map.dimensions.includes(place.dimension)) setDimension(place.dimension);
   map.selected = key; map.cx = place.x; map.cz = place.z; map.fitted = true;
   renderMapPlaces(); drawMap();
   $("#map-readout").textContent = `${place.name}: ${placeCoordinates(place)}`;
 }
 
 function fitMap() {
-  const points = [];
+  const points = [], dimension = map.dimension;
   for (const resident of map.data?.residents ?? []) {
-    for (const point of resident.trail) points.push([point[1], point[2]]);
-    if (resident.position) points.push([resident.position.x, resident.position.z]);
+    for (const leg of resident.legs) if (leg.dimension === dimension) for (const point of leg.points) points.push([point[1], point[3]]);
+    if (resident.position && resident.dimension === dimension) points.push([resident.position.x, resident.position.z]);
+    for (const crossing of resident.crossings) for (const end of [crossing.from, crossing.to]) if (end.dimension === dimension) points.push([end.x, end.z]);
   }
-  for (const place of map.data?.places ?? []) points.push([place.x, place.z]);
-  for (const death of map.data?.deaths ?? []) points.push([death.x, death.z]);
+  for (const list of [map.data?.places, map.data?.deaths, map.data?.alarms]) {
+    for (const item of list ?? []) if (item.dimension === dimension) points.push([item.x, item.z]);
+  }
   if (!points.length) { map.cx = 0; map.cz = 0; map.scale = 2; return; }
-  const xs = points.map(point => point[0]), zs = points.map(point => point[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const [x, z] of points) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
   map.cx = (minX + maxX) / 2; map.cz = (minZ + maxZ) / 2;
   const room = Math.max(40, Math.min(map.canvas.clientWidth, map.canvas.clientHeight) * 0.16);
   map.scale = Math.min(12, Math.max(0.02, Math.min(
@@ -567,7 +642,7 @@ function drawMap() {
   const ctx = canvas.getContext("2d");
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, width, height);
-  const ink = css("--parchment"), faint = css("--lichen"), soft = css("--seam-soft");
+  const ink = css("--parchment"), faint = css("--lichen"), soft = css("--seam-soft"), dimension = map.dimension;
   ctx.font = `11px ${css("--data")}`;
   ctx.textBaseline = "middle";
 
@@ -588,8 +663,9 @@ function drawMap() {
     ctx.beginPath(); ctx.moveTo(0, Math.round(sy) + .5); ctx.lineTo(width, Math.round(sy) + .5); ctx.stroke();
     if (sy > 16) { ctx.fillStyle = faint; ctx.textAlign = "left"; ctx.fillText(String(z), 3, sy - 7); }
   }
-  ctx.fillStyle = "rgba(20,23,27,.85)"; ctx.fillRect(0, height - 20, 150, 20);
-  ctx.fillStyle = faint; ctx.textAlign = "left"; ctx.fillText(`grid: ${step} blocks  x → east, z ↓ south`.slice(0, 60), 6, height - 10);
+  ctx.fillStyle = "rgba(20,23,27,.85)"; ctx.fillRect(0, height - 20, 236, 20);
+  ctx.fillStyle = faint; ctx.textAlign = "left";
+  ctx.fillText(`${dimensionLabel(dimension)} · grid ${step} blocks · x → east, z ↓ south`.slice(0, 70), 6, height - 10);
 
   map.features = [];
   const label = (text, sx, sy, colourValue, bold = false) => {
@@ -597,19 +673,28 @@ function drawMap() {
     ctx.lineWidth = 3; ctx.strokeStyle = "#14171b"; ctx.strokeText(text, sx + 9, sy);
     ctx.fillStyle = colourValue; ctx.fillText(text, sx + 9, sy);
   };
-  for (const resident of map.trails) {
-    ctx.strokeStyle = canvasColour(resident.name); ctx.lineCap = "round"; ctx.globalAlpha = .75;
-    for (const edge of resident.edges) {
-      const [x1, y1] = toScreen(edge.x1, edge.z1), [x2, y2] = toScreen(edge.x2, edge.z2);
-      if (Math.max(x1, x2) < -5 || Math.min(x1, x2) > width + 5 || Math.max(y1, y2) < -5 || Math.min(y1, y2) > height + 5) continue;
-      ctx.lineWidth = edge.width; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  const off = (sx, sy, margin = 12) => sx < -margin || sx > width + margin || sy < -margin || sy > height + margin;
+  // With height colours one resident (the profile's) is drawn fully and the others faintly, under it.
+  const focus = map.colourBy === "height" ? map.profileWho : null;
+  ctx.lineCap = "round";
+  for (const resident of [...map.trails].sort((a, b) => Number(a.name === focus) - Number(b.name === focus))) {
+    ctx.globalAlpha = focus && resident.name !== focus ? .3 : .85;
+    for (const group of resident.groups) {
+      ctx.strokeStyle = map.colourBy === "height" ? heightColour(group.y) : canvasColour(resident.name);
+      ctx.lineWidth = group.width; ctx.beginPath();
+      let any = false;
+      for (const edge of group.edges) {
+        const [x1, y1] = toScreen(edge.x1, edge.z1), [x2, y2] = toScreen(edge.x2, edge.z2);
+        if (Math.max(x1, x2) < -5 || Math.min(x1, x2) > width + 5 || Math.max(y1, y2) < -5 || Math.min(y1, y2) > height + 5) continue;
+        ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); any = true;
+      }
+      if (any) ctx.stroke();
     }
-    ctx.globalAlpha = 1;
   }
-  ctx.lineCap = "butt";
+  ctx.globalAlpha = 1; ctx.lineCap = "butt";
   for (const place of map.visiblePlaces) {
     const [sx, sy] = toScreen(place.x, place.z), tint = canvasColour(place.owner);
-    if (sx < -12 || sx > width + 12 || sy < -12 || sy > height + 12) continue;
+    if (off(sx, sy)) continue;
     ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2);
     ctx.fillStyle = tint; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = "#14171b"; ctx.stroke();
     map.features.push({ sx, sy, key: place.key, text: `${place.name} (${placeOwner(place)}, ${placeCoordinates(place)})${place.note ? `: ${place.note}` : ""}` });
@@ -620,56 +705,311 @@ function drawMap() {
     ctx.beginPath(); ctx.arc(sx, sy, 10, 0, Math.PI * 2);
     ctx.lineWidth = 2; ctx.strokeStyle = ink; ctx.stroke();
   }
+  // Dimension changes: the end on this map, linked to the other side.
+  for (const resident of map.data?.residents ?? []) {
+    for (const crossing of resident.crossings) {
+      for (const [here, there, verb] of [[crossing.from, crossing.to, "left for"], [crossing.to, crossing.from, "arrived from"]]) {
+        if (here.dimension !== dimension) continue;
+        const [sx, sy] = toScreen(here.x, here.z);
+        if (off(sx, sy)) continue;
+        ctx.beginPath(); ctx.moveTo(sx, sy - 7); ctx.lineTo(sx + 7, sy); ctx.lineTo(sx, sy + 7); ctx.lineTo(sx - 7, sy); ctx.closePath();
+        ctx.fillStyle = canvasColour(resident.name); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = PORTAL; ctx.stroke();
+        map.features.push({ sx, sy, go: there, text: `${resident.name} ${verb} the ${dimensionLabel(there.dimension)} here (y ${here.y}), ${stamp(crossing.at)}, ${crossing.kind === "respawn" ? "respawning after a death" : "probably by portal"}; other side ${dimensionLabel(there.dimension)} ${there.x}, ${there.y}, ${there.z}. Select to go there.` });
+      }
+    }
+  }
   for (const death of map.data?.deaths ?? []) {
+    if (death.dimension !== dimension) continue;
     const [sx, sy] = toScreen(death.x, death.z);
     ctx.strokeStyle = css("--redstone"); ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(sx - 5, sy - 5); ctx.lineTo(sx + 5, sy + 5); ctx.moveTo(sx + 5, sy - 5); ctx.lineTo(sx - 5, sy + 5); ctx.stroke();
     map.features.push({ sx, sy, text: `${death.resident} died here, y ${death.y}, ${stamp(death.at)}` });
   }
+  for (const alarm of map.data?.alarms ?? []) {
+    if (alarm.dimension !== dimension) continue;
+    const [sx, sy] = toScreen(alarm.x, alarm.z);
+    if (off(sx, sy)) continue;
+    ctx.beginPath(); ctx.moveTo(sx, sy - 7); ctx.lineTo(sx + 7, sy + 5); ctx.lineTo(sx - 7, sy + 5); ctx.closePath();
+    ctx.fillStyle = css("--glow"); ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = "#14171b"; ctx.stroke();
+    map.features.push({ sx, sy, text: `${alarm.resident} shouted for help (${alarm.kind}): ${alarm.reason}, y ${alarm.y}, ${stamp(alarm.at)}` });
+  }
+  if (map.pin?.dimension === dimension) {
+    const [sx, sy] = toScreen(map.pin.x, map.pin.z);
+    ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = ink; ctx.setLineDash([4, 3]); ctx.stroke(); ctx.setLineDash([]);
+  }
   // Residents last, so a marker is never hidden under a place it stands on; its name goes above it.
   for (const resident of map.data?.residents ?? []) {
-    const tint = canvasColour(resident.name), last = resident.trail[resident.trail.length - 1];
-    const here = resident.position ? [resident.position.x, resident.position.z] : last ? [last[1], last[2]] : undefined;
+    const tint = canvasColour(resident.name), now = resident.position && resident.dimension === dimension ? resident.position : null;
+    const leg = resident.legs.findLast(leg => leg.dimension === dimension && leg.points.length), last = leg?.points[leg.points.length - 1];
+    const here = now ? [now.x, now.z] : last ? [last[1], last[3]] : undefined;
     if (!here) continue;
     const [sx, sy] = toScreen(here[0], here[1]);
     ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2);
     ctx.lineWidth = 2; ctx.strokeStyle = "#14171b";
-    if (resident.position) { ctx.fillStyle = tint; ctx.fill(); ctx.stroke(); } else { ctx.strokeStyle = tint; ctx.stroke(); }
-    const name = resident.position ? resident.name : `${resident.name} (last sample)`;
+    if (now) { ctx.fillStyle = tint; ctx.fill(); ctx.stroke(); } else { ctx.strokeStyle = tint; ctx.stroke(); }
+    const name = now ? `${resident.name} · y ${Math.round(now.y)}${coverOf(dimension, now.y, now.sky).underground ? ", underground" : ""}` : `${resident.name} (last sample)`;
     ctx.font = `bold 12px ${css("--ui")}`;
     label(name, sx - 9 - ctx.measureText(name).width / 2, sy - 15, tint, true);
-    map.features.push({ sx, sy, text: resident.position ? `${resident.name} is here now, y ${resident.position.y}` : `${resident.name}'s last sample on this map, ${stamp(last[0])}` });
+    map.features.push({ sx, sy, text: now
+      ? `${resident.name} is here now: y ${Math.round(now.y)}, ${coverOf(dimension, now.y, now.sky).label}`
+      : `${resident.name}'s last sample on this map: y ${last[2]}, ${stamp(last[0])}` });
   }
 }
-function readout(sx, sy) {
-  const [x, z] = toWorld(sx, sy);
+function nearestFeature(sx, sy, wanted = () => true) {
   let nearest, best = 18;
   for (const feature of map.features) {
+    if (!wanted(feature)) continue;
     const distance = Math.hypot(feature.sx - sx, feature.sy - sy);
     if (distance < best) { best = distance; nearest = feature; }
   }
-  $("#map-readout").textContent = `x ${Math.round(x)}, z ${Math.round(z)}${nearest ? `   ${nearest.text}` : ""}`;
+  return nearest;
+}
+function readout(sx, sy) {
+  const [x, z] = toWorld(sx, sy), nearest = nearestFeature(sx, sy);
+  $("#map-readout").textContent = `${whereText(map.dimension, x, z)}${nearest ? `   ${nearest.text}` : ""}`;
+}
+
+function renderHeights() {
+  const [min, max] = heightDomain(map.dimension), [lo, hi] = heightRange(), all = lo <= min && hi >= max;
+  for (const [input, value] of [[$("#map-lo"), lo], [$("#map-hi"), hi]]) { input.min = String(min); input.max = String(max); input.value = String(value); }
+  const at = y => `${((y - min) / (max - min) * 100).toFixed(2)}%`;
+  const ramp = Array.from({ length: 13 }, (_, i) => `${heightColour(min + (max - min) * i / 12)} ${(i / 12 * 100).toFixed(2)}%`).join(", ");
+  $("#map-height .dual-track").style.background = `linear-gradient(to right, rgba(20,23,27,.82) ${at(lo)}, transparent ${at(lo)} ${at(hi)}, rgba(20,23,27,.82) ${at(hi)}), linear-gradient(to right, ${ramp})`;
+  $("#map-height-value").textContent = all ? `all, y ${min} to ${max}` : `y ${lo} to ${hi}`;
+  $("#map-h-all").setAttribute("aria-pressed", String(all));
+  $("#map-h-under").hidden = map.dimension !== "overworld";
+  $("#map-h-under").setAttribute("aria-pressed", String(lo <= min && hi === SEA_LEVEL - 1));
+}
+function setHeights(range) {
+  if (range) map.heights[map.dimension] = range; else delete map.heights[map.dimension];
+  saveMap(); renderHeights(); scheduleMap(true);
+}
+
+function residentWhere(resident) {
+  if (!resident.position || !resident.dimension) return resident.online ? "online, position unknown" : "offline";
+  const p = resident.position, here = resident.dimension === map.dimension;
+  return `${dimensionLabel(resident.dimension)} ${whereText(resident.dimension, p.x, p.z)}, y ${Math.round(p.y)}, ${coverOf(resident.dimension, p.y, p.sky).label}${here ? "" : " (not on this map)"}`;
 }
 function renderMap() {
   const data = map.data;
   segmented($("#map-hours"), data.choices.map(hours => ({ value: String(hours), label: hours < 24 ? `${hours} h` : `${hours / 24} d` })), String(map.hours), value => {
     map.hours = Number(value); panels.find(panel => panel.id === "map").at = 0; tick();
   });
-  setHtml($("#map-legend"), html`${data.residents.map(resident => html`<span class="key" style="--who:${colour(resident.name)}"><i></i>${resident.name}:
-    ${resident.position ? `at ${Math.round(resident.position.x)}, ${Math.round(resident.position.z)}` : resident.online ? `in ${resident.dimension}, not on this map` : "offline"},
-    ${plural(resident.trail.length, "trail point")}</span>`)}
-    <span>● saved place (pale: shared)</span><span class="bad">✕ death</span>`);
+  segmented($("#map-dim"), map.dimensions.map(key => ({ value: key, label: dimensionLabel(key) })), map.dimension, value => { setDimension(value); renderMap(); });
+  segmented($("#map-colour"), [{ value: "height", label: "Height" }, { value: "resident", label: "Resident" }], map.colourBy, value => {
+    map.colourBy = value; saveMap(); renderMap();
+  });
+  renderHeights();
+  const [min, max] = heightDomain(map.dimension);
+  const ticks = [min, 0, SEA_LEVEL, 128, 256, max].filter((y, i, all) => y >= min && y <= max && all.indexOf(y) === i);
+  const ramp = Array.from({ length: 13 }, (_, i) => `${heightColour(min + (max - min) * i / 12)} ${(i / 12 * 100).toFixed(2)}%`).join(", ");
+  setHtml($("#map-legend"), html`${data.residents.map(resident => html`<span class="key" style="--who:${colour(resident.name)}"><i></i>${resident.name}: ${residentWhere(resident)}</span>`)}
+    ${map.colourBy === "height" ? html`<span class="height-key" role="img" aria-label="Trail colour by height, from y ${min} to y ${max}"><span class="ramp" style="background:linear-gradient(to right, ${ramp})">${ticks.map(y =>
+      html`<span style="left:${((y - min) / (max - min) * 100).toFixed(2)}%">${y === SEA_LEVEL ? "63 sea" : y}</span>`)}</span></span>` : ""}
+    <span>● saved place (pale: shared)</span><span class="bad">✕ death</span><span class="warn">▲ alarm</span><span class="portal">◆ dimension change</span>
+    ${map.colourBy === "height" && map.profileWho ? html`<span>${map.profileWho}'s trail drawn over the others' (choose under Elevation)</span>` : ""}`);
   renderMapPlaces();
   if (!map.fitted && map.canvas.clientWidth) { fitMap(); map.fitted = true; }
   drawMap();
+  renderProfile();
 }
 async function loadMap() {
   map.data = await get(`api/map?hours=${map.hours}`);
-  map.trails = map.data.residents.map(resident => ({ name: resident.name, edges: mergeMapTrail(resident.trail) }));
+  map.dimensions = mapDimensions(map.data);
+  const shown = map.dimensions.includes(map.want) ? map.want : "overworld";
+  if (shown !== map.dimension) { map.dimension = shown; map.fitted = false; }
   map.places = map.data.places.map(place => ({ ...place, key: placeKey(place),
     search: `${place.name} ${place.owner} ${place.author ?? ""} ${place.note ?? ""} ${placeCoordinates(place)} ${place.x}, ${place.y}, ${place.z}`.toLocaleLowerCase() }))
     .sort((a, b) => a.owner.localeCompare(b.owner) || a.name.localeCompare(b.name));
+  rebuildTrails();
   renderMap();
+}
+
+// ---------- Map: elevation profile ----------
+function profileFor(name) {
+  const resident = map.data?.residents.find(entry => entry.name === name);
+  if (!resident) return null;
+  const series = profileSeries(resident.legs);
+  return { data: map.data, resident, series, passed: passedPlaces(series, map.places),
+    deaths: map.data.deaths.filter(death => death.resident === name), alarms: map.data.alarms.filter(alarm => alarm.resident === name) };
+}
+function renderProfile() {
+  const residents = map.data?.residents ?? [];
+  if (!residents.some(resident => resident.name === map.profileWho)) {
+    map.profileWho = (residents.find(resident => resident.legs.some(leg => leg.points.length)) ?? residents[0])?.name ?? null;
+  }
+  segmented($("#map-profile-who"), residents.map(resident => ({ value: resident.name, label: resident.name, who: resident.name })), map.profileWho, value => {
+    map.profileWho = value; map.profileHover = -1; saveMap(); renderMap();
+  });
+  segmented($("#map-profile-axis"), [{ value: "time", label: "Time" }, { value: "distance", label: "Distance" }], map.profileAxis, value => {
+    map.profileAxis = value; map.profileHover = -1; saveMap(); renderProfile();
+  });
+  if (!map.profile || map.profile.data !== map.data || map.profile.resident.name !== map.profileWho) { map.profile = profileFor(map.profileWho); map.profileHover = -1; }
+  const profile = map.profile;
+  if (map.profileHover < 0) {
+    $("#map-profile-readout").textContent = profile
+      ? `${profile.resident.name}: ${plural(profile.resident.samples, "sample")} in ${map.data.hours} h, ${plural(profile.series.length, "point")} drawn (standing still merged, straight stretches simplified).`
+      : "No resident to show.";
+  }
+  drawProfile();
+}
+function profilePointText(point) {
+  return `${stamp(point.at)} · y ${point.y} · ${dimensionLabel(point.dimension)} ${whereText(point.dimension, point.x, point.z)} · ${coverOf(point.dimension, point.y, point.sky).label} · ${count(Math.round(point.distance))} blocks along`;
+}
+function niceStep(span, target, steps) { return steps.find(step => span / step <= target) ?? steps[steps.length - 1]; }
+function drawProfile() {
+  const canvas = map.profileCanvas, width = canvas.clientWidth, height = canvas.clientHeight;
+  if (!width || !height) return;
+  const ratio = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  const faint = css("--lichen"), soft = css("--seam-soft"), ink = css("--parchment");
+  ctx.font = `11px ${css("--data")}`; ctx.textBaseline = "middle";
+  map.profileFeatures = [];
+  const profile = map.profile, series = profile?.series ?? [];
+  if (!series.length) {
+    ctx.fillStyle = faint; ctx.textAlign = "center";
+    ctx.fillText(profile ? `${profile.resident.name} has no samples in this window.` : "No resident selected.", width / 2, height / 2);
+    return;
+  }
+  const left = 46, right = 14, top = 22, strip = 6, bottom = 24;
+  const plotHeight = height - top - bottom - strip - 6, plotWidth = width - left - right, stripTop = top + plotHeight + 4;
+  const byTime = map.profileAxis === "time", key = byTime ? "at" : "distance";
+  // Time runs over the samples' own span (not the whole window), so a short trip is not a sliver.
+  const latest = Math.max(series[series.length - 1].at, ...[...profile.deaths, ...profile.alarms].map(mark => mark.at));
+  const from = byTime ? series[0].at : 0;
+  const to = byTime ? Math.max(latest, from + 600_000) : Math.max(16, series[series.length - 1].distance);
+  let low = Infinity, high = -Infinity;
+  for (const point of series) { low = Math.min(low, point.y); high = Math.max(high, point.y); }
+  for (const mark of [...profile.deaths, ...profile.alarms]) if (mark.at >= series[0].at) { low = Math.min(low, mark.y); high = Math.max(high, mark.y); }
+  if (high - low < 24) { const middle = (high + low) / 2; low = middle - 12; high = middle + 12; }
+  const pad = (high - low) * .08; low -= pad; high += pad;
+  const sx = value => left + (value - from) / (to - from) * plotWidth;
+  const sy = y => top + (high - y) / (high - low) * plotHeight;
+  const along = at => byTime ? at : series[nearestIndex(series, "at", at)].distance;
+
+  // Time spent in the Nether or End: tinted bands with the dimension's name.
+  let start = 0;
+  for (let i = 1; i <= series.length; i++) {
+    if (i < series.length && series[i].dimension === series[start].dimension) continue;
+    const dimension = series[start].dimension;
+    if (dimension !== "overworld") {
+      const x1 = sx(series[start][key]), x2 = Math.max(x1 + 2, sx(series[i - 1][key]));
+      ctx.fillStyle = BAND_TINT[dimension] ?? "rgba(163,171,155,.1)"; ctx.fillRect(x1, top, x2 - x1, plotHeight);
+      if (x2 - x1 > 46) { ctx.fillStyle = faint; ctx.textAlign = "left"; ctx.fillText(dimensionLabel(dimension), x1 + 4, top + 9); }
+    }
+    start = i;
+  }
+  // Height grid, sea level, and the horizontal axis.
+  const yStep = niceStep(high - low, 6, [4, 8, 16, 32, 64, 128]);
+  ctx.lineWidth = 1; ctx.textAlign = "right";
+  for (let y = Math.ceil(low / yStep) * yStep; y <= high; y += yStep) {
+    ctx.strokeStyle = soft; ctx.beginPath(); ctx.moveTo(left, Math.round(sy(y)) + .5); ctx.lineTo(width - right, Math.round(sy(y)) + .5); ctx.stroke();
+    ctx.fillStyle = faint; ctx.fillText(String(y), left - 6, sy(y));
+  }
+  if (series.some(point => point.dimension === "overworld") && SEA_LEVEL > low && SEA_LEVEL < high) {
+    ctx.strokeStyle = "rgba(91,140,240,.7)"; ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.moveTo(left, Math.round(sy(SEA_LEVEL)) + .5); ctx.lineTo(width - right, Math.round(sy(SEA_LEVEL)) + .5); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(140,175,245,.9)"; ctx.textAlign = "right"; ctx.fillText("sea 63", width - right - 2, sy(SEA_LEVEL) - 7);
+  }
+  ctx.fillStyle = faint; ctx.textAlign = "center";
+  if (byTime) {
+    const hour = 3_600_000, xStep = niceStep(to - from, 8, [600_000, 1_800_000, hour, 2 * hour, 3 * hour, 6 * hour, 12 * hour, 24 * hour]);
+    for (let t = Math.ceil(from / xStep) * xStep; t <= to; t += xStep) ctx.fillText(xStep >= 24 * hour ? stamp(t).replace(/ \d\d:\d\d$/, "") : clock(t, false), sx(t), height - 9);
+  } else {
+    const xStep = niceStep(to - from, 7, [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000]);
+    for (let d = 0; d <= to; d += xStep) ctx.fillText(d >= 1000 ? `${d / 1000}k` : String(d), sx(d), height - 9);
+    ctx.textAlign = "left"; ctx.fillText("blocks", left + 2, height - 9);
+  }
+  // The line, coloured by height like the map; nothing joins across a gap, jump or dimension change.
+  ctx.lineWidth = 2; ctx.lineCap = "round";
+  for (let i = 0; i < series.length; i++) {
+    const point = series[i], previous = series[i - 1];
+    if (point.joined && previous) {
+      ctx.strokeStyle = heightColour((previous.y + point.y) / 2);
+      ctx.beginPath(); ctx.moveTo(sx(previous[key]), sy(previous.y)); ctx.lineTo(sx(point[key]), sy(point.y)); ctx.stroke();
+      if (point.dimension === "overworld" && Number.isFinite(point.sky)) {
+        ctx.fillStyle = point.sky === 0 ? "#8a6a3e" : "#4f86c6";
+        const x1 = Math.floor(sx(previous[key]));
+        ctx.fillRect(x1, stripTop, Math.max(1, Math.ceil(sx(point[key])) - x1), strip);
+      }
+    } else if (!series[i + 1]?.joined) {
+      ctx.fillStyle = heightColour(point.y); ctx.beginPath(); ctx.arc(sx(point[key]), sy(point.y), 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.lineCap = "butt";
+  // Marks: dimension changes, places passed, alarms and deaths.
+  for (const crossing of profile.resident.crossings) {
+    if (byTime && crossing.at < from) continue;
+    const x = Math.round(sx(along(crossing.at))) + .5;
+    ctx.strokeStyle = PORTAL; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + plotHeight); ctx.stroke(); ctx.setLineDash([]);
+    map.profileFeatures.push({ sx: x, sy: top + plotHeight / 2, wide: true, text: `${stamp(crossing.at)}: ${dimensionLabel(crossing.from.dimension)} ${crossing.from.x}, ${crossing.from.y}, ${crossing.from.z} → ${dimensionLabel(crossing.to.dimension)} ${crossing.to.x}, ${crossing.to.y}, ${crossing.to.z} (${crossing.kind === "respawn" ? "respawn after a death" : "probably a portal"})` });
+  }
+  // Places passed: a tick along the top edge (the line itself stays readable near a busy base).
+  let lastLabel = -Infinity;
+  for (const passed of profile.passed) {
+    const x = sx(byTime ? passed.at : passed.distance), tint = canvasColour(passed.place.owner);
+    ctx.beginPath(); ctx.moveTo(x - 4, top - 8); ctx.lineTo(x + 4, top - 8); ctx.lineTo(x, top - 2); ctx.closePath();
+    ctx.fillStyle = tint; ctx.fill();
+    if (x - lastLabel > 96) {
+      ctx.font = `11px ${css("--ui")}`; ctx.fillStyle = tint; ctx.textAlign = "left";
+      ctx.fillText(passed.place.name.slice(0, 16), Math.min(x + 6, width - right - 80), top - 13); lastLabel = x;
+      ctx.font = `11px ${css("--data")}`;
+    }
+    map.profileFeatures.push({ sx: x, sy: top - 5, text: `Passed ${passed.place.name} (${placeOwner(passed.place)}, ${placeCoordinates(passed.place)}) at ${stamp(passed.at)}, y ${Math.round(passed.y)}` });
+  }
+  for (const alarm of profile.alarms) {
+    if (byTime && alarm.at < from) continue;
+    const x = sx(along(alarm.at)), y = sy(alarm.y);
+    ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 6, y + 4); ctx.lineTo(x - 6, y + 4); ctx.closePath();
+    ctx.fillStyle = css("--glow"); ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = "#14171b"; ctx.stroke();
+    map.profileFeatures.push({ sx: x, sy: y, text: `${stamp(alarm.at)}: shouted for help (${alarm.kind}): ${alarm.reason}, ${dimensionLabel(alarm.dimension)} ${alarm.x}, ${alarm.y}, ${alarm.z}` });
+  }
+  for (const death of profile.deaths) {
+    if (byTime && death.at < from) continue;
+    const x = sx(along(death.at)), y = sy(death.y);
+    ctx.strokeStyle = css("--redstone"); ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke();
+    map.profileFeatures.push({ sx: x, sy: y, text: `${stamp(death.at)}: died, ${dimensionLabel(death.dimension)} ${death.x}, ${death.y}, ${death.z}` });
+  }
+  // Hover: a crosshair on the nearest sample.
+  const hovered = series[map.profileHover];
+  if (hovered) {
+    const x = sx(hovered[key]), y = sy(hovered.y);
+    ctx.strokeStyle = ink; ctx.globalAlpha = .5; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, top); ctx.lineTo(Math.round(x) + .5, top + plotHeight); ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.stroke();
+  }
+  map.profileScale = { left, plotWidth, from, to, key };
+}
+{
+  const canvas = map.profileCanvas, at = event => { const box = canvas.getBoundingClientRect(); return [event.clientX - box.left, event.clientY - box.top]; };
+  const pointAt = ([px]) => {
+    const scale = map.profileScale, series = map.profile?.series ?? [];
+    if (!scale || !series.length) return -1;
+    return nearestIndex(series, scale.key, scale.from + (px - scale.left) / scale.plotWidth * (scale.to - scale.from));
+  };
+  canvas.addEventListener("pointermove", event => {
+    const position = at(event), index = pointAt(position);
+    if (index < 0) return;
+    let mark, best = 9;
+    for (const feature of map.profileFeatures) {
+      const distance = feature.wide ? Math.abs(feature.sx - position[0]) : Math.hypot(feature.sx - position[0], feature.sy - position[1]);
+      if (distance < best) { best = distance; mark = feature; }
+    }
+    map.profileHover = index;
+    $("#map-profile-readout").textContent = `${profilePointText(map.profile.series[index])}${mark ? `   ${mark.text}` : ""}`;
+    drawProfile();
+  });
+  canvas.addEventListener("pointerleave", () => { map.profileHover = -1; renderProfile(); });
+  canvas.addEventListener("click", event => {
+    const point = map.profile?.series[pointAt(at(event))];
+    if (point) showOnMap(point.dimension, point.x, point.z);
+  });
+  new ResizeObserver(() => drawProfile()).observe(canvas);
 }
 {
   const canvas = map.canvas, at = event => { const box = canvas.getBoundingClientRect(); return [event.clientX - box.left, event.clientY - box.top]; };
@@ -685,7 +1025,7 @@ async function loadMap() {
       map.cx -= (now[0] - before[0]) / map.scale; map.cz -= (now[1] - before[1]) / map.scale;
       map.moved += Math.hypot(now[0] - before[0], now[1] - before[1]);
       map.pointers.set(event.pointerId, now);
-      drawMap();
+      scheduleMap();
     } else {
       // Two fingers: zoom about the point between them by how far they moved apart.
       const other = [...map.pointers].find(([id]) => id !== event.pointerId)[1];
@@ -699,13 +1039,9 @@ async function loadMap() {
     map.pointers.delete(event.pointerId);
     if (point && map.moved < 6 && event.type === "pointerup") {
       readout(point[0], point[1]);
-      let nearest, best = 18;
-      for (const feature of map.features) {
-        if (!feature.key) continue;
-        const distance = Math.hypot(feature.sx - point[0], feature.sy - point[1]);
-        if (distance < best) { best = distance; nearest = feature; }
-      }
-      if (nearest) selectMapPlace(nearest.key);
+      const nearest = nearestFeature(point[0], point[1], feature => feature.key || feature.go);
+      if (nearest?.key) selectMapPlace(nearest.key);
+      else if (nearest?.go) showOnMap(nearest.go.dimension, nearest.go.x, nearest.go.z);
     }
   };
   canvas.addEventListener("pointerup", release);
@@ -714,7 +1050,7 @@ async function loadMap() {
   const centre = factor => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, factor);
   $("#map-in").onclick = () => centre(1.6);
   $("#map-out").onclick = () => centre(1 / 1.6);
-  $("#map-fit").onclick = () => { fitMap(); drawMap(); };
+  $("#map-fit").onclick = () => { map.pin = null; fitMap(); drawMap(); };
   $("#map-search").addEventListener("input", event => {
     map.search = event.target.value; renderMapPlaces(); drawMap();
   });
@@ -722,6 +1058,17 @@ async function loadMap() {
     const key = event.target.closest("button[data-place]")?.dataset.place;
     if (key) selectMapPlace(key);
   };
+  // The two thumbs never cross: the one being moved stops at the other.
+  $("#map-lo").addEventListener("input", () => {
+    const hi = heightRange()[1];
+    setHeights([Math.min(Number($("#map-lo").value), hi), hi]);
+  });
+  $("#map-hi").addEventListener("input", () => {
+    const lo = heightRange()[0];
+    setHeights([lo, Math.max(Number($("#map-hi").value), lo)]);
+  });
+  $("#map-h-all").onclick = () => setHeights(null);
+  $("#map-h-under").onclick = () => setHeights([heightDomain(map.dimension)[0], SEA_LEVEL - 1]);
   new ResizeObserver(() => { if (map.data && !map.fitted && canvas.clientWidth) { fitMap(); map.fitted = true; } drawMap(); }).observe(canvas);
 }
 

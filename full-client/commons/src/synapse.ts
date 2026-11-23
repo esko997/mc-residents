@@ -67,7 +67,8 @@ export interface ResidentState {
   armor: string[];
   offhand: Stack | null;
   nearby: { players: string[]; hostiles: number; others: number };
-  world?: { weather?: string; biome?: string; timeOfDay?: "day" | "night" };
+  /** skyLight: sky light 0-15 at the feet (15 open sky, 0 none reaches; the Nether and End have none). */
+  world?: { weather?: string; biome?: string; timeOfDay?: "day" | "night"; skyLight?: number };
   level?: number;
 }
 
@@ -142,6 +143,7 @@ export function normalizeState(data: unknown): ResidentState | null {
         biome: typeof world.biome === "string" ? shortId(world.biome) : undefined,
         // Minecraft's day is 24000 ticks; mobs spawn from 13000 to 23000.
         timeOfDay: dayTime === undefined ? undefined : dayTime % 24000 >= 13000 && dayTime % 24000 < 23000 ? "night" : "day",
+        skyLight: finite(record(world.lightLevel).sky),
       },
     } : {}),
     level: finite(record(raw.experience).level),

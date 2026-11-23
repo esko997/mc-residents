@@ -3,6 +3,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { migratePositions } from "./positions.ts";
 import { record } from "./json.ts";
 import { AUTO, LOOKED } from "./reviews.ts";
 
@@ -16,6 +17,7 @@ export function openCommons(path: string, schemaPath: string): Database {
     // Before the schema: central caretaker jobs may hold the write lock.
     db.exec("PRAGMA busy_timeout = 3000;");
     db.exec(schema);
+    migratePositions(db);
     db.exec("PRAGMA foreign_keys = ON;");
     return db;
   } catch (error) { db.close(); throw error; }
@@ -163,34 +165,4 @@ export function pendingCount(db: Database): number {
     (SELECT COUNT(*) FROM skills i WHERE i.status IN ('verified', 'curated') AND NOT ${looked("skill")}) +
     (SELECT COUNT(*) FROM shared_notes i WHERE i.status = 'proposed' OR (i.status = 'curated' AND NOT ${looked("note")})) AS n`).get();
   return row?.n ?? 0;
-}
-
-export interface PositionSample { x: number; y: number; z: number; dimension: string; health?: number; food?: number }
-export function recordPosition(db: Database, resident: string, at: number, sample: PositionSample) {
-  db.query("INSERT OR REPLACE INTO positions (resident, at, x, y, z, dimension, health, food) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(resident, at, sample.x, sample.y, sample.z, sample.dimension, sample.health ?? null, sample.food === undefined ? null : Math.round(sample.food));
-}
-
-export const isOverworld = (dimension: unknown) => typeof dimension === "string" && /(^|:)overworld$/.test(dimension);
-
-/**
- * A resident's overworld trail since a time, as [at, x, z] rounded to whole blocks.
- * Standing still adds no point (the one point keeps the latest time it was seen there, so
- * the gap to the next point is real travel time), and long trails are thinned to `maxPoints`.
- */
-export function trail(db: Database, resident: string, since: number, maxPoints = 3000): [number, number, number][] {
-  const rows = db.query<{ at: number; x: number; z: number; dimension: string }, [string, number]>(
-    "SELECT at, x, z, dimension FROM positions WHERE resident = ? AND at >= ? ORDER BY at").all(resident, since);
-  const points: [number, number, number][] = [];
-  for (const row of rows) {
-    if (!isOverworld(row.dimension)) continue;
-    const x = Math.round(row.x), z = Math.round(row.z), last = points[points.length - 1];
-    if (last && last[1] === x && last[2] === z) { last[0] = row.at; continue; }
-    points.push([row.at, x, z]);
-  }
-  if (points.length <= maxPoints) return points;
-  const step = points.length / maxPoints;
-  const thinned = Array.from({ length: maxPoints }, (_, index) => points[Math.floor(index * step)]);
-  thinned[thinned.length - 1] = points[points.length - 1];
-  return thinned;
 }

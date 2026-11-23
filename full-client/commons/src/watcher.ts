@@ -3,7 +3,7 @@
 // and captures nearby newly saved places; live pictures are fetched on demand.
 import type { Database } from "bun:sqlite";
 import type { Config, ResidentConfig } from "./config.ts";
-import { recordPosition } from "./db.ts";
+import { recordPosition } from "./positions.ts";
 import { record } from "./json.ts";
 import { autoAccept } from "./reviews.ts";
 import { normalizeState, synapseGet, type ResidentState } from "./synapse.ts";
@@ -81,6 +81,7 @@ export class Watcher {
     try {
       recordPosition(this.db, resident.name, at, {
         ...state.pos, dimension: typeof dimension === "string" ? dimension : state.dimension, health: state.health, food: state.food,
+        sky: state.world?.skyLight,
       });
     } catch (error) {
       // Another writer held the database past the busy timeout: lose one sample, keep watching.

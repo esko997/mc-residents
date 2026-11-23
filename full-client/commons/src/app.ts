@@ -57,6 +57,8 @@ const STATIC: Record<string, string> = {
   "overlay-preview.js": "text/javascript; charset=utf-8", "overlay-core.js": "text/javascript; charset=utf-8",
   "overlay-media.js": "text/javascript; charset=utf-8", "overlay.css": "text/css; charset=utf-8",
   "overlay-font.ttf": "font/ttf", "overlay-font-LICENSE.txt": "text/plain; charset=utf-8",
+  // Unlinked prototype for docs/map-3d.md (synthetic terrain, reads no data).
+  "iso-chunk.html": "text/html; charset=utf-8", "iso-chunk.js": "text/javascript; charset=utf-8",
 };
 const MAX_BODY = 8192;
 

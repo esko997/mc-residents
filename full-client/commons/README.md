@@ -556,15 +556,55 @@ after API note submission. Preserve the place-picture cache beside the database.
   `activity`, and `thoughts` is forwarded to its station through the five-second
   scoped cache. Thoughts are dashboard-only: the stream overlay never receives them.
 - **Map**: the `positions` table (this app writes one row per online resident
-  every 10 s), `places.json` of each resident, `resident/shared/places.json`,
-  and deaths from `places.json` plus `died` events in the session files.
-  Overworld only, no terrain. Saved places are dots, with a searchable,
-  owner-filtered list below; selecting a dot or list entry centres and highlights
-  it and shows its note. Current resident markers retain their names.
-  Trail geometry merges onto a four-block grid within each resident's history;
-  thicker lines show overlapping samples, **not exact trip counts**. Samples
-  separated by more than a minute, large jumps and overlong spans are not joined.
-  Selection, filters and the camera survive polling; Fit all restores the overview.
+  every 10 s: x, y, z, the dimension id, health, food and `sky`, the sky light
+  0-15 at the feet from the client's full state; older rows have `sky` NULL),
+  `places.json` of each resident, `resident/shared/places.json`, deaths from
+  `places.json` plus `died` events in the session files, and (hub only) the
+  `resident_alarms` table. No terrain.
+  - **One dimension at a time.** The switch offers Overworld plus every dimension
+    with trails, places, deaths, alarms or a resident in the window (Nether, End,
+    modded ids), and remembers the choice in the browser (`localStorage`
+    `commons.map`). Nothing from one dimension is drawn on another's map. Hover
+    readouts give the linked coordinates: Nether ×8 = Overworld, Overworld ÷8 = Nether.
+    Two consecutive samples (at most two minutes apart) in different dimensions are a
+    **dimension change**, drawn as ◆ on both maps; selecting one jumps to the other
+    side. It is "probably a portal" unless the resident died in the departure
+    dimension within the five minutes before, when it is a respawn. Nothing else is
+    known about it.
+  - **Depth.** Trails are coloured by height (one absolute-Y ramp for every
+    dimension, legend under the map) or by resident. A two-ended Heights slider
+    (with *Below sea level*, y ≤ 62, in the Overworld) hides everything outside the
+    range; legs are split where they leave it, never joined across. Each resident's
+    current Y and cover is shown. **Cover is honest, not inferred terrain:**
+    Overworld sky light 15 is open sky, 1-14 partly covered, 0 is *underground*
+    below sea level (y < 63) and *enclosed* above it (a sealed room and a hillside
+    tunnel look the same); without a reading only "below sea level" is said. The
+    Nether and End have no sky light.
+  - **Elevation profile** for one chosen resident (also drawn over the others on
+    the height-coloured map): Y against time (from the first sample in the window
+    to the last) or horizontal distance walked within joined stretches, all
+    dimensions in order with Nether/End bands, sea level, a sky-light strip,
+    deaths, alarms, dimension changes and saved places passed within eight blocks.
+    Hover for the sample, select to show that spot on the map.
+  - **Decimation.** `GET map` returns per resident `legs` (`{dimension, points:
+    [at, x, y, z, sky][]}`: one dimension, no gap over a minute, no jump), raw
+    `samples`, and `crossings`. Standing still adds no point; a resident's legs are
+    then simplified together to at most 3 000 points by Ramer-Douglas-Peucker
+    ranking with height weighted double (dives and climbs survive, straight walks
+    collapse); every leg keeps both ends and crossings come from the raw rows.
+    A synthetic week of 10 s samples (60 480 rows, always moving) is read and
+    decimated in about 160 ms on the development machine; a night takes under 20 ms.
+  - Saved places are dots, with a searchable, owner-filtered list below for the
+    shown dimension; selecting one centres it and shows its note. Trail geometry
+    merges onto a four-block grid and eight-block height bands within each
+    resident's legs (lower drawn first); thicker lines show overlapping samples,
+    **not exact trip counts**. Selection, filters and the camera survive polling;
+    Fit all restores the overview of the shown dimension.
+  - Federation: stations send the same reply; the hub adds `host`. A station still
+    running an older Commons (flat overworld `trail`, no heights) shows no trail
+    until it is updated, rather than a guessed one; update stations and hub together.
+  - A block-level 3D "diorama" is assessed in [docs/map-3d.md](docs/map-3d.md); its
+    canvas prototype is the unlinked page `iso-chunk.html` (synthetic terrain only).
   New/revised places may also receive a saved view: within 30 seconds of observing
   the file save, the named resident must still be in the same dimension and
   within 12 blocks, alive and without a GUI open, both before and after capture.

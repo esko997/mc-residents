@@ -2,6 +2,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { migratePositions } from "./positions.ts";
 
 export function openStation(path: string): Database {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -11,8 +12,9 @@ export function openStation(path: string): Database {
     CREATE TABLE IF NOT EXISTS positions (
       resident TEXT NOT NULL, at INTEGER NOT NULL,
       x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
-      dimension TEXT NOT NULL, health REAL, food INTEGER,
+      dimension TEXT NOT NULL, health REAL, food INTEGER, sky INTEGER,
       PRIMARY KEY (resident, at)
     ) WITHOUT ROWID;`);
+  migratePositions(db);
   return db;
 }

@@ -117,6 +117,29 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #15181c; borde
 .readout { font-family: var(--data); font-size: .8125rem; padding: 6px 0; min-height: 2.2em; }
 .key { display: inline-flex; align-items: center; gap: 6px; }
 .key i { width: 14px; height: 4px; background: var(--who); display: inline-block; }
+.strip .warn { color: var(--glow); }
+.strip .portal { color: #c9a6ff; }
+.height-key { display: inline-flex; align-items: center; padding-bottom: 14px; }
+.height-key .ramp { position: relative; display: inline-block; width: 280px; height: 8px; border-radius: 1px; }
+.height-key .ramp span { position: absolute; top: 10px; transform: translateX(-50%); font: .6875rem/1 var(--data); white-space: nowrap; }
+.map-heights { margin-top: -4px; }
+.map-heights-label { font-size: .875rem; font-weight: 700; color: var(--lichen); }
+/* Two range inputs on one track: only their thumbs take pointer input. */
+.dual { position: relative; width: min(340px, 64vw); height: 30px; }
+.dual-track { position: absolute; left: 9px; right: 9px; top: 11px; height: 8px; border-radius: 1px; outline: 1px solid var(--seam); }
+.dual input { position: absolute; inset: 0; width: 100%; height: 30px; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.dual input::-webkit-slider-runnable-track { background: none; height: 30px; }
+.dual input::-moz-range-track { background: none; }
+.dual input::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; appearance: none; width: 18px; height: 26px; margin-top: 2px; border-radius: 2px; background: var(--parchment); border: 2px solid #14171b; cursor: ew-resize; }
+.dual input::-moz-range-thumb { pointer-events: auto; width: 14px; height: 22px; border-radius: 2px; background: var(--parchment); border: 2px solid #14171b; cursor: ew-resize; }
+.dual input:focus-visible { outline: none; }
+.dual input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--glow); }
+.dual input:focus-visible::-moz-range-thumb { outline: 2px solid var(--glow); }
+#map-height-value { font-size: .8125rem; min-width: 11ch; }
+#map-profile-box { margin-top: 14px; }
+#map-profile-box h2 { font-size: 1.0625rem; }
+#map-profile-wrap { height: 210px; border: 2px solid var(--seam); background: #14171b; }
+#map-profile { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
 #map-places { margin-top: 18px; }
 #map-places > h2 { font-size: 1.0625rem; margin-bottom: 10px; }
 #map-who { flex-wrap: wrap; }

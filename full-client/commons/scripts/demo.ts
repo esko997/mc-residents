@@ -24,7 +24,7 @@ home.put("resident/gary/places.json", JSON.stringify({
 }));
 home.put("resident/margo/memory.md", "# Margo\n\nI am an AI playing as Margo. I like finding out how machines work.\n\n## Safety\nThe water by the stone building is deep. Walk around it.\n");
 home.put("resident/margo/journal.md", "# Journal\n\n## 2026-11-21\nFell in the water twice. Gary gave me bread.\n");
-home.put("resident/margo/places.json", JSON.stringify({ places: [{ name: "Stone building", x: 58, y: 64, z: -96, dimension: "minecraft:overworld", note: "Machines inside, not mine." }], deaths: [{ x: 60, y: 58, z: -101, dimension: "minecraft:overworld", at: now - 170 * minute }] }));
+home.put("resident/margo/places.json", JSON.stringify({ places: [{ name: "Stone building", x: 58, y: 64, z: -96, dimension: "minecraft:overworld", note: "Machines inside, not mine." }], deaths: [{ x: 60, y: 58, z: -101, dimension: "minecraft:overworld", at: now - 20 * minute }] }));
 home.put("resident/shared/places.json", fixture("shared-places.json"));
 home.put("instances/Margo.env", fixture("instances-Margo.env").replace(/^GAME_DIR=.*$/m, `GAME_DIR=${home.dir}/game-Margo`).replace(/^SYNAPSE_URL=.*$/m, "SYNAPSE_URL=http://127.0.0.1:9"));
 const hhmm = (t: number) => new Date(t).toTimeString().slice(0, 5);
@@ -131,22 +131,36 @@ setInterval(() => {
   client.state = { ...base, pos: { x: 110.5 + Math.cos(angle) * 9, y: 120, z: -207.6 + Math.sin(angle) * 6 } };
 }, 1000);
 
-const position = app.db.query("INSERT OR REPLACE INTO positions (resident, at, x, y, z, dimension, health, food) VALUES (?, ?, ?, ?, ?, 'minecraft:overworld', 20, 18)");
-const walk = (resident: string, from: number, legs: [number, number, number][]) => {
-  // legs: [x, z, minutes to get there]; a sample every 10 s, with a little wander.
-  let [x, z] = [legs[0][0], legs[0][1]], t = from;
-  for (const [toX, toZ, minutes] of legs.slice(1)) {
-    const steps = minutes * 6;
+const position = app.db.query("INSERT OR REPLACE INTO positions (resident, at, x, y, z, dimension, health, food, sky) VALUES (?, ?, ?, ?, ?, ?, 20, 18, ?)");
+const NETHER = "minecraft:the_nether", OVERWORLD = "minecraft:overworld";
+type Stop = [x: number, y: number, z: number, minutes: number, dimension?: string, sky?: number];
+const walk = (resident: string, from: number, stops: Stop[]) => {
+  // Each stop: where to get to and in how many minutes, a sample every 10 s with a little wander.
+  // Zero minutes is a jump (a portal): one sample there. sky is the sky light at the feet on the way.
+  let [x, y, z] = stops[0], t = from;
+  for (const [toX, toY, toZ, minutes, dimension = OVERWORLD, sky = 15] of stops.slice(1)) {
+    const steps = Math.max(1, minutes * 6);
     for (let step = 1; step <= steps; step++) {
       t += 10_000;
-      position.run(resident, t, x + (toX - x) * step / steps + Math.sin(t / 37_000) * 1.5, 70, z + (toZ - z) * step / steps + Math.cos(t / 41_000) * 1.5);
+      const wander = minutes ? 1.5 : 0;
+      position.run(resident, t, x + (toX - x) * step / steps + Math.sin(t / 37_000) * wander, y + (toY - y) * step / steps,
+        z + (toZ - z) * step / steps + Math.cos(t / 41_000) * wander, dimension, sky);
     }
-    [x, z] = [toX, toZ];
+    [x, y, z] = [toX, toY, toZ];
   }
 };
-walk("Gary", now - 5 * 60 * minute, [[110, -208, 0], [104, -201, 12], [140, -150, 40], [133, -104, 30], [113, -80, 35], [133, -104, 30]]);
-walk("Gary", now - 94 * minute, [[110, -208, 0], [133, -104, 50], [110, -208, 40]]);   // respawned at the cabin after the death
-walk("Margo", now - 4 * 60 * minute, [[20, -60, 0], [58, -96, 45], [60, -101, 10], [75, -130, 30], [108, -205, 55], [60, -99, 60]]);
+// Gary goes down a staircase mine under the copper vein, then on to spesk01's base.
+walk("Gary", now - 5 * 60 * minute, [[110, 120, -208, 0], [104, 116, -201, 12], [140, 80, -150, 40], [152, 71, -168, 15],
+  [150, 40, -166, 20, OVERWORLD, 0], [146, 12, -170, 25, OVERWORLD, 0], [150, 40, -166, 20, OVERWORLD, 0], [152, 71, -168, 10],
+  [133, 82, -104, 30], [113, 78, -80, 35]]);
+walk("Gary", now - 94 * minute, [[110, 120, -208, 0], [133, 82, -104, 50], [110, 120, -208, 40]]);   // respawned at the cabin after the death
+// Margo crosses the Nether: through the portal by the river, along a fortress bridge and down to the lava sea, and back.
+walk("Margo", now - 270 * minute, [[20, 64, -60, 0], [58, 64, -96, 40], [200, 53, -96, 50], [25, 59, -21, 0, NETHER, 0],
+  [60, 70, -60, 25, NETHER, 0], [95, 35, -40, 25, NETHER, 0], [60, 70, -60, 20, NETHER, 0], [25, 59, -21, 20, NETHER, 0],
+  [200, 53, -96, 0], [108, 64, -205, 45], [60, 64, -99, 30]]);
+const alarmAt = now - 130 * minute;
+app.db.query("INSERT INTO resident_alarms (sender, bucket, at, event_json) VALUES (?, ?, ?, ?)").run("Margo", "auto:low health", alarmAt, JSON.stringify({
+  kind: "auto", reason: "low health 6/20, blaze nearby", x: 95, y: 35, z: -40, dimension: NETHER, health: 6, maxHealth: 20, sender: "Margo", at: alarmAt }));
 
 const insertSkill = app.db.query("INSERT INTO skills (name, author, description, code, params_json, expect_json, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 const skill = (name: string, author: string, status: string, version: number, description: string, code: string, params: object, expect: object | null, age: number) =>

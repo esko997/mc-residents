@@ -3,7 +3,7 @@ import { chmodSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createApp, type App } from "../src/app.ts";
 import { Federation } from "../src/federation.ts";
-import { recordPosition } from "../src/db.ts";
+import { recordPosition } from "../src/positions.ts";
 import type { Routes } from "../src/routes/context.ts";
 import type { ResidentsReply } from "../src/routes/residents.ts";
 import type { MapReply } from "../src/routes/map.ts";
@@ -33,7 +33,7 @@ function stationHome(name = "Wren") {
   return root;
 }
 
-function setup(name = "Wren", options: { timeoutMs?: number } = {}) {
+function setup(name = "Wren", options: { timeoutMs?: number; rewriteMap?: (data: MapReply) => unknown } = {}) {
   const remoteHome = stationHome(name);
   const remote = appAt(remoteHome, { COMMONS_ROLE: "station", COMMONS_HOST_NAME: "chungus1" });
   const counts = new Map<string, number>();
@@ -49,7 +49,7 @@ function setup(name = "Wren", options: { timeoutMs?: number } = {}) {
     if (url.pathname.endsWith("/map")) {
       const data = await (await remote.fetch(req)).json() as MapReply;
       for (const place of data.places) place.picture = { id: pictureId, resident: name, at: clock };
-      return Response.json(data);
+      return Response.json(options.rewriteMap ? options.rewriteMap(data) : data);
     }
     return remote.fetch(req);
   } });
@@ -126,7 +126,7 @@ test("hub merges residents, activity cursors, trails, private places and caretak
   const next = await s.get<ActivityReply>("activity", new URLSearchParams({ boot: activity.boot, after: String(Math.max(...activity.entries.map(e => e.id))) }).toString());
   expect(next.entries).toEqual([]);
   const map = await s.get<MapReply>("map", "hours=24");
-  expect(map.residents.find(r => r.name === "Wren")?.trail).toEqual([[clock - 1000, 4, 8]]);
+  expect(map.residents.find(r => r.name === "Wren")?.legs).toEqual([{ dimension: "overworld", points: [[clock - 1000, 4, 65, 8, null]] }]);
   expect(map.places[0].owner).toBe("Wren");
   expect(map.places[0].picture?.id).toBe(`station:chungus1:${s.pictureId}`);
   const commons = await s.get<{ caretaker: { resident: string; entries: unknown[] }[] }>("commons");
@@ -143,6 +143,33 @@ test("hub merges residents, activity cursors, trails, private places and caretak
   await s.get("residents"); await s.federation.refresh();
   expect(s.counts.get(`/${TOKEN}/api/residents`)).toBe(1);
   expect(s.counts.get(`/${TOKEN}/api/notes?resident=Wren`)).toBe(1);
+});
+
+test("a station's dimensions, heights, sky light and crossings reach the hub map unchanged", async () => {
+  const s = setup();
+  s.remoteHome.put("resident/wren/places.json", JSON.stringify({ places: [{ name: "Nether hub", x: 25, y: 59, z: -22, dimension: "minecraft:the_nether" }],
+    deaths: [{ x: 30, y: 40, z: -20, dimension: "minecraft:the_nether", at: clock - 2000 }] }));
+  recordPosition(s.remote.db, "Wren", clock - 20_000, { x: 201.5, y: 53, z: -96.5, dimension: "minecraft:overworld", sky: 15 });
+  recordPosition(s.remote.db, "Wren", clock - 10_000, { x: 24.5, y: 59, z: -21.5, dimension: "minecraft:the_nether", sky: 0 });
+  await s.get("map", "hours=1"); await s.federation.refresh();
+  const map = await s.get<MapReply>("map", "hours=1");
+  const wren = map.residents.find(r => r.name === "Wren")!;
+  expect(wren).toMatchObject({ host: "chungus1", samples: 2,
+    legs: [{ dimension: "overworld", points: [[clock - 20_000, 202, 53, -96, 15]] }, { dimension: "the_nether", points: [[clock - 10_000, 25, 59, -21, 0]] }],
+    crossings: [{ at: clock - 10_000, from: { dimension: "overworld", x: 202, y: 53, z: -96 }, to: { dimension: "the_nether", x: 25, y: 59, z: -21 }, kind: "portal" }] });
+  expect(map.places.find(p => p.owner === "Wren")).toMatchObject({ name: "Nether hub", dimension: "the_nether" });
+  expect(map.deaths).toEqual([{ resident: "Wren", x: 30, y: 40, z: -20, dimension: "the_nether", at: clock - 2000 }]);
+  expect(map.alarms).toEqual([]);
+});
+
+test("an older station's flat overworld trail is not drawn as if it had heights", async () => {
+  const s = setup("Wren", { rewriteMap: data => ({ ...data, alarms: undefined, deaths: [{ resident: "Wren", x: 1, y: 2, z: 3, at: clock }],
+    residents: data.residents.map(({ legs: _legs, crossings: _crossings, samples: _samples, ...r }) => ({ ...r, trail: [[clock - 1000, 4, 8]], dimension: "overworld" })) }) });
+  recordPosition(s.remote.db, "Wren", clock - 1000, { x: 4, y: 65, z: 8, dimension: "overworld" });
+  await s.get("map", "hours=1"); await s.federation.refresh();
+  const map = await s.get<MapReply>("map", "hours=1");
+  expect(map.residents.find(r => r.name === "Wren")).toMatchObject({ legs: [], crossings: [], samples: 0, dimension: "overworld" });
+  expect(map.deaths).toEqual([{ resident: "Wren", x: 1, y: 2, z: 3, at: clock, dimension: "overworld" }]);
 });
 
 test("a station resident's thoughts reach the hub: newest on its card, the latest 200 through the hub's cached read", async () => {

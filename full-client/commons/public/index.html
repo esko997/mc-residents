@@ -95,12 +95,34 @@
   <section id="p-map" class="panel" aria-labelledby="t-map" hidden>
     <div class="controls">
       <div id="map-hours" class="seg" role="group" aria-label="How far back the trails go"></div>
+      <div id="map-dim" class="seg" role="group" aria-label="Which dimension the map shows"></div>
       <span class="seg"><button type="button" id="map-out" aria-label="Zoom out">−</button><button type="button" id="map-in" aria-label="Zoom in">+</button><button type="button" id="map-fit">Fit all</button></span>
+      <div id="map-colour" class="seg" role="group" aria-label="Colour trails by"></div>
     </div>
-    <div id="map-box"><canvas id="map" aria-label="Map of resident trails, places and deaths" aria-describedby="map-readout map-help"></canvas></div>
+    <div class="controls map-heights">
+      <span class="map-heights-label">Heights</span>
+      <div class="dual" id="map-height">
+        <div class="dual-track" aria-hidden="true"></div>
+        <input type="range" id="map-lo" step="1" aria-label="Lowest height shown">
+        <input type="range" id="map-hi" step="1" aria-label="Highest height shown">
+      </div>
+      <output id="map-height-value" for="map-lo map-hi" class="data"></output>
+      <span class="seg"><button type="button" id="map-h-all">All heights</button><button type="button" id="map-h-under">Below sea level</button></span>
+    </div>
+    <div id="map-box"><canvas id="map" aria-label="Map of resident trails, places, deaths, alarms and dimension crossings" aria-describedby="map-readout map-help"></canvas></div>
     <p id="map-readout" class="readout">Move over the map for coordinates. Select a saved-place dot or a place below.</p>
     <div id="map-legend" class="strip"></div>
-    <p id="map-help" class="fine">Overworld only; north (−z) up. Trails are snapped to a four-block grid: thicker lines mean more overlapping samples, not exact trip counts. Long sampling gaps and large jumps are not joined. Drag to pan; pinch or use +/− to zoom. Current residents keep their name labels.</p>
+    <p id="map-help" class="fine">One dimension at a time; north (−z) up. Nether coordinates are shown with their Overworld equivalent (×8). Trails are snapped to a four-block grid, in eight-block height bands: thicker lines mean more overlapping samples, not exact trip counts; higher trails are drawn over lower ones, so use Heights to see what lies beneath. Long sampling gaps, large jumps and dimension changes are not joined; ◆ marks a dimension change between two consecutive samples (select it to see the other side). Drag to pan; pinch or use +/− to zoom.</p>
+    <section id="map-profile-box" aria-labelledby="map-profile-title">
+      <div class="controls">
+        <h2 id="map-profile-title">Elevation</h2>
+        <div id="map-profile-who" class="seg" role="group" aria-label="Whose elevation profile"></div>
+        <div id="map-profile-axis" class="seg" role="group" aria-label="Along time or distance"></div>
+      </div>
+      <div id="map-profile-wrap"><canvas id="map-profile" aria-label="Elevation profile of the selected resident" aria-describedby="map-profile-readout map-profile-help"></canvas></div>
+      <p id="map-profile-readout" class="readout">Move over the profile for the height at that moment; select it to show the spot on the map.</p>
+      <p id="map-profile-help" class="fine">Height (Y) of every sample in the chosen window, all dimensions in time order; tinted bands are time in the Nether or End. The strip underneath is the sky light at the feet: brown where none reached (underground below sea level, or enclosed), blue where it did, blank where it was not recorded or there is no sky. Distance counts horizontal blocks walked within joined stretches (Nether blocks as walked, not ×8). ✕ death, ▲ alarm, ▼ along the top a saved place passed within eight blocks, dashed line a dimension change. Time runs from the first sample in the window to the last.</p>
+    </section>
     <section id="map-places" aria-labelledby="map-places-title">
       <h2 id="map-places-title">Saved places</h2>
       <div class="controls">

@@ -1,7 +1,9 @@
-// Map panel: trails from the sampled positions, saved places and deaths. Overworld only.
+// Map panel: trails from the sampled positions in every dimension (with height), saved places,
+// deaths, alarms and dimension crossings. The page draws one dimension at a time.
 import { join } from "node:path";
-import { isOverworld, trail } from "../db.ts";
+import { classifyCrossings, dimensionKey, mapTrail, type DimensionCrossing, type TrailLeg } from "../positions.ts";
 import { readPlaces, type Place } from "../notes.ts";
+import { recentAlarms } from "../resident-alarms.ts";
 import { sharedPlaces } from "../resident-places.ts";
 import type { PlacePicture } from "../place-pictures.ts";
 import { refuse } from "./context.ts";
@@ -13,14 +15,21 @@ export interface MapReply {
   now: number; hours: number; choices: number[];
   residents: {
     name: string; online: boolean;
-    /** [unix ms, x, z] in the overworld. */
-    trail: [number, number, number][];
-    /** null when offline or in another dimension. */
-    position: { x: number; y: number; z: number } | null;
+    /** Joined runs of samples, each in one dimension, decimated per resident (see positions.ts). */
+    legs: TrailLeg[];
+    crossings: DimensionCrossing[];
+    /** Raw samples in the window, before standing-still merging and decimation. */
+    samples: number;
+    /** null when offline. sky: sky light at the feet, null when the client did not say. */
+    position: { x: number; y: number; z: number; sky: number | null } | null;
+    /** Dimension key (`overworld`, `the_nether`, `the_end`, or a mod's full id). */
     dimension: string | null;
   }[];
+  /** `dimension` is a dimension key. */
   places: (Place & { owner: string; picture: PlacePicture | null })[];
-  deaths: { resident: string; x: number; y: number; z: number; at: number }[];
+  deaths: { resident: string; x: number; y: number; z: number; dimension: string; at: number }[];
+  /** Hub only: alarms are shared records; a station has none of its own. */
+  alarms: { resident: string; x: number; y: number; z: number; dimension: string; at: number; reason: string; kind: "auto" | "manual" }[];
 }
 
 export function mapRoutes({ config, db, watcher, tail, now, readSessions }: Context): Routes {
@@ -38,36 +47,44 @@ export function mapRoutes({ config, db, watcher, tail, now, readSessions }: Cont
       const since = now() - hours * 3_600_000;
       const shared = config.role === "hub" ? sharedPlaces(db) : [];
       const pictures = await watcher.placePictures.mapPictures();
-      const places: MapReply["places"] = shared.filter(place => isOverworld(place.dimension)).map(place => ({
-        ...place, owner: "shared", picture: watcher.placePictures.forPlace(pictures, "shared", place),
+      const places: MapReply["places"] = shared.map(place => ({
+        ...place, dimension: dimensionKey(place.dimension), owner: "shared", picture: watcher.placePictures.forPlace(pictures, "shared", place),
       }));
       const deaths: MapReply["deaths"] = [];
       const residents: MapReply["residents"] = [];
       for (const resident of config.residents) {
         const own = await readPlaces(join(resident.dir, "places.json"));
-        places.push(...own.places.filter(place => isOverworld(place.dimension)).map(place => ({
-          ...place, owner: resident.name, picture: watcher.placePictures.forPlace(pictures, resident.name, place),
+        places.push(...own.places.map(place => ({
+          ...place, dimension: dimensionKey(place.dimension), owner: resident.name, picture: watcher.placePictures.forPlace(pictures, resident.name, place),
         })));
+        const mine: MapReply["deaths"] = [];
         for (const death of own.deaths) {
-          if (isOverworld(death.dimension) && death.at >= since) deaths.push({ resident: resident.name, x: death.x, y: death.y, z: death.z, at: death.at });
+          if (death.at >= since) mine.push({ resident: resident.name, x: death.x, y: death.y, z: death.z, dimension: dimensionKey(death.dimension), at: death.at });
         }
         // places.json keeps only the five latest deaths; the session record has the others.
         for (const entry of tail.recent({ resident: resident.name, limit: 4000 })) {
           if (entry.kind !== "event" || entry.type !== "died" || entry.t < since) continue;
           const found = /\bat=(-?\d+),(-?\d+),(-?\d+)(?: dimension=(\S+))?/.exec(entry.text ?? "");
-          if (!found || (found[4] && !isOverworld(found[4]))) continue;
-          const death = { resident: resident.name, x: Number(found[1]), y: Number(found[2]), z: Number(found[3]), at: entry.t };
+          if (!found) continue;
+          const death = { resident: resident.name, x: Number(found[1]), y: Number(found[2]), z: Number(found[3]), dimension: dimensionKey(found[4]), at: entry.t };
           // The event is read when the next tool result arrives, a little after the death itself.
-          if (!deaths.some(known => known.resident === death.resident && known.x === death.x && known.z === death.z && Math.abs(known.at - death.at) < 600_000)) deaths.push(death);
+          if (!mine.some(known => known.dimension === death.dimension && known.x === death.x && known.z === death.z && Math.abs(known.at - death.at) < 600_000)) mine.push(death);
         }
-        const sighting = watcher.sighting(resident.name);
+        deaths.push(...mine);
+        const sighting = watcher.sighting(resident.name), state = sighting.state;
+        const trail = mapTrail(db, resident.name, since);
         residents.push({
-          name: resident.name, online: sighting.status === "online", trail: trail(db, resident.name, since),
-          position: sighting.state && isOverworld(sighting.state.dimension) ? sighting.state.pos : null,
-          dimension: sighting.state?.dimension ?? null,
+          name: resident.name, online: sighting.status === "online",
+          legs: trail.legs, crossings: classifyCrossings(trail.crossings, mine), samples: trail.samples,
+          position: state ? { ...state.pos, sky: state.world?.skyLight ?? null } : null,
+          dimension: state ? dimensionKey(state.dimension) : null,
         });
       }
-      return { now: now(), hours, choices: HOURS, residents, places, deaths };
+      const alarms: MapReply["alarms"] = config.role === "hub" ? recentAlarms(db, since).map(alarm => ({
+        resident: alarm.sender, x: Math.round(alarm.x), y: Math.round(alarm.y), z: Math.round(alarm.z),
+        dimension: dimensionKey(alarm.dimension), at: alarm.at, reason: alarm.reason, kind: alarm.kind,
+      })) : [];
+      return { now: now(), hours, choices: HOURS, residents, places, deaths, alarms };
     },
   };
 }

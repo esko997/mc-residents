@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { chmodSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createApp, type App, type Replies } from "../src/app.ts";
-import { trail } from "../src/db.ts";
 import { resolveToken } from "../src/server.ts";
 import { callLine, fakeSynapse, fixture, png, rollout, tempHome, type FakeSynapse, type Home } from "./helpers.ts";
 
@@ -123,7 +122,7 @@ test("a resident whose client is down is shown offline, and every panel still an
   expect(await picture.json()).toEqual({ error: "No picture: Gary's client is not running." });
   // No sessions, no places, no caretaker notes, an empty database: empty answers, not errors.
   expect((await api("activity")).entries).toEqual([]);
-  expect(await api("map", "?hours=6")).toMatchObject({ hours: 6, places: [], deaths: [], residents: [{ name: "Gary", online: false, trail: [], position: null }, { name: "Margo" }] });
+  expect(await api("map", "?hours=6")).toMatchObject({ hours: 6, places: [], deaths: [], residents: [{ name: "Gary", online: false, legs: [], crossings: [], samples: 0, position: null }, { name: "Margo" }] });
   expect(await api("commons")).toMatchObject({ skills: [], notes: [], pending: 0, caretaker: [{ resident: "Gary", entries: [] }, { resident: "Margo", entries: [] }] });
   expect(await api("notes", "?resident=Margo")).toMatchObject({ name: "Margo", memory: { text: "# Margo\n" }, journal: null, files: [], places: { places: [], deaths: [] } });
   expect((await get(`/${TOKEN}/api/notes?resident=Nobody`)).status).toBe(404);
@@ -145,10 +144,10 @@ test("an online resident's position is sampled into the commons and shown; the o
   await app!.watcher.sample();
 
   expect(fake.requests).toEqual(["/state?mode=full", "/state?mode=full"]);
-  const rows = app!.db.query("SELECT resident, at, x, y, z, dimension, health, food FROM positions ORDER BY at").all();
+  const rows = app!.db.query("SELECT resident, at, x, y, z, dimension, health, food, sky FROM positions ORDER BY at").all();
   expect(rows).toEqual([
-    { resident: "Gary", at: clock - 10_000, x: 110.5, y: 120, z: -207.6, dimension: "minecraft:overworld", health: 2.7, food: 14 },
-    { resident: "Gary", at: clock, x: 118.4, y: 121, z: -200.2, dimension: "minecraft:the_nether", health: 2.7, food: 14 },
+    { resident: "Gary", at: clock - 10_000, x: 110.5, y: 120, z: -207.6, dimension: "minecraft:overworld", health: 2.7, food: 14, sky: 13 },
+    { resident: "Gary", at: clock, x: 118.4, y: 121, z: -200.2, dimension: "minecraft:the_nether", health: 2.7, food: 14, sky: 13 },
   ]);
 
   const data = await api("residents");
@@ -157,10 +156,14 @@ test("an online resident's position is sampled into the commons and shown; the o
   expect(gary.state).toMatchObject({ pos: { x: 118.4, y: 121, z: -200.2 }, dimension: "the_nether", health: 2.7, food: 14, held: { item: "dirt", count: 46 }, screen: null });
   expect(margo).toMatchObject({ status: "offline", state: null, lastOnlineAt: null });
 
-  // The map is overworld only: the nether sample is neither on the trail nor the current position.
+  // Each dimension is its own leg, with heights and sky light; consecutive samples across them are a crossing.
   const map = await api("map", "?hours=1");
-  expect(map.residents[0]).toMatchObject({ name: "Gary", online: true, trail: [[clock - 10_000, 111, -208]], position: null, dimension: "the_nether" });
-  expect(map.residents[1].trail).toEqual([]);
+  expect(map.residents[0]).toMatchObject({
+    name: "Gary", online: true, samples: 2, position: { x: 118.4, y: 121, z: -200.2, sky: 13 }, dimension: "the_nether",
+    legs: [{ dimension: "overworld", points: [[clock - 10_000, 111, 120, -208, 13]] }, { dimension: "the_nether", points: [[clock, 118, 121, -200, 13]] }],
+    crossings: [{ at: clock, from: { dimension: "overworld", x: 111, y: 120, z: -208 }, to: { dimension: "the_nether", x: 118, y: 121, z: -200 }, kind: "portal" }],
+  });
+  expect(map.residents[1]).toMatchObject({ legs: [], crossings: [], position: null, dimension: null });
 });
 
 test("a client that refuses the token is reported as such and nothing is recorded", async () => {
@@ -511,7 +514,7 @@ test("notes: memory, the end of the journal, topic files and places; nothing out
   // The map shows the same places and the death, with who they belong to.
   const map = await api("map", "?hours=6");
   expect(map.places.map(place => `${place.name} (${place.owner})`)).toEqual(["Gary's cabin (shared)", "Cabin stream (shared)", "Wheat patch (Gary)"]);
-  expect(map.deaths).toEqual([{ resident: "Gary", x: 60, y: 61, z: -100, at: clock - 1000 }]);
+  expect(map.deaths).toEqual([{ resident: "Gary", x: 60, y: 61, z: -100, dimension: "overworld", at: clock - 1000 }]);
 });
 
 test("a places.json caught mid-write shows the last good reading instead of failing or going empty", async () => {
@@ -537,7 +540,7 @@ test("deaths older than places.json remembers come from the session record, with
   ].join("\n") + "\n");
   start({ CODEX_HOME: home.dir });
   const map = await api("map", "?hours=1");
-  expect(map.deaths.map(death => `${death.x},${death.y},${death.z}`).sort()).toEqual(["12,40,-7", "60,61,-100"]);
+  expect(map.deaths.map(death => `${death.x},${death.y},${death.z} ${death.dimension}`).sort()).toEqual(["12,40,-7 overworld", "5,30,5 the_nether", "60,61,-100 overworld"]);
 });
 
 test("activity reaches the page newest first, then only what is new, and starts over after a restart", async () => {
@@ -609,19 +612,6 @@ test("unit states come from systemctl, one per unit in order", async () => {
   const data = await api("residents");
   expect(data.residents[0].units).toEqual([{ unit: "gary-run", state: "active" }, { unit: "gary-client@Gary", state: "activating" }]);
   expect(data.sharedUnits).toEqual([{ unit: "overseer-run", state: "inactive" }, { unit: "backup-timer", state: "inactive" }]);
-});
-
-test("a trail drops standing still, keeps the time of leaving, and is thinned without losing its end", () => {
-  start();
-  const insert = app!.db.query("INSERT INTO positions (resident, at, x, y, z, dimension) VALUES ('Gary', ?, ?, 64, ?, 'minecraft:overworld')");
-  insert.run(1000, 10.2, 5.1); insert.run(2000, 10.4, 4.9); insert.run(3000, 9.8, 5.3); insert.run(4000, 14, 5); insert.run(5000, 20, 9);
-  expect(trail(app!.db, "Gary", 0)).toEqual([[3000, 10, 5], [4000, 14, 5], [5000, 20, 9]]);
-  expect(trail(app!.db, "Gary", 4000)).toEqual([[4000, 14, 5], [5000, 20, 9]]);
-  for (let index = 0; index < 500; index++) insert.run(6000 + index, 100 + index, 0);
-  const thinned = trail(app!.db, "Gary", 0, 50);
-  expect(thinned.length).toBe(50);
-  expect(thinned[0]).toEqual([3000, 10, 5]);
-  expect(thinned[49]).toEqual([6499, 599, 0]);
 });
 
 test("the access token is made once, saved for the owner only, and reused", () => {

@@ -9,6 +9,7 @@ import type { ActivityReply } from "./routes/activity.ts";
 import type { CommonsReply } from "./routes/commons.ts";
 import { refuse, type Ask, type Routes } from "./routes/context.ts";
 import type { MapReply } from "./routes/map.ts";
+import { dimensionKey } from "./positions.ts";
 import type { NotesReply } from "./routes/notes.ts";
 import type { ResidentsReply } from "./routes/residents.ts";
 
@@ -358,13 +359,17 @@ export class Federation {
       const remote = this.cached<MapReply>(station, `map?hours=${local.hours}`);
       if (!remote || !Array.isArray(remote.residents) || !Array.isArray(remote.places) || !Array.isArray(remote.deaths)) continue;
       const own = (name: string) => this.owners(name).length === 1 && this.owners(name)[0] === station;
+      // A station running older Commons sends overworld-only `trail`s without heights: show none
+      // of it rather than guessing, and read missing dimensions as the overworld it was limited to.
       residents.push(...remote.residents.filter(r => own(r.name)).map(r => ({ ...r, host: station.host,
+        legs: Array.isArray(r.legs) ? r.legs : [], crossings: Array.isArray(r.crossings) ? r.crossings : [],
+        samples: typeof r.samples === "number" ? r.samples : 0, dimension: r.dimension === null ? null : dimensionKey(r.dimension),
         ...(station.unreachable ? { online: false, position: null } : {}),
       })));
-      places.push(...remote.places.filter(p => own(p.owner)).map(p => ({ ...p,
+      places.push(...remote.places.filter(p => own(p.owner)).map(p => ({ ...p, dimension: dimensionKey(p.dimension),
         picture: p.picture ? { ...p.picture, id: `station:${station.host}:${p.picture.id}` } : null,
       })));
-      deaths.push(...remote.deaths.filter(d => own(d.resident)));
+      deaths.push(...remote.deaths.filter(d => own(d.resident)).map(d => ({ ...d, dimension: dimensionKey(d.dimension) })));
     }
     return { ...local, residents, places, deaths };
   }
