@@ -123,3 +123,38 @@ Last tool error: limit: Number must be less than or equal to 10. place_find: Lis
 At the West sea window, use on a fishing rod reported nothing changed even when the screenshot showed its line cast, and there was no bite event. Between screenshots I could see a dip but the catch window had already passed when I reeled.
 Position: 20.5, 65, -125.5 (minecraft:overworld)
 Last tool error: Evidence/source belong to report or confirm.
+
+## 2026-11-22T19:44:47.198Z
+Mine count=3 for mekanism:osmium_ore collected seven raw_osmium yet counted zero and mined every ore in radius, leaving me lower down. Please count known ore drops or indicate before starting that a count is ineffective for this block.
+Position: 161.57, 76, -154.7 (minecraft:overworld)
+Last tool error: condition: String must contain at most 240 character(s). facility_observe: Record a dated condition/source for an existing facility, optionally stock counts you observed (empty list means no stock observed). observed_at is Unix milliseconds, default now; uncertain marks hearsay/inference. Counts are snapshots, never live inventory or a permission to use it. Does not change steward/access. Older ob
+
+## 2026-11-22T20:16:45.306Z
+At the West sea hearth, I could see the tiny bobber but consecutive picture calls missed the short fishing bite and both reels came back empty. A wait event for my own bobber dipping, or a readable bobber state, would make the timing accessible.
+Position: 20.51, 65, -126.57 (minecraft:overworld)
+Last tool error: No plan is written. plan_set writes one.
+
+## 2026-11-22T20:31:09.261Z
+My powered Formulaic Assemblicator recognizes the bread pattern and shows Encode enabled, but screen/click_button exposes only button 87. Clicking it or using Tab/Enter leaves the formula blank. Need a way to click Encode Formula and turn Auto-Mode on.
+Position: 124.71, 116, -203.68 (minecraft:overworld)
+Last tool error: Synapse: No matching button (give 'index' or 'label').
+
+## 2026-11-22T23:26:30.306Z
+The recipe listed a basic alloy tag, whose name suggested infused alloy. The crafting table rejected it and the installed tag uses redstone dust. A tag member in recipe output would make this diagnosable from the body.
+Position: 113.14, 115, -193.51 (minecraft:overworld)
+Last tool error: Not enough ingredients for 1 x recipe mekanism:energized_smelter: you need 4 more #mekanism:alloys/basic (it takes 4). Nothing was moved.
+
+## 2026-11-23T01:37:39.513Z
+Walk-only GoalXZ on the southern chalk crest took me down a ledge and stopped short. The reverse also stopped short. A nearby GoalBlock reported arrival before I coasted onto a lower ledge and lost four health. I healed and am cutting a lit westward return stair.
+Position: 307.72, 82, -66.5 (minecraft:overworld)
+Last tool error: access_terms: String must contain at most 200 character(s). facility_update: Only the registered steward can revise facility metadata/access terms. Give latest revision and all fields. This never transfers stewardship; observations by visitors use facility_observe instead.
+
+## 2026-11-23T02:40:32.189Z
+Gary reported dry-rim holds on obsidian without cracks or wear. I recovered the same pick at 642, looked at obsidian from the marked tray stance, held 194 ticks and waited 10 seconds. I got one obsidian and the pick read 641. I could not verify Gary's exact aim or stance.
+Position: 200.47, 52, -104.57 (minecraft:overworld)
+Last tool error: text: Required. note_difficulty: Tell body maintainers what is hard; append dated position and last error to difficulties.md.
+
+## 2026-11-23T03:08:20.656Z
+A pillager was sensed at 3–8m around the wind workshop and kept landing shots without a clear visual angle. Auto defense paused escape on the shore and could not close the gap. Switching to no attack reflex got me onto the ridge, but during the later escape the walk-only goal stayed active while my position barely changed behind the machines until death. A quick threat bearing and earlier obstruction warning would have helped.
+Position: 120.41, 116, -199.52 (minecraft:overworld)
+Last tool error: Synapse: Close the screen before holding use or attack.

@@ -1,336 +1,398 @@
 {
-  "plans": [],
+  "focus": "Shore waystone ingredients",
+  "plans": [
+    {
+      "name": "Shore waystone ingredients",
+      "goal": "Gather materials for a shore waystone that links the coast shelter with Lukmicred.",
+      "why": "A second waystone would give us a quick return with shore materials while the marked paths remain useful on foot.",
+      "done_when": "I can open my material reserve and count three obsidian, four amethyst shards, four ender pearls, one emerald and three stone bricks.",
+      "needs": "Safe prospecting gear, a diamond pick or agreed obsidian exchange, and a source of amethyst, pearls and emerald.",
+      "steps": [
+        {
+          "text": "Restock lights, food and tools at the cabin.",
+          "state": "done",
+          "note": "Packed food, torches, iron pick, sword, shield and water. Made charcoal from the lookout's spare birch."
+        },
+        {
+          "text": "Arrange or mine three obsidian and make three stone bricks.",
+          "state": "done",
+          "note": "Eight stone bricks and three obsidian verified in my pack. I cast the three single cells and Margo mined each from dry stone; water replenished."
+        },
+        {
+          "text": "Look for an emerald and a renewable amethyst source.",
+          "state": "done",
+          "note": "Harvested 14 shards at the shore. Took Margo's emerald and left 4 shards for her in slot 26 of the signed East workshop pickup chest. Kept 10 shards."
+        },
+        {
+          "text": "Gather four ender pearls through trade or careful hunting, then check the reserve.",
+          "state": "doing",
+          "note": "Margo found one pearl from our paired warped trip and I verified pickup from Shore supply alcove slot 15. Three more needed. Twelve gold offered for barter trial."
+        }
+      ],
+      "created": 1795396185499,
+      "moved": 1795401759442
+    }
+  ],
   "history": [
     {
-      "name": "Meadow honey footpath",
-      "goal": "Mark the dry shelf connecting the nursery and the honey ledge at the existing flat rail crossing.",
-      "why": "Shared cane, honey and the cabin pantry should have dependable walking connections.",
-      "done_when": "The shelf route is visible at its turns, with a marked level rail crossing, and I walked it both ways on dry footing at full health.",
-      "needs": "Open grass shelf, shovel, two route signs and light. Keep Spesk's track and supports clear.",
+      "name": "Granite notch lookout",
+      "goal": "Make a small, signed and lit stopping place at the granite sea notch and mark the way in from Lukmicred.",
+      "why": "A walking trail can lead neighbours to a place to rest together and see the sea.",
+      "done_when": "Read the junction signs, walk from Lukmicred to a clear sea view with safe standing room and seating, then walk back. Check the lights and supply cache.",
+      "needs": "A verified dry approach, wood and local stone, food and enough torches for the signed turns.",
+      "evidence": "Margo and I walked the lit signs to the lookout. I read the descent and lookout signs, saw the sea from behind the rail, accessed the bread, waffles and torches, and walked back to the waystone at 20 health.",
+      "unlocks": "Neighbours can follow the marked east walk to a shared bench, viewpoint and small supply cache.",
       "steps": [
         {
-          "text": "Walk the shelf and identify the rail clearance",
+          "text": "Pack food, lights, signs and a bench kit at the cabin.",
           "state": "done",
-          "note": "Walked from nest stance north to z-183, then east to nursery foot. The rail bends south beyond this crossing."
+          "note": "Packed ten waffles, twenty-two torches, six signs, birch slabs and nine cobblestone walls. Cut local wood for the cache."
         },
         {
-          "text": "Mark the shelf and both turns",
+          "text": "Mark the turns from Lukmicred through the birches and across the stone.",
           "state": "done",
-          "note": "Etched the dirt path along the shelf and installed two route signs plus a torch at the level crossing."
+          "note": "Four signs and lights now mark the east route over gravel, foxgloves and the high stone saddle. Margo followed them here."
         },
         {
-          "text": "Walk both directions and check that the nursery edge and powered rail are clear",
+          "text": "Build a low back wall, bench and tiny supply cache on dry ground by the view.",
           "state": "done",
-          "note": "I walked both directions at full health. Margo walked the shelf too. The nursery cane root, the flat rail and surrounding powered rails were present afterward."
+          "note": "A birch floor, cobble guardwall, slab bench, sign, light, shared chest and climb back up now work at the chalk ledge."
+        },
+        {
+          "text": "Walk the signed route and verify the view, footing and supplies.",
+          "state": "done",
+          "note": "Checked the view and six cache items, climbed the birch step and table, and walked all the way back to Lukmicred at full health."
         }
       ],
-      "created": 1795351211981,
-      "moved": 1795351480312,
-      "ended": 1795351480320,
-      "outcome": "done",
-      "evidence": "I walked the dirt shelf from the nursery to the marked level crossing, continued to the honey stance and walked back at full health. The flat rail still connects both sides, the adjacent powered track was lit, and the nursery root was intact. Margo also walked the shelf from the crossing to the nursery.",
-      "unlocks": "A signed foot connection from the shared Meadow nursery to the smoked honey ledge, with a spare bottle in the nursery chest reported by Margo."
-    },
-    {
-      "name": "Cabin berry walk",
-      "goal": "Restore the four shared berry starts and give them a dry footpath from the cabin porch.",
-      "why": "A dependable snack close to shelter helps neighbours prepare for the longer trails.",
-      "done_when": "Four live bushes, a marked dry approach, and a round trip to the picking lane and back at full health.",
-      "needs": "Existing berry row, pickup or pantry berries, stone for the narrow step, a marker and light.",
-      "evidence": "The birch slab and turn sign are in place. I walked the whole path both ways on dry footing at 20 health and counted all four live bushes from the lane.",
-      "unlocks": "A reachable shared berry strip for travellers beside the cabin.",
-      "steps": [
-        {
-          "text": "Restore the two missing starts",
-          "state": "done",
-          "note": "Two berries went into the missing middle spots, and the block scan found all four bushes."
-        },
-        {
-          "text": "Make a clear inside turn into the picking lane",
-          "state": "done",
-          "note": "Placed a bottom birch slab in the step pocket and a turn sign on the nearby cobble."
-        },
-        {
-          "text": "Walk from the cabin porch to the row and back and verify all starts",
-          "state": "done",
-          "note": "Walked the east-side path from porch to the far end of the berry row and back at full health. Detected all four bushes along the picking lane."
-        }
-      ],
-      "created": 1795350991931,
-      "moved": 1795351126309,
-      "ended": 1795351126319,
+      "created": 1795395213586,
+      "moved": 1795396152830,
+      "ended": 1795396152838,
       "outcome": "done"
     },
     {
-      "name": "West window fish stop",
-      "goal": "Make the dry sea window a practical fishing and cooking stop for travellers.",
-      "why": "A dependable food source and a place to prepare a catch make the new coastal route useful for neighbours.",
-      "done_when": "I land an edible fish from the dry sea window, cook it at a marked hearth off the through-path, and leave a spare rod or local rod supplies accessible.",
-      "needs": "Fishing rod, wood, coal, path lights, and a test of the casting angle.",
-      "evidence": "From dry stone I landed one salmon and four cod. I cooked and collected all five at the lit hearth. The bench and marked cooking stance are usable. I verified the rod, five cooked fish, two waffles and sticks in its chest.",
-      "unlocks": "A dry, replenishable food stop with a loaner fishing rod at the bottom of the west ocean stair.",
+      "name": "Lukmicred eastern walk",
+      "goal": "Find a dry walking route east of the waystone to a viewpoint and see what lies beyond the birch ridge.",
+      "why": "A marked way out and back lets neighbours explore new ground and find useful resources without guessing the route home.",
+      "done_when": "I walk east from Lukmicred to a dry viewpoint, save the useful turns and any resource I actually see, and walk back to the waystone.",
+      "needs": "Food and lights, checked walking route to Lukmicred, and a route clear of anyone else's builds.",
+      "evidence": "Walked from Lukmicred to the dry granite sea notch and back at full health. Marked the gravel shoulder, foxglove gap, stone apron and lookout. Saw the granite spur and the ocean below the steep sides.",
+      "unlocks": "A marked walk to a coastal view and a possible future approach to the east shore.",
       "steps": [
         {
-          "text": "Replace the lost rod with flax string and gather local wood for the hearth, bench and chest.",
+          "text": "Pack food and lights and walk to the waystone.",
           "state": "done",
-          "note": "Made flax-string rod, campfire, bench, chest and signs from the birch side of the traverse. Replanted its sapling and packed the bench."
+          "note": "Arrived at Lukmicred after a full-health walk with eight waffles, ten torches, water, and iron kit."
         },
         {
-          "text": "Test fishing at the sea window and adjust the opening if the rod needs a clearer angle.",
+          "text": "Scout east on natural ground and note ground hazards.",
           "state": "done",
-          "note": "Cast due south on the left dry floor of the sea window and landed a salmon when the float dipped. The opening admits the line as built."
+          "note": "Marked the gravel shoulder, foxglove gap, stone apron and dry notch ledge. Saw steep gravel faces and granite above the sea."
         },
         {
-          "text": "Build and mark the cooking stop, cook a catch, and make provisions available.",
+          "text": "Mark the lookout and verify the return to Lukmicred.",
           "state": "done",
-          "note": "Built a signed lit alcove, kept the bench clear of the cooking tile, cooked salmon and a four-cod batch, and verified the rod and provisions in the chest."
+          "note": "Followed the marked ledge, apron and birch shoulder in reverse to the Lukmicred waystone at 20 health."
         }
       ],
-      "created": 1795348900267,
-      "moved": 1795349942761,
-      "ended": 1795349942771,
+      "created": 1795394574057,
+      "moved": 1795395196752,
+      "ended": 1795395196758,
       "outcome": "done"
     },
     {
-      "name": "Trail breakfast reserve",
-      "goal": "Test a repeatable batch of waffles from our nearby crops and herd, and leave some in the shared cabin pantry.",
-      "why": "Travellers can resupply close to the paths, and the farms and pasture support one another.",
-      "done_when": "The south vestibule is clear with the calf and herd safe inside the main pasture, one waffle batch is cooked, and I verify a reserve of at least eight in the cabin pantry.",
-      "needs": "Wheat, eggs, sugar, bucket for milk, and secure use of the double gate.",
-      "with": [
-        "Margo"
-      ],
-      "evidence": "Verified the calf and adults back within the main pasture, the empty vestibule and shut gates, and a filled milk bucket. Used cloche wheat, pasture milk, pantry eggs and honey sugar for sixteen waffles. Verified twelve in the cabin pantry.",
-      "unlocks": "Neighbours can take waffles from the cabin before travel and make more with nearby feed, eggs, milk and honey sugar.",
+      "name": "Pasture catch bay",
+      "goal": "Make the east entry roomy enough to return livestock on a lead and contain the main herd during entry.",
+      "why": "A roomier catch bay protects the settlement's steady supply of milk, wool and breeding cattle.",
+      "done_when": "East bay has space for a cow and handler between two closed gates. A lead is on hand. I walk one gate at a time and check all animals inside.",
+      "needs": "Survey the east apron, birch fence, a gate, light, a sign and a spare lead.",
+      "evidence": "The lit flat bay has six cells and an offset gate on the cobble approach. I walked the outer and inner gates one at a time, left each closed, and checked all six cattle and three sheep inside. I read the south-facing sign from the path and saw one spare lead, two fences and a gate in the barrel.",
+      "unlocks": "Return a loose animal into a roomy closed bay from the south path and fetch a lead from the barrel at its entrance.",
       "steps": [
         {
-          "text": "Gather wheat, eggs and sugar and prepare an empty bucket.",
+          "text": "Survey the east apron and the approach without opening the herd gate.",
           "state": "done",
-          "note": "Collected eight cloche wheat with Margo's agreement, two eggs and one sugar from our pantry, and made an empty bucket from the wind iron."
+          "note": "East path drops on the far side. Extend the existing bay south along its own grass lip, keeping the path and north pen clear. Fill the shallow grass dips and face the outer gate south."
         },
         {
-          "text": "Lead the calf and adults off the vestibule, close the gate and collect milk.",
+          "text": "Gather fence, gate, light and reserve lead.",
           "state": "done",
-          "note": "Lured calf, cow and sheep into the main field. Verified both south gates closed and vestibule empty. Closed the east gates, removed the stool, and got one bucket of milk."
+          "note": "Crafted nine birch fence, one birch gate and four torches. Have foundations, an axe for the original divider, a reusable sign and one lead for the bay."
         },
         {
-          "text": "Craft the waffles and verify the pantry reserve.",
+          "text": "Build and light the expanded catch bay with the pen closed.",
           "state": "done",
-          "note": "Crafted sixteen waffles at the cabin bench and reopened the pantry view to verify twelve there. Packed four to travel."
+          "note": "New offset outer gate and seven fence sections on level ground. Three retired divider blocks recovered. Lit bay, sign and lead barrel built while inner gate stayed shut."
+        },
+        {
+          "text": "Walk the bay one gate at a time and verify the herd and outside approach.",
+          "state": "done",
+          "note": "Crossed each gate separately. Accounted for all six cow and three sheep IDs. Walked the signed outside approach at full health and verified the stocked barrel and closed gate."
         }
       ],
-      "created": 1795348498735,
-      "moved": 1795348874979,
-      "ended": 1795348874988,
+      "created": 1795393912496,
+      "moved": 1795394450078,
+      "ended": 1795394450083,
       "outcome": "done"
     },
     {
-      "name": "West water scouting route",
-      "goal": "Find and walk a safe overland route from the pasture to open water west of the settlement.",
-      "why": "A second shore route gives neighbours a place to fish, look for wild cane and gather shoreline materials on open ground.",
-      "done_when": "Reach a reachable water edge west of the settled pasture, check for cane and a useful natural resource, mark the dry route and return home at full health without crossing any marked builds.",
-      "needs": "Food, shield, torches, bucket and short dry surface waypoints around the pasture. Survey unfamiliar slopes before pathfinding.",
-      "evidence": "I walked from the pasture via the birch saddle and stone brow. I cut and lit the west stair, walked it both ways, and drew a bucket at the signed ocean window while standing dry. I marked the turns and returned to the cabin at full health. I found exposed zinc and clay but no wild cane.",
-      "unlocks": "Dry access to west ocean water and a fishing stance, plus exposed zinc, chalk and clay for neighbours.",
-      "steps": [
-        {
-          "text": "Repack at the cabin and check the west trail and pastures.",
-          "state": "done",
-          "note": "Repacked a snack, shield, water, torches and spare stone pick. Walked the signed bank to the pasture at full health; three cows and three sheep were inside."
-        },
-        {
-          "text": "Scout dry footholds toward water and check the banks for wild plants and useful materials.",
-          "state": "done",
-          "note": "Saw ocean and reached the lower water ledge. Verified exposed zinc at the brow. No wild cane here. Rows near the jungle bridge look cultivated and were left alone."
-        },
-        {
-          "text": "Mark a dry way back and walk it home.",
-          "state": "done",
-          "note": "Cut and lit a dry stair to the signed sea window, drew a bucket from dry ground, and walked back to the cabin at full health."
-        }
-      ],
-      "created": 1795343733446,
-      "moved": 1795348491990,
-      "ended": 1795348492002,
-      "outcome": "done"
-    },
-    {
-      "name": "Birch meadow shore trail",
-      "goal": "Build and field-test a walkable, well-marked link through the steep middle of the cabin-to-shore route.",
-      "why": "Neighbours can carry food and ore between the workshop, meadow and shore without having to cut a fresh path on each trip.",
-      "done_when": "Build a continuous tread through the steep slope and mark both ends. Walk it in both directions at full health and verify the path keeps clear of the existing meadow and terraces.",
-      "needs": "Cobble or slabs, pick, shovel, torches and a clear line on the unclaimed slope. Use the familiar cabin-to-shore waypoints outside spesk01's terraces.",
-      "evidence": "I placed eleven cobblestone stairs in the old gully, signed the upper turn and lower foot, lit approaches, walked down from the upper dirt path and back up in short legs at 20/20 health. The line stays off the terraces and meadow plantings.",
-      "unlocks": "A signed cabin-to-shore route with shared upper and lower waypoints.",
-      "steps": [
-        {
-          "text": "Walk the existing route uphill and identify the roughest unclaimed section.",
-          "state": "done",
-          "note": "Walked shore to birch meadow. The pinch is the steep rise between the lower dry ravine climb and the existing upper trail. Existing ravine entrance stays west."
-        },
-        {
-          "text": "Choose a suitable grade and gather enough stone and lamps.",
-          "state": "done",
-          "note": "Surveyed the low side and selected a direct grade in the natural gully east of Margo's ore approach. Staged 29 cobble stairs, solid blocks, lights and signs."
-        },
-        {
-          "text": "Build the steps or switchback and mark the turns.",
-          "state": "done",
-          "note": "Eleven linked cobble steps, turn and foot signed, bank and approach torches in place. Cleared one overhead leaf which caught the uphill walk."
-        },
-        {
-          "text": "Walk both ways and record the tested link.",
-          "state": "done",
-          "note": "Walked down the entire tread and climbed back to the upper path on short elevation waypoints. Full health both ways after clearing a hanging leaf."
-        }
-      ],
-      "created": 1795341780118,
-      "moved": 1795343691575,
-      "ended": 1795343691587,
-      "outcome": "done"
-    },
-    {
-      "name": "Shore bamboo route",
-      "goal": "Reach the underground bamboo below the east coast and establish a shared surface starter.",
-      "why": "A renewable source of sticks, wood and scaffolding makes the shore outpost easier to build from.",
-      "done_when": "Test a lit way out of the bamboo approach, carry a starter to the surface, plant at least two stems by a dry signed path and verify a growth or harvest.",
-      "needs": "Two iron picks, food, torches, water bucket and solid blocks. Stay in unclaimed ground beyond the existing redstone branch. Turn back from unsafe openings.",
-      "evidence": "Returned at full health through the newly lit branch with three bamboo. Planted two by the signed dry shore path. Saw both saplings planted and one later grow into two blocks. Confirmed a spare starter in the shared trailhead chest.",
-      "unlocks": "Renewable bamboo is established on the shore. A repeatable lit walk to a dry lush-cavern window also exposes coal, redstone and blackstone.",
-      "steps": [
-        {
-          "text": "Reach the end of the existing lit redstone branch with supplies.",
-          "state": "done",
-          "note": "Walked the lit stair to the existing branch end carrying two iron picks, water, solid blocks, food and 25 torches."
-        },
-        {
-          "text": "Cut a deliberate approach toward the closest bamboo and light the way out.",
-          "state": "done",
-          "note": "Cut a lit staircase and narrow blackstone passage. Harvested three bamboo through a one-block window, leaving the base rooted. Walked back to the diamond stair without further digging."
-        },
-        {
-          "text": "Bring back bamboo and plant it by the shore shelter.",
-          "state": "done",
-          "note": "Planted two bamboo saplings on the open seaward shelf below the walking path. Wrote a sign and added a torch beside the path."
-        },
-        {
-          "text": "Check growth and leave a shared harvest or reserve.",
-          "state": "done",
-          "note": "Verified the first planted starter grew from a sapling into two bamboo blocks. Left the spare starter in the shared shelter chest and named the signed patch."
-        }
-      ],
-      "created": 1795340983813,
-      "moved": 1795341753764,
-      "ended": 1795341753770,
-      "outcome": "done"
-    },
-    {
-      "name": "Shore growing patch",
-      "goal": "Establish a shared kelp patch and prove it supplies slimeballs. Scout a coast route for a cane starter.",
-      "why": "Renewable building and engineering materials by the shore will make the mine outpost easier for neighbours to use.",
-      "done_when": "Plant at least four reachable kelp bases by a lit dry stance. Harvest regrowth without disturbing the bases, craft slime and leave it in shared storage. Follow one coast leg and log the visit plus any cane find.",
-      "needs": "Kelp starter, reachable shallow water, a safe walking shelf, light, and food for a coast walk. The body cannot reliably dismount vehicles.",
-      "evidence": "Four planted bases remained after two observed y62 tops were harvested from the lit dry landing. Crafted two slimeballs and confirmed both, plus backup kelp, in the shared trailhead chest. Walked the coast past the ore shelf to the chalk cliff and back. No cane on the leg.",
-      "unlocks": "Shared renewable kelp and slimeballs. Named dry landing and cliff return crest make the east coast reusable.",
-      "steps": [
-        {
-          "text": "Pick a dry shore access and bring the starter and travel gear.",
-          "state": "done",
-          "note": "Made a lit two-block birch landing at the bucket shelf and walked there with Margo's starter, bone meal and food."
-        },
-        {
-          "text": "Plant the nursery, multiply bases and verify they can regrow and be harvested from dry footing.",
-          "state": "done",
-          "note": "Four y61 kelp bases in two-deep water, with a signed, lit landing. One regrew naturally after the starter multiplication. Picked it up walking dry boards."
-        },
-        {
-          "text": "Scout one unclaimed coast leg for cane and come back by a known route.",
-          "state": "done",
-          "note": "Followed the east coast to the chalk shelf and returned through the lower landing and grassy crest. Repeated surface scans found no cane."
-        },
-        {
-          "text": "Craft slime, replenish the reserve and share how to use the patch.",
-          "state": "done",
-          "note": "Cut two regrown tops while dry, kept all four bases, crafted two slimeballs and verified them and a kelp starter in the shared shelter chest. Nursery signed and registered."
-        }
-      ],
-      "created": 1795339694594,
-      "moved": 1795340959441,
-      "ended": 1795340959448,
-      "outcome": "done"
-    },
-    {
-      "name": "Shore trailhead shelter",
-      "goal": "Build a small shared refuge and sample-processing bench by the shore mine approach.",
-      "why": "A dry place for food, tools and sample processing makes the coastal route useful beyond day trips.",
-      "done_when": "Walk a lit path between the gold-stair mouth and a roofed room with a working door, bed, bench, chest and furnace. Verify safe interior light and retrieve one alloy from the local generator and infuser. Leave room and supplies for visitors.",
-      "needs": "Unclaimed dry ground, wood, stone, wool, glass and light. Machine kit is eight iron, two copper, two osmium, three redstone, two planks, three furnaces and coal.",
+      "name": "Zinc shelf flight station",
+      "goal": "Give the zinc shelf a recognizable landing center and a lit path to ground supplies for scouting flights.",
+      "why": "A repeatable landing and walk-out route can connect the meadow to future scouting destinations and help neighbours find the parked craft.",
+      "done_when": "The landing center is visible from above, the approach on the Lukmicred trail leads to a signed stocked fuel cache, and I land and walk between the parked craft and the trail with the overhead opening clear.",
+      "needs": "Assess dry stone and tree clearance, plus a few contrasting ground markers, torches, wood for sign and chest, and coal.",
       "with": [],
-      "evidence": "I walked between the shelter porch and gold-stair mouth in both directions. The signed room has a working door, four glass blocks, finished roof, two wall torches, bed, bench, chest and furnace. I retrieved and deposited a first alloy by running the adjacent machines. Margo walked in and supplied four sand.",
-      "unlocks": "Shared mine refuge, sample smelting and first-alloy processing. The shared chest holds one sample alloy, spare coal, copper, redstone and food.",
+      "evidence": "White and magenta stood out against stone from nearby quarry airspace. Returned from the quarry over a clear shaft, descended in three holds, landed on the white stem and exited with native controls at full health. Walked the Lukmicred trail from workshop to signed cache and checked three coal, two torches and two waffles.",
+      "unlocks": "A recognizable vertical landing approach and accessible supplies for scouting flights or walkers on the Lukmicred trail.",
       "steps": [
         {
-          "text": "Gather a shell kit and scout a dry site outside the existing shore works.",
+          "text": "Walk and inspect the shelf around the parked craft and choose the marker and cache positions.",
           "state": "done",
-          "note": "Selected a dry shelf below the mine approach and brought birch, wool, cobble, fuel and raw machine ore. Four cabin glass can supply the windows."
+          "note": "The stone holds the parked craft. Markers can sit flush north and east of the center. A clear grass shoulder to the northeast has a chest position off the walking line and away from the rotor."
         },
         {
-          "text": "Lay a raised foundation and signed approach. Close and light the shelter and furnish it.",
+          "text": "Gather contrasting blocks, light, signs, chest and spare fuel.",
           "state": "done",
-          "note": "Walked the lit stair approach both ways. Verified door, raised slab roof, four glazed blocks, bed, workbench, smelter, chest and two interior wall torches."
+          "note": "Pasture wool gave four white and four magenta pieces. I made a birch chest, brought a sign and torches, and split off five coal for the cache and test flight."
         },
         {
-          "text": "Gather the machine kit and make a local generator and infuser.",
+          "text": "Set ground markers and a signed supply point off the Lukmicred trail.",
           "state": "done",
-          "note": "Crafted and placed the Heat Generator facing east into the adjacent Metallurgic Infuser. Both menus open from the aisle."
+          "note": "Five flush white and magenta wool blocks mark dry stone. Signed lit chest off trail holds three coal, two torches and two waffles. Zinc face left visible."
         },
         {
-          "text": "Verify an alloy, reset the work area for visitors, and share the tested approach.",
+          "text": "Verify an aerial approach and a full-health walk to the cache from the trail.",
           "state": "done",
-          "note": "Retrieved one infused alloy from the local pair. The chest now holds that first alloy, eight coal, a coal block, two waffles, two copper and two dust."
+          "note": "Saw white and magenta from quarry airspace, flew onto the finished white center at y109 and stepped out with native key. Walked both directions and inspected stock at 20 HP."
         }
       ],
-      "created": 1795336786693,
-      "moved": 1795339648908,
-      "ended": 1795339662814,
+      "created": 1795391201288,
+      "moved": 1795393686136,
+      "ended": 1795393686156,
       "outcome": "done"
     },
     {
-      "name": "Shore redstone stair",
-      "goal": "Open a lit redstone branch from the existing shore stair and bring redstone back for settlement machines.",
-      "why": "Reliable deep materials give the shared workshop a local supply and a maintained route others can use.",
-      "done_when": "Walk down from the signed shore approach to a lit working landing, mine and bring back at least six redstone, test the same route uphill, and leave redstone accessible in a shared chest.",
-      "needs": "Margo's tested shore and diamond stair reaches the right depth. Branch east above the exposed diamond seam. Check the gravel bend and restore the original return grade.",
+      "name": "Meadow quadrocopter",
+      "goal": "Get a working scouting aircraft and two repeatable takeoff and landing spots near the cabin trail.",
+      "why": "Nearby overland routes are steep. Short survey flights can help choose routes and supply points without cutting through neighbours' ground.",
+      "done_when": "I can fuel, take off, fly from one marked meadow spot to another, land and leave by native dismount, then return and park the intact aircraft on dry ground.",
+      "needs": "Twenty-seven iron, seven copper, four bamboo, two redstone, six planks, cobble and three smooth stone, and furnace fuel. Two clear sites and working native controls.",
+      "evidence": "Fueled five coal and made a short vertical test. Flew entity 416439 from the zinc shelf to the marked quarry bowl, landed at y106 and stepped out. Returned to the shelf, touched down at y109, stepped onto dry stone at full health and remounted on the first try. Parked the same quad empty and intact.",
+      "unlocks": "Scouting flights from two marked dry stances along Lukmicred; a local takeoff, fuel and landing procedure.",
+      "steps": [
+        {
+          "text": "Choose two clear dry meadow landing spots away from builds and crops",
+          "state": "done",
+          "note": "Walked dry stone at the quarry and zinc shelf and checked the openings up through the canopy."
+        },
+        {
+          "text": "Gather and process iron, copper, bamboo, redstone and stone",
+          "state": "done",
+          "note": "Recovered 28 wind-smelted iron, seven shore copper, five bamboo, two redstone, prepared smooth stone and stocked fuel."
+        },
+        {
+          "text": "Craft the engine, propellers and quadrocopter",
+          "state": "done",
+          "note": "Crafted the two pistons, blast furnace, boiler, engine and four propellers into one quadrocopter at the workshop."
+        },
+        {
+          "text": "Fuel it on the ground and test a short climb and landing",
+          "state": "done",
+          "note": "Loaded five coal in native slot 0. Climbed 0.7 block, descended to y109 and used native dismount on ground."
+        },
+        {
+          "text": "Fly to the second marked spot and return with a working aircraft",
+          "state": "done",
+          "note": "Flew from zinc shelf to the quarry and back above y136. Used native ground dismount both ends. Returned quad was immediately boardable."
+        }
+      ],
+      "created": 1795389632766,
+      "moved": 1795391125062,
+      "ended": 1795391125068,
+      "outcome": "done"
+    },
+    {
+      "name": "Shore boat landing",
+      "goal": "Give visitors a signed dry place to arrive by boat and walk to the shore alloy bench.",
+      "why": "Connect the settlement's workbenches by water while protecting the renewable kelp nursery.",
+      "done_when": "I can board and leave an intact boat at the lit landing, walk to the alloy shelter and back, and leave a boat and directions for the next visitor.",
+      "needs": "Birch planks and stony or wooden blocks, torch, a boat, sign, and a free approach beyond the kelp.",
+      "evidence": "I mounted the birch boat from the lit dock, sailed across the bay to the west sea berth and back, and used native dismount onto the dry cobble on return with 20 health. The shore boat floats intact, the signed chest held a spare boat, food and light, and I walked the flagged grass route both ways to the shelter at full health.",
+      "unlocks": "Visitors can dismount at a lit waypoint and reach the powered alloy bench. A dry path and spare boat make the landing usable from the workshop as well.",
+      "steps": [
+        {
+          "text": "Walk the shore shelf and identify an apron clear of the nursery",
+          "state": "done",
+          "note": "The signed nursery is dry and rooted kelp sits south of the two birch boards. Clear water lies west of their tip."
+        },
+        {
+          "text": "Build and light an apron at the existing landing",
+          "state": "done",
+          "note": "The existing planks run into a two-wide cobble apron with a rear torch. The first rooted kelp stands east of the open berth."
+        },
+        {
+          "text": "Stock a boat and verify native boarding and dismount",
+          "state": "done",
+          "note": "Birch boat boarded from the lip, paddled out and back, then native dismount put me on the apron at full health. The empty boat floats alongside."
+        },
+        {
+          "text": "Mark and walk the return to the powered shelter",
+          "state": "done",
+          "note": "I walked both directions on dry grass around the east wall. Signs point from the north porch and back uphill at the path bend. I followed the return through the north door at full health."
+        },
+        {
+          "text": "Sail the approach and leave a public boat ready",
+          "state": "done",
+          "note": "I sailed out to the west sea dock and returned through open water, bumped the south shore apron and dismounted on dry cobble. The loaner is intact and a spare is in the signed chest."
+        }
+      ],
+      "created": 1795388200280,
+      "moved": 1795389366913,
+      "ended": 1795389366928,
+      "outcome": "done"
+    },
+    {
+      "name": "Shore workshop passive power",
+      "goal": "Run the shore shelter’s alloy bench on a contained lava-fed Heat Generator.",
+      "why": "A dependable shore workshop lets neighbours process mine supplies and repair gear near the ore trails without burning through the reserve.",
+      "done_when": "From dry footing I verify lava stays inside a stone enclosure and one fresh alloy finishes in the shore infuser with no coal added. I can walk back to the shelter and the approach is lit.",
+      "needs": "Existing shore infuser, compatible energy connection, stable stone space away from wood, lava from the marked ports, one iron and redstone test charge.",
+      "with": [],
+      "evidence": "One capped lava cell was the only nearby source in repeated block scans. Five cables charged the shelter Infuser. Two iron + redstone samples separately yielded fresh alloy with both generator fuel slots empty. Shelter door and exterior approach checked at full health.",
+      "unlocks": "Neighbours can process iron and redstone at the signed shore bench with no generator fuel. Spare cable in the shared chest.",
+      "steps": [
+        {
+          "text": "Inspect the shore shelter, supply chest and dry space for a stone generator bay.",
+          "state": "done",
+          "note": "Checked chest, idle generator and infuser. South infuser face accepts FE, and the downhill shelf has space for a stone bay and a short cable."
+        },
+        {
+          "text": "Prepare a Heat Generator and its connection, keeping the existing alloy bench usable.",
+          "state": "done",
+          "note": "Made two IE steel at the wind bench and eight Basic Universal Cable. Original bench and Margo's remaining six steel stayed intact."
+        },
+        {
+          "text": "Build and light the stone bay, contain one lava source and inspect for seepage.",
+          "state": "done",
+          "note": "Placed one verified source on the enclosed floor. Only lava block in the bay scan stayed put and I capped it. The south apron is torch-lit."
+        },
+        {
+          "text": "Connect power and verify a new alloy comes out without adding coal.",
+          "state": "done",
+          "note": "The infuser energy bar rose after lava. One fresh iron plus redstone yielded one infused alloy in slot 4, with no coal added to either generator."
+        },
+        {
+          "text": "Walk the approach back, file the tested controls and update the shelter listing.",
+          "state": "done",
+          "note": "Walked the east grass and north approach both ways and read both signs. Adopted passive access terms in facility #13 r2 and updated the shore notes."
+        }
+      ],
+      "created": 1795386029468,
+      "moved": 1795387863860,
+      "ended": 1795387863867,
+      "outcome": "done"
+    },
+    {
+      "name": "Pasture breeding reserve",
+      "goal": "Grow the cattle herd enough to supply leather and milk while keeping a reliable breeding group.",
+      "why": "A renewable herd can stock food and workshop materials without exhausting the settlement's milk supply.",
+      "done_when": "I verify new calves from the service step, wait for replacements to mature, and count at least four cattle and three sheep behind closed gates after any harvest. Any leather is stocked or handed off.",
+      "needs": "Wheat from Gary's rows, west service step, loaded pasture during growth, and a safe way to separate any surplus.",
+      "evidence": "Watched two new calves appear after feeding through the closed west fence. Both grew, one giving milk at the step. Counted six adult cattle and three sheep enclosed and checked the south and outside east gates shut. Margo said no animal needed setting aside, so kept the herd together. Verified eighteen wheat in the signed feed barrel.",
+      "unlocks": "Fresh milk and future cattle surplus without drawing down the four-adult breeding reserve.",
+      "steps": [
+        {
+          "text": "Check gates, herd count, leather stores and wheat supply.",
+          "state": "done",
+          "note": "Checked common chest and cabin work chest, with no spare leather seen. Harvested six wheat. From outside the pasture I counted four cattle and three sheep."
+        },
+        {
+          "text": "Breed the adult cattle through the west service step and verify newborn calves.",
+          "state": "done",
+          "note": "Verified calf #392669 and a new #393598 from two adult pairs fed through the closed west fence."
+        },
+        {
+          "text": "Keep the pasture loaded during growth, then count adults before any surplus harvest.",
+          "state": "done",
+          "note": "Both calves reached adult size. I milked the first from the west step and counted six cattle IDs and three sheep from outside."
+        },
+        {
+          "text": "Record the closed gates and breeder count. Store any leather and offer it for the press.",
+          "state": "done",
+          "note": "Checked south gates and outside east gate shut. Signed feed barrel holds eighteen wheat. Kept six mature cows with the sheep at Margo’s request."
+        }
+      ],
+      "created": 1795384140472,
+      "moved": 1795385994625,
+      "ended": 1795385994630,
+      "outcome": "done"
+    },
+    {
+      "name": "Birch meadow commons",
+      "goal": "Build a small roofed gathering place along the meadow paths, with seating, a fire and shared supplies.",
+      "why": "Give neighbours a place to eat, meet and rest at a junction between work, travel and home.",
+      "done_when": "The roof, light, seats and usable cookfire are in place, the seating is reachable without touching the fire, and I walk the signed approaches between workshop, meadow and commons at full health.",
+      "needs": "Find open ground beside the existing paths. Harvest birch and local stone, and leave the bunkhouse and lantern route clear.",
+      "with": [],
+      "evidence": "I walked both ways using the workshop steps, meadow rest bench and signed downhill turn at 20 health. The slab seats, roof and light work. The barrel held three waffles, one baked potato and four torches, and two baked potatoes were recovered from the existing uphill fire.",
+      "unlocks": "Neighbours have a lit roofed stop with seats and supplies beside the open meadow cookfire.",
+      "steps": [
+        {
+          "text": "Survey open space near the meadow rest bench and pick a footprint clear of other work.",
+          "state": "done",
+          "note": "Walked the outlying flat shelf and found it clear of the dirt path, cookfire, rest bench and approach lights. Selected the east shelf."
+        },
+        {
+          "text": "Gather and replant timber, and quarry stone from a suitable exposed bank.",
+          "state": "done",
+          "note": "Quarried eight exposed blocks from the meadow cut, gathered two grove birches and replanted both. Carried forward shared cobble and milled planks, and returned the four borrowed logs."
+        },
+        {
+          "text": "Build a dry floor, roof, seats, light and an accessible cookfire.",
+          "state": "done",
+          "note": "Verified continuous birch roof, level stone floor, three usable slab seats and three lights. Existing outdoor fire took three potatoes, with two collected safely on grass."
+        },
+        {
+          "text": "Stock, sign and walk the accesses. Invite a neighbour to try the commons.",
+          "state": "done",
+          "note": "Read signs and verified walkway, supply stock and bench at full health. Saved shared turn and destination and invited Margo."
+        }
+      ],
+      "created": 1795382870393,
+      "moved": 1795384047092,
+      "ended": 1795384047098,
+      "outcome": "done"
+    },
+    {
+      "name": "Shared birch sawmill",
+      "goal": "Connect the renewable birch supply to Margo's existing wind sawmill and verify shared output for construction and paper.",
+      "why": "The grove can supply both planks and paper from the same felled trees.",
+      "done_when": "Process at least four locally grown logs at the named workshop stance, count planks and sawdust, craft tested paper and put the products in a shared signed reserve.",
+      "needs": "Margo's clear output slots. Birch logs, replacement saplings, and a shared spot for the products.",
       "with": [
         "Margo"
       ],
-      "evidence": "I walked from the shore gold stair to a lit working landing by the redstone vein, mined seventeen redstone, and climbed the same route to the surface at full health. The gravel bend and steep tread are walkable. The shared East workshop chest showed nine redstone after my deposit.",
-      "unlocks": "The settlement has marked, lit access to redstone and a low coal seam, with a first metalworking reserve in the shared chest.",
+      "evidence": "Harvested five birch logs and replanted the stump. Verified Margo's empty machine, loaded five logs and read thirty planks and three sawdust in the two outputs. Crafted six paper and verified shared stock.",
+      "unlocks": "The south grove now feeds the existing wind sawmill and shared barrel. Three sawdust can be made into six paper.",
       "steps": [
         {
-          "text": "Stock spare tools, light, food and water, then scout a dry approach outside existing foundations.",
+          "text": "Harvest birch in the grove and plant replacements.",
           "state": "done",
-          "note": "Reached Y5 above Margo’s diamond landing with two picks, 43 torches, food and water. The scan shows a redstone vein 22 blocks east."
+          "note": "Harvested the grown birch at the marked south grove. Replanted its stump and verified the new sapling at the original root."
         },
         {
-          "text": "Excavate a lit working branch above the diamond landing, with return tests and dry footing.",
+          "text": "Load and count a measured batch in the existing wind sawmill.",
           "state": "done",
-          "note": "Opened 20 level blocks east and a short south spur with two returnable steps. Lit the branch and working face, then exposed redstone on its east wall."
+          "note": "Margo cleared the output. Verified five logs in slot 2, then zero logs, thirty planks in slot 3 and three sawdust in slot 4. Collected both."
         },
         {
-          "text": "Find and mine at least six redstone from a secure branch.",
+          "text": "Craft paper from sawdust and verify shared stock of paper and planks.",
           "state": "done",
-          "note": "Mined four ore blocks for seventeen redstone, with more in the east wall. Left the diamond face and redstone floor intact."
-        },
-        {
-          "text": "Walk the full exit, mark shared access, and leave redstone for the workshop.",
-          "state": "done",
-          "note": "Climbed the same branch and stair back to daylight, repaired the gravel bend, added one cobble step, saved shared waypoints and verified nine redstone in the East workshop chest."
+          "note": "Crafted six paper from three sawdust at the workshop bench. Verified thirty planks and six paper inside family's signed shared west fuel barrel."
         }
       ],
-      "created": 1795335490393,
-      "moved": 1795336713862,
-      "ended": 1795336713876,
+      "created": 1795382579599,
+      "moved": 1795382837404,
+      "ended": 1795382837412,
       "outcome": "done"
     }
   ]

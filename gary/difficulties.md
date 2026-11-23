@@ -161,3 +161,58 @@ Last tool error: limit: Number must be less than or equal to 10. place_find: Lis
 On the southeast cabin corner, my diagonal waypoint across a small floor gap used a cobblestone and one pick durability. I stopped navigation and added a deliberate two-block level corner. Three traversals over the finished corner used no blocks or tool durability.
 Position: 110.49, 120, -207.44 (minecraft:overworld)
 Last tool error: limit: Number must be less than or equal to 16. find_block: Where the nearest blocks of a kind are, without moving, loading or breaking anything: up to limit (default 8, max 16) within radius blocks of you (default 32, max 96; a sphere around the block you stand in), nearest first, each with distance and direction. Any block can be asked for, natural ones too (ores, logs, crops, water), by its blo
+
+## 2026-11-22T19:53:56.508Z
+Walk-only #goto to an adjacent lower stair tread reported arrived while I remained in the neighbouring block one level higher. After adding a missing intermediate tread, the same target worked and settled correctly.
+Position: 22.48, 65, -128.7 (minecraft:overworld)
+Last tool error: block: Required; input: Unrecognized key(s) in object: 'query'. find_block: Where the nearest blocks of a kind are, without moving, loading or breaking anything: up to limit (default 8, max 16) within radius blocks of you (default 32, max 96; a sphere around the block you stand in), nearest first, each with distance and direction. Any block can be asked for, natural ones too (ores, logs, crops, wa
+
+## 2026-11-22T20:56:00.166Z
+A walk-only target east of the south pasture bay routed through and left both closed gates open, allowing animals to escape. Herd collision also wedges me in the corner fence block and the body reports arrival without moving, even when a clear standing square is one block away.
+Position: 73.93, 115, -189.93 (minecraft:overworld)
+Last tool error: Not enough ingredients for 1 x recipe minecraft:chest: you need 2 more #minecraft:planks (it takes 8). Nothing was moved.
+
+## 2026-11-22T22:02:52.903Z
+Walk-only #goto 124 114 -199 reported arrival while my feet were stopped at 124.33,114,-197.30. The next path failed from there until I retried; exact landings matter on the cloche stair.
+Position: 117.5, 116, -203.5 (minecraft:overworld)
+Last tool error: limit: Number must be less than or equal to 10. place_find: List your saved places, shared places from the other residents, and recent deaths, nearest first with exact distance and direction. Optionally filter by name, note or refuge words; refuge lists the places saved with refuge notes.
+
+## 2026-11-22T23:13:51.210Z
+West sea dock: I dismounted from the west side where I was still offshore. The walk-only goal for the cobble lip reported arrival before carrying me west and underwater away from the goal. The surface reflex brought me back within reach and I remounted.
+Position: 19.52, 62.07, -120.38 (minecraft:overworld)
+Last tool error: Synapse: You are not riding anything.
+
+## 2026-11-23T00:03:43.970Z
+At the pasture airlock an arrival at the middle waypoint reported while I was still drifting through the inner gate. Look named the gate, but use hit the floor after the last movement. I stop and settle before aiming now.
+Position: 110.5, 120, -208.6 (minecraft:overworld)
+Last tool error: text: Required. note_difficulty: Tell body maintainers what is hard; append dated position and last error to difficulties.md.
+
+## 2026-11-23T00:28:06.290Z
+At the quarry, mount repeatedly returned CONSUME and suggested repairs while I was one block below the quadrocopter. Climbing to its level and trying from the east boarded immediately. The repeated failure message did not distinguish footing from actual damage.
+Position: 182.52, 109, -181.35 (minecraft:overworld)
+Last tool error: access_terms: String must contain at most 200 character(s). facility_register: Register a facility you steward, with capabilities, location and access terms. This is your claim, not verified ownership or working infrastructure. Use facility_observe to record its condition. For another person's facility, ask them to register it; you may observe an existing entry without changing rights.
+
+## 2026-11-23T01:04:03.970Z
+Exact attack holds of 18 and 60 ticks with an iron pick on visible chalk at the granite notch showed no cracks or block change. Right-click building worked and Baritone harvested a birch nearby. I built against the intact chalk.
+Position: 390.65, 85, -136.62 (minecraft:overworld)
+Last tool error: text: Required. note_difficulty: Tell body maintainers what is hard; append dated position and last error to difficulties.md.
+
+## 2026-11-23T01:19:05.921Z
+With no navigation running at the west sea stair, I aimed directly at intact bauxite ore a block ahead with an iron pick. attack hold_ticks 60 returned Holding attack, but six seconds later the block and durability were unchanged. A bounded Baritone mine nearby broke bauxite normally.
+Position: 16.41, 80, -142.5 (minecraft:overworld)
+Last tool error: Synapse: 'minecraft:cave_air' is air, which cannot be searched for: air-only sections are skipped.
+
+## 2026-11-23T02:33:22.254Z
+At the unprotected shore geode I aimed directly at the exposed amethyst cluster with an iron pick and held attack for 27 ticks. No block or durability change followed. A radius-four mine from below did harvest shards, so this differs from spawn protection at the west geode.
+Position: 122.97, 116, -199.7 (minecraft:overworld)
+Last tool error: Synapse: Unknown block id 'minecraft:birch_chest': no block is registered under it (an item that is not a block cannot be searched for).
+
+## 2026-11-23T02:38:51.342Z
+At the shore casting tray my 200-tick diamond-pick attack on visible obsidian 201,51,-105 showed no crack after 4s and no durability or block change after 11s. Margo said her 194-tick hold broke hers. Mine radius 2 walked away and reported absent while find_block confirmed the block was still there.
+Position: 200.88, 52, -104.52 (minecraft:overworld)
+Last tool error: hold_ticks: Number must be less than or equal to 200. attack: Left-click; optionally hold attack to mine by hand.
+
+## 2026-11-23T02:40:33.646Z
+Paired control at the shore tray: Margo took the returned 642-strength diamond pick and held attack 194 ticks from the same dry rim on the very same block. It broke and she got one obsidian, pick 641. My 194- and 200-tick holds had no cracks or wear.
+Position: 198.31, 52, -100.28 (minecraft:overworld)
+Last tool error: hold_ticks: Number must be less than or equal to 200. attack: Left-click; optionally hold attack to mine by hand.

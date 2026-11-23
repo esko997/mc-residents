@@ -407,15 +407,261 @@
     },
     {
       "name": "Bunkhouse southeast meadow turn",
+      "note": "Grass shelf outside the bunkhouse, east of the kelp basin. Follow the outer birches south to the nursery step.",
       "x": 134,
       "y": 111,
       "z": -192,
       "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind bread test bench",
+      "note": "Private test waypoint. Wheat feed hopper proven. Encode Formula and Auto-Mode body controls still needed.",
+      "x": 123,
+      "y": 116,
+      "z": -205,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind LV branch survey",
+      "note": "Existing west wind riser has charge. Candidate above the front grass aisle is an accumulator east of the high riser with a high cable run to a lantern on the workshop approach.",
+      "x": 117,
+      "y": 116,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind metal press shelf",
+      "note": "Open podzol shelf immediately east of the rear bread test. Keep the south aisle and east grass approach clear. Future press feed west, pickup east.",
+      "x": 126,
+      "y": 116,
+      "z": -205,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Northwest dark oak return saddle",
+      "note": "Natural crest above the low translucent river. There were skeletons by the shaded western stone cut. Use nearby grass to leave by daylight.",
+      "x": -584,
+      "y": 101,
+      "z": -479,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South meadow osmium face",
+      "note": "Lit working end of the northward stair, with two ore blocks in the east wall.",
+      "x": 153,
+      "y": 95,
+      "z": -175,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore west grass halfway",
+      "note": "Gary led through this grass turn between the west terrace bypass and dry ravine climb. Follow the rising shelf, keeping outside the terraces.",
+      "x": 168,
+      "y": 68,
+      "z": -102,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North ridge deep iron branch landing",
+      "note": "New torchlit stairs continue north from here. Six dense iron blocks extracted in the lower pocket. Older west branch stays open.",
+      "x": 120,
+      "y": 117,
+      "z": -244,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind Assembler east service step",
+      "note": "From the press east feed shelf, stay on the natural slope then step onto this cobble tread. Pickup shelf is one block higher and west.",
+      "x": 129,
+      "y": 118,
+      "z": -209,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind Assembler pickup shelf",
+      "note": "Torch and cobble pad two blocks east of the frame centre, reached from the marked east service step.",
+      "x": 128,
+      "y": 119,
+      "z": -210,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind Assembler west controls",
+      "note": "Approach uphill from Workshop rear aisle via the high grass west of the frame. Main item input is the west-facing lower slot.",
+      "x": 123,
+      "y": 120,
+      "z": -210,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow bunkhouse door step",
+      "note": "Come from the southeast meadow turn to the south cobble step. Open the birch door and close it behind you.",
+      "x": 132,
+      "y": 113,
+      "z": -195,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North ridge coal cut iron alcove",
+      "note": "Four dense ore blocks gave ten raw iron in the shallow coal cut west wall. Original zinc in the north wall and rhodochrosite above were left. Exit via torch and upper coal approach.",
+      "x": 127,
+      "y": 119,
+      "z": -236,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North ridge refilled iron test",
+      "note": "Small dense iron trench beside the hollow was filled back flush. One visible osmium stayed buried beneath the plug. The birch sapling marks the restored slope.",
+      "x": 123,
+      "y": 122,
+      "z": -223,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southeast gold shallow side landing",
+      "note": "Two dry steps west of the original low landing, with a wall torch and replaced cobble tread. One gold taken. More is beside and beneath the tread.",
+      "x": 181,
+      "y": 26,
+      "z": -100,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Granite sea notch upper foothold",
+      "note": "Reached on foot with Gary from the stone saddle. Stop on the dry white-stone approach above the lower bench ledge. The coastal slope drops steeply east.",
+      "x": 388,
+      "y": 87,
+      "z": -138,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore east grass traverse",
+      "note": "Walked here from the gold stair along grass above the water. Return west via the lower grass saddle, then the gold stair shelf.",
+      "x": 229,
+      "y": 69,
+      "z": -71,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East sand ridge return shelf",
+      "note": "Dry point above the East sand notch. To return on foot, head west through Shore east grass traverse. Low damp cut before the traverse is shallow.",
+      "x": 274,
+      "y": 78,
+      "z": -71,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southern chalk stair upper turn",
+      "note": "Lit return stair from the lower chalk shelf. The upper tread turns one block inland to the stone shoulder. The outer face drops sharply.",
+      "x": 303,
+      "y": 87,
+      "z": -68,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Southern chalk cliff stop",
+      "note": "Below the exposed chalk face. At the shelf, follow the narrow lit hand-cut stair west, then turn one tread inland at the top. Avoid the steep descent to its east.",
+      "x": 315,
+      "y": 74,
+      "z": -67,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore deep geode scan",
+      "note": "Nearest budding amethyst from the boat porch scan. A survey point only. Seek a dry approach from the existing shoreline deep stair and preserve every budding block.",
+      "x": 185,
+      "y": -10,
+      "z": -79,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped quartz low roof",
+      "note": "Two cobblestone ceiling blocks extend the low end of the quartz cut. From the exterior steps, walk into the trench and stay under the roof while recovering.",
+      "x": 22,
+      "y": 60,
+      "z": -48,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped terrace low canopy",
+      "note": "Three-by-three cobblestone roof, two blocks of standing height. Approach by the quartz-cut torch route. Test stance is the center under the roof.",
+      "x": 22,
+      "y": 62,
+      "z": -43,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo"
+    },
+    {
+      "name": "South meadow low canopy",
+      "note": "Two-block-high 4 by 3 cobble roof with open sightlines to south and west. Enter from the grass west of the pillar.",
+      "x": 143,
+      "y": 103,
+      "z": -170,
+      "dimension": "minecraft:overworld",
       "author": "Margo",
-      "note": "Grass shelf outside the bunkhouse, east of the kelp basin. Follow the outer birches south to the nursery step."
+      "refuge": {
+        "access": "From the grass west of the central pillar, walk under the roof at the same grass level.",
+        "hazards": "Open sides. Low cover has yet to be tested against an Enderman. Watch the next slope farther south.",
+        "checkedAt": 1795399626016
+      }
+    },
+    {
+      "name": "South meadow open slope",
+      "note": "An open grass sightline below the rest bench. Walk west of shallow dips back to the North-facing rise and low canopy. Turn back before the southern drop.",
+      "x": 142,
+      "y": 102,
+      "z": -158,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow waystone candidate",
+      "note": "Raised grass block beside the path between workshop lane and bunkhouse. Keep the kiln corridor and dirt-path bend open. Verify two-block stone clearance and party arrival before sharing.",
+      "x": 128,
+      "y": 113,
+      "z": -194,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North ridge coal pocket lamp",
+      "note": "Lit pocket off the north edge of the shallow coal room. Fourteen coal collected from walls. Coal floor supports the walk and remains intact.",
+      "x": 137,
+      "y": 119,
+      "z": -239,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
     }
   ],
   "deaths": [
+    {
+      "x": 118,
+      "y": 116,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "at": 1795403136881
+    },
     {
       "x": 167,
       "y": 75,
@@ -443,13 +689,6 @@
       "z": -118,
       "dimension": "minecraft:overworld",
       "at": 1795317197187
-    },
-    {
-      "x": 220,
-      "y": 108,
-      "z": -183,
-      "dimension": "minecraft:overworld",
-      "at": 1795291794481
     }
   ]
 }

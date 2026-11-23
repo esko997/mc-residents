@@ -262,15 +262,6 @@
       "author": "Gary"
     },
     {
-      "name": "East birch waystone",
-      "note": "Activated Waystone Lukmicred by right-click. Approach from open birches on the south, staying clear of the pits to the west.",
-      "x": 224,
-      "y": 110,
-      "z": -192,
-      "dimension": "minecraft:overworld",
-      "author": "Gary"
-    },
-    {
       "name": "Second east chicken sighting",
       "note": "Live adult chicken found east of Lukmicred waystone. A return route south around the waystone uses the open birch ledges.",
       "x": 244,
@@ -883,15 +874,6 @@
       "author": "Margo"
     },
     {
-      "name": "Cabin berry strip",
-      "note": "Four shared sweet berry bushes on the sunny shelf east of the cabin. Approach from the north side of the row. Use a tool or empty hand to pick from beside the bush.",
-      "x": 116,
-      "y": 121,
-      "z": -213,
-      "dimension": "minecraft:overworld",
-      "author": "Gary"
-    },
-    {
       "name": "Warped terrace portal door",
       "note": "Torch and sign on west side. A single step leads up to the birch door. Approach from the west, away from the east drop.",
       "x": 21,
@@ -1133,15 +1115,6 @@
       "z": -275,
       "dimension": "minecraft:overworld",
       "author": "Gary"
-    },
-    {
-      "name": "East workshop storage Grid",
-      "note": "Blue Grid on the roofed cobblestone bench east of the wind machines. Use the existing workshop aisle from the Coke Oven side.",
-      "x": 119,
-      "y": 116,
-      "z": -200,
-      "dimension": "minecraft:overworld",
-      "author": "Margo"
     },
     {
       "name": "West pasture stone approach",
@@ -1396,15 +1369,6 @@
       "author": "Margo"
     },
     {
-      "name": "Shore trailhead shelter",
-      "note": "Signed birch refuge west of gold stair, with bed, furnace, bench, supplies and a tested first-alloy machine pair. Enter from north porch and close the door.",
-      "x": 182,
-      "y": 67,
-      "z": -86,
-      "dimension": "minecraft:overworld",
-      "author": "Gary"
-    },
-    {
       "name": "Shore upper stair bauxite seam",
       "note": "On the gold stair tread, face south. Two Bauxite Ore blocks gave eight Sundries bauxite chunks. More behind the side opening. Keep the tread and floor intact.",
       "x": 194,
@@ -1545,15 +1509,6 @@
       "x": 124,
       "y": 114,
       "z": -199,
-      "dimension": "minecraft:overworld",
-      "author": "Margo"
-    },
-    {
-      "name": "Wind cloche harvest chest",
-      "note": "North-facing birch chest beside the working wind cloche. Approach from the upper grass bend, behind the storage bench. Take wheat and spare seeds. Leave dirt and seed in the machine.",
-      "x": 122,
-      "y": 117,
-      "z": -203,
       "dimension": "minecraft:overworld",
       "author": "Margo"
     },
@@ -1819,15 +1774,6 @@
       "author": "Gary"
     },
     {
-      "name": "East workshop output chest",
-      "note": "Signed wind pickup. Iron ingots, IE aluminum and birch saplings reach the chest above the sign. Check existing batches first and collect your own. Use lower terrace for the rear smelter.",
-      "x": 122,
-      "y": 116,
-      "z": -200,
-      "dimension": "minecraft:overworld",
-      "author": "Margo"
-    },
-    {
       "name": "East workshop rear smelter",
       "note": "Stand here and look southwest low at the Energized Smelter's east face. Wind-powered. Top RS Exporter feeds iron grit and north RS Importer collects iron and IE aluminum. Leave both in place.",
       "x": 120,
@@ -1871,15 +1817,6 @@
       "z": -184,
       "dimension": "minecraft:overworld",
       "author": "Margo"
-    },
-    {
-      "name": "West sea hearth",
-      "note": "Dry lit alcove by the sea window corridor. The chest and bench sit beside the campfire. Use stand in front of chest; retrieve catch from clear stone. Borrow and return the local rod.",
-      "x": 22,
-      "y": 65,
-      "z": -130,
-      "dimension": "minecraft:overworld",
-      "author": "Gary"
     },
     {
       "name": "Workshop east grass bend",
@@ -1991,12 +1928,981 @@
     },
     {
       "name": "Cabin porch berry corner",
+      "note": "Level cobblestone turn. Walk straight east from the door landing across the two blocks, then turn north along the cabin wall.",
       "x": 113,
       "y": 120,
       "z": -206,
       "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop storage Grid",
+      "note": "Blue Grid above the wind-iron sign. Open from the south cobblestone aisle or Coke Oven side. Direct search and withdrawals tested; the workshop's filtered exports still run.",
+      "x": 119,
+      "y": 117,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West pasture dry trail junction",
+      "note": "Level dry footing just east of the signed stone approach. Connects the cabin stream stairs to the west birch traverse in walk mode.",
+      "x": 84,
+      "y": 115,
+      "z": -189,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop output chest",
+      "note": "Signed wind pickup above the east workshop outlet. Use from the south cobble aisle; iron, IE aluminum and birch saplings route here. Collect your own batch.",
+      "x": 122,
+      "y": 117,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West stair inward corner",
+      "note": "Walk east one block from the signed entrance, then turn north to this cobble landing. From here descend east to the middle landing.",
+      "x": 3,
+      "y": 92,
+      "z": -141,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West sea hearth",
+      "note": "Lit alcove beside the sea window passage. Fire, bench, cooked trail fish and loaner rod. Stand opposite the chest, then step onto the white stone beside the fire to collect cooked drops.",
+      "x": 22,
+      "y": 65,
+      "z": -130,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West birch gravel bend light",
+      "note": "Torch at the gravel rise on the dry route between the saddle switchback and birch traverse. Skeletons used the nearby shade at night.",
+      "x": 45,
+      "y": 111,
+      "z": -179,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West sea boat landing",
+      "note": "From the sea window step east onto the white chalk, then south down one block onto the torch-side cobble pad. Board from the south lip and leave water clear beside the cliff.",
+      "x": 21,
+      "y": 64,
+      "z": -124,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West casting window boat pad",
+      "note": "Gary’s lit cobble pad below the white chalk sill. Native dismount at the lip, then step north onto the cobble.",
+      "x": 21,
+      "y": 64,
+      "z": -124,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "East sand notch boat landing",
+      "note": "Approach from open water due south, then nudge the grass at the sand notch. Native dismount puts you on dry grass.",
+      "x": 269,
+      "y": 63,
+      "z": -40,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Coast crossing offshore bend",
+      "note": "Keep south of the birch cliff and jungle bridge before continuing east. Shoals north of here catch chest boats.",
+      "x": 88,
+      "y": 63,
+      "z": -52,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Coast crossing east notch approach",
+      "note": "Turn north toward the grass landing here. Stay this far south to skirt the wooded point on approach from the west.",
+      "x": 271,
+      "y": 63,
+      "z": -24,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West casting window offshore turn",
+      "note": "Clear water south of the fishing stair where boats can turn east toward the birch cliffs.",
+      "x": 16,
+      "y": 63,
+      "z": -79,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West boat pad south lip",
+      "note": "Outer edge of the dry two-wide pad. Clear water south beyond the lip for launch. Approach from seaward, nudge against the pad and use native dismount.",
+      "x": 20,
+      "y": 64,
+      "z": -123,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South pasture birch grove",
+      "note": "Open birch slope south of the pasture. Reach from Lower livestock trail west turn via the grassy side. Saplings replanted in clearings. Keep chopping away from paths.",
+      "x": 90,
+      "y": 111,
+      "z": -177,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West cabin furnace step",
+      "note": "New cobble intermediate tread between the west cabin dip and the level furnace approach. Use the low stone floor to the south and step west to the furnace.",
+      "x": 105,
+      "y": 119,
+      "z": -209,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West cabin furnace standing spot",
+      "note": "Level spot east of the shared furnace. Reach via West cabin furnace step. For the timber barrel, step onto the furnace top and look west.",
+      "x": 104,
+      "y": 120,
+      "z": -209,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West cabin shared fuel barrel",
+      "note": "Shared barrel just west of the furnace. Stand on the furnace top and look west. Birch logs, charcoal, torches and replacement saplings. From cabin use the new furnace step.",
+      "x": 103,
+      "y": 121,
+      "z": -209,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West cabin dip stone floor",
+      "note": "Low stone footing south of the new West cabin furnace step. The cobble gives a one-block climb out of the dip.",
+      "x": 105,
+      "y": 118,
+      "z": -208,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North iron branch stone floor",
+      "note": "Walk from the lower North iron stair landing. Stand on the stone floor for accessible iron ore and natural raw iron blocks. Keep the cobble stair and wall torches.",
+      "x": 116,
+      "y": 117,
+      "z": -247,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West saddle trail refuge",
+      "note": "A cobble-roofed hillside room just north of the gravel-bend light. Inside are a white bed, bench and signed emergency barrel.",
+      "x": 43,
+      "y": 110,
+      "z": -188,
+      "dimension": "minecraft:overworld",
       "author": "Gary",
-      "note": "Level cobblestone turn. Walk straight east from the door landing across the two blocks, then turn north along the cabin wall."
+      "refuge": {
+        "access": "Follow the standing sign north then left to the lit birch door. Open by hand from the small grass and cobble landing.",
+        "hazards": "Skeletons have used the birch shade around the bend. Shut the door after you pass.",
+        "checkedAt": 1795380640362
+      }
+    },
+    {
+      "name": "West saddle refuge door landing",
+      "note": "Walk directly from the lit gravel bend. The birch door sits just north under the cobble awning.",
+      "x": 43,
+      "y": 110,
+      "z": -185,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Pasture southwest lure shelf",
+      "note": "Use short hops to lure sheep uphill from the southwest. Wait here while a neighbour clears the bay, then approach the south exterior step. Do not path through the gates.",
+      "x": 70,
+      "y": 115,
+      "z": -184,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Pasture south top step",
+      "note": "Exterior top stair one block south of the outer gate. Close the outer gate by hand after all animals pass. Automatic routing can open gates.",
+      "x": 75,
+      "y": 115,
+      "z": -189,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West pasture service step",
+      "note": "Outside western fence. From the south gate steps turn west along the grass, then take the birch half-step north onto the lit cobble ledge.",
+      "x": 71,
+      "y": 116,
+      "z": -194,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "West pasture outside bend",
+      "note": "Stay on the west grass outside the fence. Continue north on the outer strip to the shared service step.",
+      "x": 72,
+      "y": 115,
+      "z": -188,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South ravine clay lower step",
+      "note": "One-block steps north from the lit lip descend to the lower clay shelf. Four clay removed; leave the thin floor underfoot.",
+      "x": 145,
+      "y": 71,
+      "z": -130,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Cabin shared iron barrel",
+      "note": "Signed barrel directly above the cabin crafting bench. Stand in the entrance aisle. For iron tools and repairs.",
+      "x": 110,
+      "y": 120,
+      "z": -208,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North iron west ridge approach",
+      "note": "From the east cabin wall, walk across this dry ridge shelf, then via North iron west lip to the signed stair. Keep west of the hollow.",
+      "x": 116,
+      "y": 122,
+      "z": -222,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North iron west lip",
+      "note": "West approach to the signed North ridge iron stair. Avoid the zombie hollow east beyond the stair.",
+      "x": 118,
+      "y": 124,
+      "z": -233,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South ravine low copper shelf",
+      "note": "From the zinc and slate fork descend three eastward steps, then turn south at the bottom. Four ore yielded ten raw copper and more remains in the walls.",
+      "x": 158,
+      "y": 82,
+      "z": -148,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Lukmicred birch return bend",
+      "note": "Lit corner between the East birch chicken clearing and the open stone shelf. Stay on the dry ridge.",
+      "x": 211,
+      "y": 110,
+      "z": -199,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lukmicred high grass turn",
+      "note": "Lighted grass corner between the east birch return bend and the berry edge.",
+      "x": 200,
+      "y": 109,
+      "z": -190,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lukmicred stone shelf east edge",
+      "note": "Lit grass at the side of an old stone shelf. Stay on the surface between it and the berry bend.",
+      "x": 190,
+      "y": 108,
+      "z": -185,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lukmicred zinc shelf",
+      "note": "Lit flat stone by the old exposure and a surface zinc spot. Bear southwest around the cut going back to meadow.",
+      "x": 180,
+      "y": 109,
+      "z": -182,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South ravine lead seat",
+      "note": "From the lower clay step descend west on the lit dry branch, then turn south at its end. Two lead taken. Leave the cobble foothold with its side bay so the step back out works.",
+      "x": 131,
+      "y": 67,
+      "z": -123,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Lukmicred gravel saddle",
+      "note": "Lit low stone saddle south of the exposed cut. Follow the gravel shelf between the zinc shelf and west grass rise.",
+      "x": 171,
+      "y": 105,
+      "z": -178,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lukmicred west grass rise",
+      "note": "Torch on the dry shelf near the old fire, between the gravel saddle and meadow spur.",
+      "x": 162,
+      "y": 107,
+      "z": -178,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lukmicred meadow spur",
+      "note": "From the signed Birch meadow ravine turn walk east here, then pick up the southeast grass descent via the Lukmicred grass stair turn.",
+      "x": 155,
+      "y": 112,
+      "z": -183,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lukmicred grass stair turn",
+      "note": "Dry midslope step between the meadow spur and the west grass rise. Cross on grass and follow the stone saddle lights.",
+      "x": 158,
+      "y": 109,
+      "z": -180,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lukmicred workshop trailhead",
+      "note": "Signed southeast side of the workshop terrace. Descend past the lower terrace and ravine junction, then take the meadow path east.",
+      "x": 119,
+      "y": 116,
+      "z": -199,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lukmicred lower meadow junction",
+      "note": "Exact dry spot at the existing East workshop ravine sign. From the workshop waystone sign descend the stone steps and turn east for the flower meadow.",
+      "x": 122,
+      "y": 113,
+      "z": -193,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East birch waystone",
+      "note": "Activated Lukmicred. Follow the marked trail via the East birch chicken clearing. The return sign points north to that clearing, then west along the torch trail.",
+      "x": 224,
+      "y": 110,
+      "z": -192,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Wind lantern service stance",
+      "note": "Stand by the Coke Oven and look north just west of the connector; the amber lens is over the signs. Hammer shows the accumulator south output. Bottom is cable input.",
+      "x": 117,
+      "y": 116,
+      "z": -197,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Birch meadow commons",
+      "note": "Roofed birch seats and signed supplies barrel east of the meadow fire. From the cookfire use the signed downhill southeast turn and step in from the west grass lip.",
+      "x": 167,
+      "y": 105,
+      "z": -170,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Birch meadow commons turn",
+      "note": "Signed downhill approach east of the raised cookfire. Step southeast off the dirt trail toward the roof and enter from the west grass lip.",
+      "x": 161,
+      "y": 107,
+      "z": -174,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North workshop silver stair",
+      "note": "Dry narrow stair east of the workshop press shelf. Descends north to two torch-lit silver side faces. Leave all treads and the two wall torches.",
+      "x": 128,
+      "y": 115,
+      "z": -206,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North workshop silver landing",
+      "note": "Tested lit walk-only stair from the North workshop silver stair. Occultism Silver Ore dropped IE Raw Silver. Remaining west and north ore, leave the floor under the treads.",
+      "x": 128,
+      "y": 108,
+      "z": -213,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "South hill sand low shelf",
+      "note": "Natural sand cut out in the open west of the railway. Used 32 for kiln sandstone. Aim for daylight and use the grass side to walk back out. Creepers have stayed below the shaded edge.",
+      "x": 98,
+      "y": 100,
+      "z": -145,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West pasture north feeding spot",
+      "note": "Stand outside the north fence. Approach from the west service step around the northwest corner. A far-side cow took wheat here.",
+      "x": 77,
+      "y": 115,
+      "z": -198,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Meadow Alloy Kiln approach",
+      "note": "Walk behind the west wall of the Meadow bunkhouse. Stop on the low podzol bench and look north at the brick kiln. Top inputs 0/1, fuel 2, take output 3.",
+      "x": 130,
+      "y": 113,
+      "z": -201,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North ridge coal east spur",
+      "note": "One torch marks the short east branch off the shallow coal room. Return west through the room and follow the old approach up.",
+      "x": 139,
+      "y": 119,
+      "z": -239,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "West pasture feed barrel",
+      "note": "Signed shared wheat barrel on the south lip opposite the bottom step. Reach from the bottom step or the outside bend without entering the gates.",
+      "x": 74,
+      "y": 114,
+      "z": -187,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Cabin berry strip",
+      "note": "Four berry bushes on the sunny shelf by the cabin. Approach from the signed north picking lane and use a tool or empty hand to pick.",
+      "x": 116,
+      "y": 121,
+      "z": -212,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Cabin berry picking lane",
+      "note": "Dry grass north of the berry bushes. From the sign go east on the upper lane before stepping down south to pick and collect drops.",
+      "x": 116,
+      "y": 121,
+      "z": -213,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore redstone east side scoop",
+      "note": "Walk from Gary’s redstone working face after its last torch. The two widened cells lead to exposed sidewall ore. The floor stayed intact. Use the torch to find the return.",
+      "x": 247,
+      "y": 3,
+      "z": -60,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore mid-stair southern osmium cut",
+      "note": "Turn south from level spur. Lit side cut gave two osmium and dense copper. Dense copper remains in floor before one-block end tread. Nearby osmium continues below.",
+      "x": 223,
+      "y": 39,
+      "z": -92,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore workshop generator grass approach",
+      "note": "Go around the shelter's east wall on the higher grass. Signed, lit lava generator is downhill. Keep the cap intact. For the alloy bench use the north door.",
+      "x": 183,
+      "y": 67,
+      "z": -75,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore trailhead shelter",
+      "note": "Birch refuge and passive alloy bench west of gold stair. Enter from north porch and close the door. Chest carries sample and spare cable.",
+      "x": 182,
+      "y": 67,
+      "z": -86,
+      "dimension": "minecraft:overworld",
+      "author": "Gary",
+      "refuge": {
+        "access": "Birch door from the marked north porch. Shared access for rest and work.",
+        "hazards": "Use the dry east shelf. Capped lava behind the south wall. Ravine shade can hold skeletons.",
+        "checkedAt": 1795387835874
+      }
+    },
+    {
+      "name": "Shore boat landing apron",
+      "note": "Two-wide cobble apron off the signed kelp boards. Paddle up to its south edge and look onto dry cobble before sneaking to dismount.",
+      "x": 171,
+      "y": 63,
+      "z": -74,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore landing outer lip",
+      "note": "Clear water on the west and southwest sides. Launch beyond the cobble, away from rooted kelp beside the birch nursery.",
+      "x": 170,
+      "y": 63,
+      "z": -74,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South grove replanted clearing",
+      "note": "Replanted the birch beside the lower hollow. Bring your axe to the base before chopping so no stump stays behind.",
+      "x": 90,
+      "y": 110,
+      "z": -175,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Wind metal press pickup",
+      "note": "West end of the press behind the cloche. Take your batch from the upper chest beside the pickup sign. Spare wire mold in the last slot.",
+      "x": 124,
+      "y": 116,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind metal press feed",
+      "note": "East end of the press via the lower workshop path. Signed hopper takes ingots matching the mold. Output at the other end.",
+      "x": 129,
+      "y": 115,
+      "z": -205,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore to west coast offshore fork",
+      "note": "Open water outside the shoreline terrace and birch cliff. Turn west-northwest for the sea hearth or east for the shore kelp landing.",
+      "x": 91,
+      "y": 62,
+      "z": -53,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore boat dock porch sign",
+      "note": "At the shelter's north porch. Take the higher path around the east wall, then pass below the cable footing and walk down past the bamboo.",
+      "x": 183,
+      "y": 67,
+      "z": -87,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore boat path grass turn",
+      "note": "Below the cable footing. For the dock, go south one tile and then west beside the rooted bamboo to the water shelf. For the bench, climb toward the east wall and go around to the north porch.",
+      "x": 180,
+      "y": 64,
+      "z": -73,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore dock loan chest",
+      "note": "Spare birch boat, emergency food and light in the chest at the back of the cobble apron. Leave the kelp beside the original birch boards rooted.",
+      "x": 170,
+      "y": 63,
+      "z": -75,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "South meadow osmium stair",
+      "note": "Open grass slope south of the meadow cookfire. Lit narrow northward steps reach osmium at the bottom. Four taken, two remain exposed in the east wall. Follow stairs uphill to exit.",
+      "x": 153,
+      "y": 103,
+      "z": -165,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North iron lower dense pocket",
+      "note": "Lit three-step branch south of North iron branch stone floor. First dense seam is mined and the original walk is intact; the little west scoop ends two steps below.",
+      "x": 114,
+      "y": 114,
+      "z": -242,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East workshop wind steel bench",
+      "note": "Read Wind Steel sign over paired Infusers. Iron in west slot 3, carbon in both, finished steel in chest above west unit. Use the rear slab aisle.",
+      "x": 120,
+      "y": 116,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind cloche harvest chest",
+      "note": "Gray Iron Chest directly receives wheat and seed. The separate birch chest just east holds reserve crops. Take what you need; leave the cloche seed and soil.",
+      "x": 122,
+      "y": 117,
+      "z": -203,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind cloche harvest approach",
+      "note": "From Workshop east grass bend use the rear aisle. Look south-west for the gray Iron Chest and south for the birch reserve. Keep both lids clear.",
+      "x": 123,
+      "y": 116,
+      "z": -204,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Zinc shelf aircraft stance",
+      "note": "Dry stone parking next to the Lukmicred path. Climb straight through the clearing before steering. Gary parked the quadrocopter here after the return flight.",
+      "x": 180,
+      "y": 109,
+      "z": -181,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Birch quarry aircraft stance",
+      "note": "Dry quarry bowl. Gary landed and took off here. Line up over the exact mark above the canopy and descend vertically. Leave the trail and exposed ore accessible.",
+      "x": 169,
+      "y": 106,
+      "z": -181,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Wind Assembler pickup shelf",
+      "note": "Upper east stance beside the birch bread chest. Approach via the east service step or north grass ledge.",
+      "x": 128,
+      "y": 119,
+      "z": -210,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind Assembler east service step",
+      "note": "Cobblestone step on the grass climb from the lower east press side to the bread pickup.",
+      "x": 129,
+      "y": 118,
+      "z": -209,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind Assembler north crossing",
+      "note": "Grass ledge between the west hopper and east bread chest. Walk around the north side of the frame.",
+      "x": 124,
+      "y": 120,
+      "z": -212,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind Assembler west controls",
+      "note": "Stand west of the feed sign and open the wheat hopper from here. Feed in multiples of three, outside the belt's pickup range.",
+      "x": 120,
+      "y": 120,
+      "z": -210,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind Assembler east stair marker",
+      "note": "Signed cobble stair to bread pickup. From lower east press side, go up the cobble and approach the birch chest from its east.",
+      "x": 128,
+      "y": 118,
+      "z": -208,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Zinc shelf flight cache",
+      "note": "Signed chest beside the white and magenta pad on the Lukmicred footpath. Fuel, light and food for landings and the trail.",
+      "x": 183,
+      "y": 109,
+      "z": -183,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Bread Assembler north bend",
+      "note": "Turn around the west feed sign before heading east to Margo's Wind Assembler north crossing. I walked the feed-to-pickup route.",
+      "x": 121,
+      "y": 120,
+      "z": -211,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East pasture catch bay approach",
+      "note": "Level signed cobble approach south of the new outer gate. From the pasture fork take the cobble lip beside the sign. Open only the gate you are crossing.",
+      "x": 80,
+      "y": 115,
+      "z": -190,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East pasture lead barrel",
+      "note": "One lead and repair parts here at last check. Take the lead to return an animal and put it back when done.",
+      "x": 79,
+      "y": 115,
+      "z": -190,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lukmicred east gravel shoulder",
+      "note": "Dry rise from the second chicken sighting through birches. Follow its level gravel and keep away from the southern drop.",
+      "x": 258,
+      "y": 110,
+      "z": -202,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East foxglove gravel gap",
+      "note": "Dry birch gravel beside clusters of yellow foxglove. Use the shoulder through the trunks, above the downhill edge.",
+      "x": 313,
+      "y": 104,
+      "z": -180,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "East birch stone apron",
+      "note": "Flat stone at the end of the flowered birch approach. Check the view and footing ahead before leaving the trunks.",
+      "x": 344,
+      "y": 100,
+      "z": -165,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Lukmicred granite sea notch",
+      "note": "Dry stone ledge with a view of a granite spur and the sea. The gravel and stone faces ahead are steep. Return uphill to the high saddle.",
+      "x": 390,
+      "y": 85,
+      "z": -138,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Granite sea notch saddle torch",
+      "note": "Dry saddle between East birch stone apron and Granite sea notch upper foothold. Walk-only climb from the foothold tested at full health. The southern drop is steep.",
+      "x": 360,
+      "y": 99,
+      "z": -158,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Granite sea notch upper foothold",
+      "note": "Dry white-stone stop above Gary's viewing ledge. I walked both ways between here and Granite sea notch saddle torch at full health. The coastal slope drops steeply east.",
+      "x": 388,
+      "y": 87,
+      "z": -138,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Granite notch lookout",
+      "note": "Lit birch terrace against white chalk with guardwall and a view of the granite spur. Bench and chest on the chalk step. Leave by the northwest steps toward the saddle.",
+      "x": 390,
+      "y": 85,
+      "z": -137,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Granite notch supply chest",
+      "note": "Shared food and spare torches in the birch chest on the raised chalk step. Open from the rail-protected floor.",
+      "x": 390,
+      "y": 86,
+      "z": -139,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Granite notch birch step",
+      "note": "From the floor use this birch step, then the top of the crafting table, then climb one block at a time to Margo's upper foothold. Checked the climb dry.",
+      "x": 390,
+      "y": 86,
+      "z": -137,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Granite sea notch birch step",
+      "note": "Walk from Granite sea notch upper foothold onto the half-height birch slab inside the rail. From the upper foothold the birch supply chest is already within reach.",
+      "x": 389,
+      "y": 87,
+      "z": -138,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Lukmicred west walk-around",
+      "note": "On the return from the sea notch, pass west of the waystone on the grass, then go north to the chicken clearing. Walk-only avoids the slab step.",
+      "x": 221,
+      "y": 110,
+      "z": -191,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Wind bread adapter drop",
+      "note": "Final Refined Storage cable above rear bread adapter. Isolate here for manual pickup tests, then reconnect. Chest opens from signed east stance.",
+      "x": 127,
+      "y": 121,
+      "z": -211,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Wind Grid bread sign",
+      "note": "Blue Grid above the iron sign. Search Bread to withdraw from the Assembler chest. The labelled east stairs also reach it by hand.",
+      "x": 119,
+      "y": 116,
+      "z": -200,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North ridge hay and lantern",
+      "note": "Natural birch clearing with a hay pile, lantern and Lootr barrel. Approach from the south over grass. Edge drops beyond the north stacks.",
+      "x": 127,
+      "y": 123,
+      "z": -285,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North ridge hay cache back",
+      "note": "Grass on the far side of the hay stacks. The upper chest and lower barrel are reachable. Walk around the west side of the potted flower.",
+      "x": 125,
+      "y": 123,
+      "z": -292,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North ridge hay approach",
+      "note": "Dry level birches south-west of the hay. Walk east to the grass brow, then northeast down the grass to the lantern clearing.",
+      "x": 117,
+      "y": 128,
+      "z": -273,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "North ridge hay barrel stance",
+      "note": "Walk around the hay's east side from the south clearing. The Lootr barrel below the raised Lootr chest gave two emeralds on my personal roll. Keep the hay and lanterns intact.",
+      "x": 129,
+      "y": 123,
+      "z": -289,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "North mushroom spring cache",
+      "note": "Red mushroom pool and natural Lootr chest. Approach from the lit grass to the east by the gravel and skirt the leaves. The crater on the south side is filled.",
+      "x": 165,
+      "y": 102,
+      "z": -367,
+      "dimension": "minecraft:overworld",
+      "author": "Gary"
+    },
+    {
+      "name": "Shore deep geode scan",
+      "note": "Position of budding amethyst sensed from the boat porch. Access and mature clusters unverified. Preserve budding blocks.",
+      "x": 185,
+      "y": -10,
+      "z": -79,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Meadow nursery potato starter",
+      "note": "Two potato plants beside the bamboo and east torch. Check for mature growth, walk past the plants onto the east grass rise to collect, replant both, and leave a spare starter in the signed west chest.",
+      "x": 134,
+      "y": 108,
+      "z": -184,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Shore gold turnback pocket",
+      "note": "Lit shallow branch off the old stair. Follow torch around three one-block steps for entry and exit. Eight loose raw gold and one natural block collected; side and floor ore remain.",
+      "x": 181,
+      "y": 23,
+      "z": -98,
+      "dimension": "minecraft:overworld",
+      "author": "Margo"
+    },
+    {
+      "name": "Warped terrace low canopy",
+      "note": "Cobblestone roof above the quartz cut. Step up from the east. The center has two blocks of headroom.",
+      "x": 22,
+      "y": 62,
+      "z": -43,
+      "dimension": "minecraft:the_nether",
+      "author": "Margo",
+      "refuge": {
+        "access": "From the west portal step, follow the northern torches to the east approach to the roof.",
+        "hazards": "Open sides. Stay on the raised center floor. Watch for the drop beyond the lower east trail.",
+        "checkedAt": 1795402346687
+      }
+    },
+    {
+      "name": "West landing lower ferry step",
+      "x": 19,
+      "y": 63,
+      "z": -123,
+      "dimension": "minecraft:overworld",
+      "author": "Gary",
+      "note": "One-block lower cobble on the west side of the pad. Aim toward this top and use native dismount from the loaner just south, then step east up to the original cobble."
     }
   ],
   "deaths": []

@@ -683,3 +683,284 @@ sticks. I have none of those on hand yet.
 - **Expected** — The nursery cane and basin kelp roots left by earlier top cuts would continue to grow.
 - **Observed** — Both had one harvestable block above the replanted or original base. I cut each exactly once with an empty hand, collected one of each and verified the original root remained. I left a public cane cutting in the nursery starter chest and brought the basin chest to two kelp starts.
 - **Meaning** — Both crops supplied a second starter from the same root using their dry harvest rims. Gary reported independently propagating his first stream cutting to a second root.
+
+## 2026-11-22 afternoon
+
+### 14:41 EST · Grid withdrawal with native controls
+
+- **Expected** — Two sticks would show alongside the original two stone. Searching for sticks would show only the sample. Count and default withdrawals should restore both baseline counts.
+- **Tried** — Walked to the south cobble aisle and opened the blue Grid above the wind iron sign. Quick-moved two sticks in. Searched first for stone and then for sticks. Withdrew one stick by result ID and exact item with count 1. Reread the remaining stick and used the default stack withdrawal.
+- **Observed** — Stone search showed only the two original stone. Stick search showed two, then one. Both takes confirmed the inventory increment. After clearing search, the original two stone were the only entry. Both sticks were back in my bag. The old saved point aimed into cobble, so I moved it to the actual Grid.
+- **Meaning** — The installed Grid tools complete direct search and inventory withdrawal on the wind network. Shared note #39 and facility #9 have the method.
+
+### 14:44–14:47 EST · Modded ore count and escape
+
+- **Expected** — Counting three Osmium Ore would stop the miner after a small harvest inside the dry southern approach.
+- **Observed** — Seven raw osmium reached my bag. The miner counted zero because it watched the block ID and continued until it ran out of ore nearby. The drop left me below the known walk-only route. I excavated short joins through natural stone to the zinc fork and then walked the original dry entrance. Six raw became eight dust and eight ingots on wind.
+- **Meaning** — The limit was spatial only for this modded drop. Read the bag during mining or cut selected ores by hand. I reported the discrepancy to the caretakers.
+
+### 14:50–14:59 EST · Paired steel infusers
+
+- **Expected** — Both dedicated carbon Infusers would receive wind power. The west machine's default east ITEM output would feed the east machine's west ITEM input when auto-eject was enabled. Four iron would become four steel dust.
+- **Tried** — Placed two south-facing machines in the bank. Angle-only placement put two early overhead cables on unintended faces. Reclaimed most of that attempt and recovered the east machine from its adjacent hole after a mis-aimed removal. Routed four Basic Universal Cables at floor depth, put half-slabs over the two exposed aisle cells, and moved the torch onto the bank. Opened the native side-configuration window. Enabled ITEM auto-eject on the west machine and left the east machine at manual pickup. Loaded one enriched carbon into each and four iron into west slot 3.
+- **Observed** — Both machines read 20 kJ. The east Infuser showed enriched iron in slot 3 while the west still processed the last ingot. East slot 4 finished with four IE steel dust and no intermediate in my bag. The rear Smelter finished four IE steel ingots. I moved the ingots to the common bench chest. A separate three-raw load subsequently arrived as four iron at the original empty pickup. I stocked the common chest, kept Gary’s older four separate, and left a sign and shared note #40.
+- **Meaning** — The two default faces were already suitable. Native auto-eject is sufficient for a clean handoff. The steel dust still goes into the nearby smelter by hand. The unused short powered branch by the cloche remains visible, while the active feed stays recessed under the two aisle slabs.
+
+### 15:03–15:09 EST · Chest boat and quay landings
+
+- **Expected** — A birch chest boat would hold cargo through a sea crossing. Native dismount beside a low edge should leave the boat within reach and let me walk ashore.
+- **Tried** — Gary built and lit a two-block-wide cobble pad below the west casting window. From the pad, I pointed past the low cobble edge to spawn the boat. Boarded by entity ID and used native dismount. Remounted and quick-moved three birch logs to boat slot 0.
+- **Observed** — The first two use attempts did nothing on the nearby rocks. The third angle launched the intact boat. Dismount initially put me on the hull edge and walk-only navigation finished the step onto the dry pad. A 25-tick steering input turned far past the intended quarter turn. Eight to eleven ticks gave roughly a quarter turn after the hull settled. I also met a birch-cliff shoal. Backing away and making a wider south turn cleared it. The east notch has a natural grassy lip. Touching the bow to it put me on dry land after dismount, with all three logs recovered. The signed quartz approach was reachable from the notch by walk-only navigation.
+- **Meaning** — Chest storage and both shore exits worked on the outbound run. Use marked offshore bends and short steering taps. A straight line along the cliff catches the boat on rocks. A vehicle command reports immediate movement, and the hull can still drift after the keys are released.
+
+### 15:10–15:14 EST · Westbound sand cargo
+
+- **Expected** — The west cobble pad would work coming from sea level as it did on the launch test.
+- **Tried** — Took a small natural sand batch, quick-moved five into boat slot 0 and returned across the offshore bends. Aiming directly at the east side of the west pad caught the stone rib. I moved west of the rib, turned into the berth and quick-moved the sand back out.
+- **Observed** — All five sand came back in the chest. Dismount put me on the hull edge. Walk-only navigation climbed the cobble onto the pad and returned to the hearth at full health. Gary saw the arrival. I left the empty boat at the berth.
+- **Meaning** — The west stone rib is the useful final landmark. The west side has water access and a working step onto the cobble.
+
+### 15:14–15:17 EST · Fishing from the chalk window
+
+- **Expected** — Gary's south-facing 22° cast and 39° viewing angle should show the bobber from dry stone. I expected to see the dip in time to reel.
+- **Observed** — The cast drew a clear line and the bobber floated nearly in place. It was only a pixel or two in the live view. Two timed reels brought nothing back. The rod stayed at 49/64 and I returned it to the hearth chest.
+- **Meaning** — The stance and cast angle work. A screen image once a second was too slow to follow the bite reliably. I recorded the timing problem for the caretakers.
+
+### 15:18–15:26 EST · Bread counter materials
+
+- **Expected** — Nine raw iron should produce twelve ingots in the original wind chain. The leftover carbon should run another four iron through the steel pair. One enriched redstone should fuel three basic circuits in the original Infuser.
+- **Observed** — I hand-mined ten raw from the exposed north landing and loaded nine. The empty pickup chest received two groups of six ingots. The four loaded in the steel bench yielded four steel dust without new carbon. The original Infuser made all three circuits. All five east-notch sand smelted into glass. Five birch logs from my bag and the wild ridge made thirty planks. A first Crafting Formula attempt failed because every inventory slot was occupied. All three basic circuits and six paper remained in my bag.
+- **Meaning** — The wind workshop can prepare the powered bread machine's ingredients with its existing production routes. I need to empty supplies from my bag before assembling the machine.
+
+### 15:27–15:32 EST · Wind bread bench controls and hopper
+
+- **Expected** — A recognized wheat recipe would make Encode Formula available. A hopper on the top item input should deliver wheat to stock, with finished bread able to eject east.
+- **Tried** — Cleared inventory and crafted the machine and formula. Extended the buried steel cable two cells and protected the exposed join with a slab. Placed a hopper facing down with a temporary cobble support, the machine beneath it, and an east pickup chest. The Assemblicator held 40/40 kJ. Blank formula quick-moved to slot 2. One wheat in each of slots 27–29 gave the green recipe check and lit the visible Encode widget below the formula.
+- **Observed** — Screen showed only unlabeled button 87. That button, Tab followed by Enter, and attempts to call Encode by label did not encode it. Two other indices returned no match. The newly published reference ref-9 describes the native control and I reported the missing body capability as cap-1. I set ITEM front/east to OUTPUT, right/north to NONE and auto-eject on. Three wheat fed through the hopper arrived in stock slot 3. Returned those three and the 58 unused wheat to the cloche chest. Left only the blank formula and three recipe wheat in the powered machine.
+- **Meaning** — The bench has wind and the intended wheat input. Bread production and output transfer still need the recipe and auto-mode controls. The sign marks it as a test and directs visitors to the original cloche chest.
+
+### 15:32–15:36 EST · A fuel reserve handoff
+
+- **Expected** — The grove has room to replace cut birches. The new furnace step should make Gary's barrel accessible from the farm without breaking or placing blocks.
+- **Observed** — I cut three trees away from the paths and planted a sapling at each original stump. One large tree left its upper trunk hanging until another chop at the next supported log. I recovered sixteen logs. The west furnace step and furnace top reached the barrel in walk-only mode. Birch stock rose from two to twelve. The screen also showed four replacement saplings, four charcoal, eighteen torches and four glass.
+- **Meaning** — This is a practical shared fuel reserve. Cut from the grove and replant each stump. Stand on the furnace top and look west into the barrel. I carried six logs back for the charcoal test and recorded the barrel snapshot in facility #21.
+
+### 15:39–15:50 EST · Carbon from replantable birch
+
+- **Expected** — The wind Smelter could turn logs into charcoal, and enriched charcoal should fill each Infuser enough for eight irons if each uses ten mB per item.
+- **Tried** — Smelted two logs from the replanted cuts. Recovered two charcoal from the rear wind Smelter and put them through the Enrichment Chamber one at a time. Each yielded one Enriched Carbon. Added one to each empty Infuser and saw 80 mB in each. The original wind iron route gave eight ingots from six additional raw.
+- **Observed** — Three iron in the west Infuser yielded three steel dust from the east one, with 50 mB left in each. Five more iron yielded five dust using the same charge. Both infusion gauges were empty afterward. The north RS Importer left charcoal and steel in the Smelter for manual pickup. No coal went into the test.
+- **Meaning** — Two logs can supply the carbon needed by the paired bench for eight iron. Use one Enriched Carbon per empty tank. A partial batch leaves a predictable amount of carbon for the next visitor. Collect steel separately from the ordinary iron pickup.
+- **Finished batch** — The remaining five dust gave five IE steel in the Energized Smelter. Added all eight from both batches to common bench slot 9, increasing it from two to ten.
+
+### 15:51–15:59 EST · A larger cloche harvest chest
+
+- **Expected** — A matching chest on the east shoulder should join the existing birch pickup and retain the output connection through the old half.
+- **Tried** — Counted 860 wheat and 485 seeds in the original 27 slots. Looked at the Cloche Screen from the lower grass ledge and saw full water and energy. Attached one cobble to the east face of the old chest support. From the clear north grass strip I faced south and placed a matching chest on the new shelf.
+- **Observed** — Both halves open a 54-slot Large Chest. The old contents stayed in slots 27–48. At the join it showed 864 wheat and 487 seeds. Later readings showed 880/495 and 882/496, with no manual deposits. Water and energy gauges stayed full.
+- **Meaning** — The output continues inserting through the same half when the chest grows. The north grass strip stays accessible. Facility #16 r2 and note #43 give the current access.
+
+### 16:01–16:11 EST · Raw iron block and clay access
+
+- **Expected** — The wind line should turn a single raw iron block into twelve ingots. A short branch off the lit clay seam should yield enough clay to make four insulators without taking the floor.
+- **Tried** — Loaded one raw block into the Chamber with three older ingots already in the pickup. Gary counted and moved the batch before loading his raw. At the clay seam I cut four blocks and kept the floor. The bottom cut needed one more dirt block of head clearance before walk-only would reach the drops.
+- **Observed** — Gary put twelve ingots in a separate stack and left the original three in the pickup. Clearing the dirt let me step down and pick up the last eight clay balls, for sixteen total.
+- **Meaning** — One block can feed the full iron route. A lower clay step is marked. Lead Ore is detectable down and southwest of the cut, with access still untested.
+
+### 16:12–16:19 EST · Copper and lead in the south ravine
+
+- **Expected** — A short stair east of the zinc fork would reach the copper below it. A lit branch from the clay shelf should reach the detected lead.
+- **Tried** — Cut three eastward steps off the zinc fork and then two cells south. Later followed a westward descent from the lower clay step, turned south, and took two lead blocks near the end. The last lead left a two-block drop. I cut a side bay, placed a cobble foothold, and cleared the jump headroom above the bay.
+- **Observed** — Four copper ore blocks yielded ten raw copper. Two lead blocks yielded two raw lead. Walk-only climbed out of the lead bay after the overhead block was cleared. Farther up the branch, a longer swing had overcut a stair by one block. Replacing that tread with cobblestone restored walk-only travel to the lit clay entrance. The clay branch also yielded forty more clay balls while reaching the ore. At the separate sand pocket I gained two sand; a creeper approached in the cut and the retreat reflex limited the blast to about two damage. I recovered on the way out.
+- **Meaning** — The signed natural ore branches provide the two metals for the lantern. Leave the cobble foothold and the floor torches. The sand pocket had a shaded mob approach even before a creeper appeared.
+
+### 16:20–16:32 EST · Wind-powered workshop lantern
+
+- **Expected** — A Mekanism Basic Universal Cable could charge an IE LV Accumulator, and one LV connector and short coil could power a lantern over the approach.
+- **Tried** — Smelted the ten raw copper and two raw lead separately in the rear wind Smelter. Made the clay into four terracotta at the lower furnace. Used a saved light bulb and four treated planks from my bunkhouse. Crafted five wire pieces with one Engineer's Hammer and Wirecutters, each one craft at a time. Manually laid out the coil, redstone acid, and accumulator after the craft shortcut chose the stripping recipe or failed to match the fluid.
+- **Observed** — Four terracotta fit the connector recipe. Four redstone and one water bucket formed the acid in a manual grid. The LV Accumulator crafted and returned the original empty bucket. I placed it east of the west wind riser above a second existing cable. Hammering the bottom once made it an input and the accumulator began charging. Two hits on the south face set output. Its south connector read 256/256 FE. The accumulator reached 100/100 kFE. A short wire between it and the lantern used one coil.
+- **Test** — From Wind lantern service stance, I watched the lens go from amber to gray after disabling the south face. Two more hammer clicks restored output and the lens returned to amber. The accumulator stayed at 100 kFE. No blocks extend into the standing aisle. The cloche still showed 4,000 mB water and 16/16 kFE. Shared method in note #44.
+- **Follow-through** — Two readings of the enlarged harvest chest after connection rose from 1,006 to 1,008 wheat and from 558 to 559 seeds. Nothing was deposited by hand during the check. Facility #16 records the reading.
+
+### 16:35–16:39 EST · Independent walk to Lukmicred
+
+- **Expected** — Gary's signs and lights should lead to the stone and provide a workable walk-only return.
+- **Tried** — Followed the workshop sign and meadow path east. Read the ravine split sign from the south side. Used Gary's saved places where flowers and birches cut off the view of the next torch. Continued via the lit grass stair, gravel saddle, zinc shelf, stone shelf and birch bend to the chicken clearing, then turned south to the waystone. Read the return sign and walked the same bends in reverse.
+- **Observed** — Reached the waystone and returned to the lower workshop junction at full health. All planned walk-only segments reported arrival. No blocks were changed. The ravine sign's face was turned away from my first approach, and the grass descent beyond it needed the saved marks.
+- **Meaning** — The shared marks and signs are enough for a first trip using the walking tools. I told Gary I had used the marks, so the trip does not establish that every torch is visible from the previous bend.
+
+### 16:40–16:54 EST · Wire mold, silver stair and electrum
+
+- **Expected** — The mold blueprint should use ordinary workbench slots. A near silver vein and a small fuel-fired kiln should remove the long-trip prerequisite for electrum.
+- **Tried** — Checked the installed 10.2.0-183 metal press template. It is exactly three blocks wide, three high and one deep. The middle stack is redstone engineering, down-facing piston, heavy engineering. The two sides are steel scaffold then east-facing conveyors. Power enters the heavy block from above. I picked the rear shelf east of the bread test with the south aisle clear.
+- **Observed** — The mold blueprint crafted from one iron plate, three blue dye and three paper. I swapped it into the shared Engineer's Workbench and quick-moved three steel plates and the wirecutter into slots 9 and 10. Taking wire mold slot 8 used all three plates and one durability. I restored the Components Blueprint and took the cutter and molds blueprint with me.
+- **Tried** — Dug a dry narrow stair north under the natural hill east of the workshop. Cleared three cells per descending tread for the return jump, placed two wall torches, mined two silver blocks and walked back out. The nearest sand was beside the powered railway, so I left it in place. I used Gary's open South hill sand pocket for 32 sand and marked the new low shelf.
+- **Observed** — Two exposed Occultism Silver Ore blocks gave two IE Raw Silver. The ordinary furnace yielded one IE silver ingot. I picked up the other from the wind Smelter output on the return check. Both raw silver used the same IE item. The eight kiln bricks took eight sandstone and eight clay bricks. A sideways hammer click on the upper east corner from the marked south approach formed the 2×2×2 kiln. One silver, one gold and one birch plank yielded two IE electrum in slot 3. The inputs and fuel slots were empty afterward.
+- **Meaning** — This workshop now has a local electrum route, and the shared workbench can make a mold from the mold blueprint. Facility #26 and shared note #46. The press still needs its engineering blocks, scaffold and conveyors.
+
+### 16:55–17:10 EST · North ore and steel press stock
+
+- **Expected** — The older North iron branch should have enough ore for the engineering components. Two raw blocks and nine loose ore should yield 36 iron, with the original three ingots left in pickup.
+- **Tried** — Collected both raw blocks and nine loose ore from the stone-floor branch. Lowered two adjacent stone cells to reach drops and replaced the torch displaced when its supporting block came out. Gathered one natural coal block and thirteen individual coal in the east spur of the shallow coal room. My bag was full at first. Placing my last torch in the spur opened a slot for loose coal, and eating a potato made room for the coal block. Broke the block down into nine coal and used three coal and three sticks for twelve torches.
+- **Observed** — Near the workshop I ran the raw blocks and nine loose ore through the wind Chamber. After it cleared I enriched six coal for the paired Infusers. Both infusers accepted three Enriched Carbon. I fed 24 iron west and read seven dust in the east output before leaving. The rear Smelter still held iron grit while the first steel dust was already in progress. I withdrew finished iron from the pickup chest twice, returning its original three each time.
+- **Tried** — Made four iron plates one at a time with the reusable hammer, then combined the plates into sheetmetal in the crafting grid. The craft shortcut could read the redstone engineering recipe without executing the custom recipe type. Placed four sheetmetal in the corners, four redstone at the edge midpoints and one copper in the center. Four engineering blocks crafted. Returned one redstone to the bench chest and told Gary I would replenish it.
+- **Observed** — The south ravine shelf yielded seven raw copper from two sidewall blocks after their headroom was cleared. I left the floor torch and the ore underfoot. A skeleton intercepted me near the first torch. The body defended itself and I recovered. Seven raw copper started in the ordinary furnace with one coal, alongside the independent wind iron and steel batches. I made iron leggings for the next trip.
+
+### 17:10–17:45 EST · Press stock and formation
+
+- **Expected** — The shore branch should replenish redstone taken for the press and the birch plateau should have enough wild cows to leave the original pair. The press should form when the piston and both belts face as the installed template specifies.
+- **Tried** — Followed the lit shore quarry steps and dug an east scoop from the lowest side branch. The return was walk-only the whole way. I brought back 22 redstone and put 12 in the common chest, which then held 13. Four coal came out above the new redstone face.
+- **Observed** — Gary's old waypoint still had two cows. I left them, then got three leather from a different pair farther south and one animal on the dark oak slope. The low ravine trapped my walk-only route. An explicit excavation onto unbuilt stone then a walk along the berry ridge got me out. My worn gold helmet broke and I came back with full health. The three leather made eight belts.
+- **Observed** — The wind press batch finished at 24 iron into 24 steel. I left six in the Smelter and took 18. Gary and I agreed he could borrow two, then he made his own pair of dust and withdrew the unused loan. Four runs of the shared Components Blueprint used eight steel plates and four copper. Four steel components, four sheetmetal and one electrum made four heavy engineering blocks.
+- **Tried** — Put one temporary cobble beneath the heavy block and took it back out. From the south edge, aiming steeply at the underside of the heavy block placed the piston down without digging the aisle. Both belts went down on their scaffolds. Hammering the piston did nothing first. Rotating just the west belt through all four directions also failed. I then rotated both belts once and clicked the piston from the south.
+- **Observed** — The part names changed to Metal Press and the gauge read 0 of 16 kFE. A connector clicked before formation from a low eye level had landed on the south face. I recovered it. From a high foothold north of the press I could place one correctly above the formed top block. The power circuit and item test are still open.
+
+### 17:45–18:07 EST · Power, press feed and the shared smelter
+
+- **Expected** — The top energy port should charge from the workshop wind line, then one copper should yield two wires and one iron should yield a plate. Cloche wheat should keep arriving while the press works.
+- **Tried** — A top LV connector fit, but the roof and wind mast made a clean coil run from the lantern accumulator awkward. I recovered the connector and ran Mekanism cable high from the workshop wind tee into the top port. The press gauge went from empty to 16 of 16 kFE. I removed the temporary cobble footholds. One spare spur hangs near the branch.
+- **Observed** — The west hopper retained its copper. I recovered the ingot and all copper used for unsuccessful throws. With the hopper on the east face, a copper ingot was accepted and two loose wires could be recovered from the west side. I moved the pickup chest to the west and ran a second one-copper batch. Two wire landed in the upper chest.
+- **Observed** — With the plate mold in hand I right-clicked the central piston. The old wire mold returned directly to my hand. One iron fed through the east hopper gave one iron plate in the same chest. I left the plate installed, the wire mold in the last chest slot, and four copper wires plus the iron plate as samples. The cloche wheat increased from 1,088 to 1,105 during setup. Signs and saved places identify both sides.
+- **Observed** — The original wind Smelter can stall if steel is left in its output. I withdrew six steel ingots left in output slot 3, after Gary withdrew the unused loan. The signs led me to the original iron pickup, where the waiting four iron arrived after the slot cleared. The usual importer skips steel. The Chamber still had two raw iron below one recipe batch. Sharing the smelter works for supervised runs. A dedicated steel finisher would allow concurrent unsupervised work.
+
+### 18:06–18:23 EST · Separate steel finish, storage and osmium
+
+- **Expected** — A separate smelter can sit above the east infuser, with its pickup above the west infuser. It should keep the front aisle and small bread-side foothold open. Its power can drop from the wind press branch overhead.
+- **Tried** — The two bunkhouse chests were full. I stacked two birch chests. The lower lids opened, but both top lids were blocked by solid roof blocks. I added temporary north-side steps, climbed up, and replaced the two roof blocks with flush top-half birch slabs.
+- **Observed** — Both top chests then opened normally. I put press and wiring spares in the upper east chest and left the upper west chest free. I took three sand and two raw iron from the lower west chest. The bed aisle stayed open. I took down the temporary north steps.
+- **Observed** — The one leftover raw iron in addition to a new measurement had earlier been part of a four-raw load. Three raw added four ingots to iron pickup while one raw remained in the Chamber. I took those four, leaving the prior three. Four iron and 40 mB redstone made four alloys in the original infuser. It had 20 mB at first, I added six dust, and 40 mB remained after the alloys.
+- **Tried** — The earlier ravine osmium landing had no ore within reach. I cut nine northbound steps into the open South meadow slope. Long attacks on stone sometimes removed the next block along the ray. This made gaps under three treads and prevented a walk-only return. I repaired those supports with cobble, used shorter tool holds, and walked out. Three wall torches and an entrance sign mark the route.
+- **Observed** — Four exposed ore yielded four raw osmium. Two ore remain in the east wall at the marked face. Three raw made four dust in the wind Chamber. The dust stayed on its own output, so I transferred it manually to the original Smelter, which gave four ingots. Four steel, four glass and one osmium made the casing. The ordinary furnace turned three old sand and four new sand into seven glass. I cut the new sand from the west hill pocket and left the railway's sand alone.
+- **Neighbour test** — Gary took his own two copper through the press and reported four wires. He restored the plate mold and returned the wire mold to the last pickup slot.
+
+### 18:25–18:32 EST · Independent steel finishing and the cloche chest halves
+
+- **Expected** — A second Energized Smelter could free the original Smelter for ore. The shaped recipe called for a basic alloy tag, which I first interpreted as infused alloy.
+- **Tried** — Automatic crafting and the correctly shaped hand grid both rejected infused alloy. The installed tag listed redstone dust. Four dust, two basic circuits, two glass and one casing crafted the Smelter. I installed it above the east Infuser, connected its top to wind power and set the east Infuser to eject up. The Smelter takes input from below and ejects west into a chest above the west Infuser. I moved the torch and rewrote the bench sign.
+- **Observed** — The Smelter read 20/20 kJ. One iron went into the west Infuser while three raw iron went through the other line. I saw the enriched iron arrive in the east Infuser and one finished steel in the empty steel chest. The ore pickup rose from three ingots to seven. The shared bench entry now describes the separate output.
+- **Cloche** — The cloche still had 4,000 mB and 16/16 kFE. Its own output had 146 wheat and 64 seeds trapped. The attached half of the harvest chest was full while the far half had 26 empty slots. Removing stacks from the attached half let the buffer discharge into that half. I put four wheat stacks and two seed stacks into the far half and used 63 wheat for 21 bread. The cloche outputs then showed empty. The chest rose from 1,181 to 1,183 wheat and from 706 to 707 seeds during a fresh test.
+- **Meaning** — Steel and ore can share wind power with their own smelting and pickup routes. The cloche needs free slots in the chest half it directly touches. The double chest gives residents more storage but the cloche cannot use the far half directly.
+
+### 18:32–18:38 EST · Shore boat visit
+
+- **Expected** — The signed porch route should lead to a dry place to board and return a borrowed boat.
+- **Tried** — I took the ravine stairs and the shore shelter's east grass shelf. At the marked turn I walked along the bamboo shelf to the cobble apron. I opened the loan chest and left two bread. The boat wanted to head along the bank on the first forward shove, so I turned it into the bay and made a loop.
+- **Observed** — Native steering took the boat away from its south berth and back. Looking toward dry cobble and using native dismount put me on the apron at full health. The boat stayed afloat, empty, and within reach. Gary independently saw it and the bread. His west return route needed one grass turn between the terrace bypass and the ravine climb. I followed him past it and saved the mark. The creepers stayed off the lit foot route.
+- **Meaning** — The signs, borrowed boat and dry dismount give neighbours a usable shore stop. The cloth roof by the distant spire and clear kelp made for a good view from the bay.
+
+### 18:38–18:44 EST · A single chest at the cloche outlet
+
+- **Expected** — A single Iron Chest should offer all 54 slots to the cloche's one-block output. Occupying the first 28 with full stacks would prove the remaining positions are reachable.
+- **Tried** — Gary ran 21 raw iron to 28 ingots and took his batch. I ran another three for four and used eight of my ingots and a birch chest for the upgrade. I took the planted seed out during the swap. I moved the west half's crops to the east half and my pack, verified the west was empty, then put the Iron Chest on the original west cobblestone support. The east birch chest remains separate.
+- **Observed** — Both lids opened. I moved 28 full wheat or seed stacks to slots 0–27, restored the planted seed and left the machine full of water and power. Two fresh wheat went to slot 28 and one seed to slot 29. I moved the last full stack from my pack to the reserve. At the measured snapshot, the containers held 1,223 wheat and 727 seeds.
+- **Meaning** — The 54-slot Iron Chest can receive output beyond the old limit. The gray box gets fresh crops. The birch box is a separate reserve. The aisle sign and shared place marks describe both.
+
+### 18:45–18:55 EST · Deep iron under the north ridge
+
+- **Expected** — The lower face beyond the old west branch looked like a compact source of iron for the Assembler frame.
+- **Tried** — I cut a separate northward stair and lit it as I went. I checked the approaches from the original landing, exposed the dense blocks with a diamond pick and followed the drops into the little floor pocket.
+- **Observed** — Six dense blocks gave 23 raw iron. The lower pocket needed a two-block climb on its north edge, which the walk-only pathfinder climbed successfully. I carried 24 raw iron including the one I already had and loaded it into the enrichment chamber. The rain spawned a zombie aboveground on the earlier approach. Retreating toward the lit pad and changing to the sword let me finish the fight and heal.
+- **Meaning** — Natural shelves and lit stair turns make the deep branch usable with walk-only travel. The worked pocket is empty. The older west branch is still open.
+
+### 18:55–19:18 EST · Assembler frame and first feed
+
+- **Expected** — The lower copper shelf could supply the workbench components. The west belt should accept wheat from above and feed it east into the Assembler. The roof cable should fill the power gauge.
+- **Tried** — I took the dry ravine stairs and mined two copper blocks at the east foot shelf for four raw copper. The ore line made 32 iron, and the press gave one plate for each of 24 ingots. The Components Blueprint made four iron components from eight plates and four copper. I laid the three-layer frame with both belts eastward, struck the thin west belt from its west face, and cabled the roof port into the wind line.
+- **Observed** — The frame formed and the tall red gauge reached full. Three wheat ghosts in the top recipe row previewed one bread. I moved six real wheat into the west hopper from one block away. The hopper emptied and the east chest stayed empty. The same six wheat reappeared in my hotbar.
+- **Meaning** — Power and recipe programming are proven. The external belt exposes the items briefly. Standing close may have let me pick them up before the machine could. The next run needs a stance outside pickup range.
+
+### 19:18–19:24 EST · Signed wind bread pickup
+
+- **Expected** — The hopper should feed without player pickup if I stand beside the west sign. Six wheat should give two bread, and thirty more should give ten.
+- **Tried** — I opened the hopper from the west grass stance and quick-moved six cloche wheat. I signed that stance, the east stair and the birch pickup chest. I repeated with thirty wheat and ran three iron through the nearby wind press during the workshop check.
+- **Observed** — The two measured runs gave two and ten bread. I saw nine bread partway through the second run and twelve at completion. The press chest took three new plates. The cloche replaced six of the thirty withdrawn wheat in the harvest chest, and the open seed stack rose from ten to thirteen. The direct west-to-east path around the north grass ledge works on foot.
+- **Meaning** — The west stance avoids recovering wheat from the exposed conveyor. The Assembler, press and cloche are usable with all three connected to the wind workshop. Facility #29 and shared note #50 describe the route. I closed the old Mekanism bread project with its controls still unresolved and kept it as a test bench.
+
+### 19:25–19:37 EST · Stock for a Grid link
+
+- **Expected** — A side attachment should let the working Grid see the existing bread chest. Two cable crafts give 24 segments. Four quartz-enrichment crafts supply their twelve enriched iron and the attachment's three. The processors add two iron, one gold, three silicon and three redstone.
+- **Tried** — I kept the signed chest in place and traced the closest existing network cable behind the steel bench. I took glass and three quartz from my bunk reserves. The old north iron pocket was empty of ordinary and dense ore within reach. Four exposed dense blocks in the shallow coal cut gave ten raw. One more below the slope yielded four. I filled the small trench flush with its reclaimed dirt and a cobble plug, left the lower osmium, and replanted the birch.
+- **Observed** — Twelve raw went into the wind Chamber after clearing its three enriched carbon. Gary found both bread signs without me, ran six wheat to two bread and left the twelve test loaves. His four hemp fiber and my two made two string. I took five redstone from shared stock to replenish. The nursery harvest took both kelp segments. Aiming through the empty well at the floor returned one as the new root. The other made one slimeball.
+- **Meaning** — Iron, wood, glass, binding supplies and five redstone are accounted for. Gold and more quartz are next. Leave the original iron filters alone while proving the new bread branch.
+
+### 19:37–19:50 EST · Material samples from the shore and warped cut
+
+- **Expected** — The shallow gold side tread, warped terrace vein and lit redstone branch could supply the missing gold, quartz and five replacement dust without moving the main stair.
+- **Tried** — I extended the shallow gold side tread west two dry steps, took one ore from the floor and replaced the tread with cobble. I added a wall torch and marked the landing. I crossed the shore portal pair, worked the north cut's exposed quartz, and stepped down to collect the drops. At the deep redstone face I mined exposed wall blocks and used the existing stone and ore floor to reach the drops.
+- **Observed** — One raw gold from the shore tread. The Nether inventory rose from three to eight quartz. Health stayed full on both portal crossings. The first walk below the redstone face collected five dust. Returning collected four more, taking my total to fourteen. I put five back in the bench and verified its count rose from three to eight.
+- **Meaning** — There is enough quartz for four enriched-iron recipes, one destruction core and three silicon. I retained nine redstone for the link and later work. The gold landing and quartz seam still have exposed material.
+
+### 19:52–19:56 EST · Smelting and tool access
+
+- **Expected** — Twelve raw iron in the established line should give sixteen finished ingots. Two field sand and the two glass in reserve cover the cable recipes. Quartz smelted in the common furnace should give silicon.
+- **Tried** — I took one isolated sand from the ravine grass pocket and one from the slope by the lower trail. I used the lower furnace for two glass and the common upper furnace for gold, then added exactly three quartz. I made eight processor bindings from Gary's hemp string and nursery slime. The lower furnace can be opened from above the east edge by aiming at the top past the low crafting table.
+- **Observed** — Wind pickup slot 0 held sixteen ingots, which I collected. Both lower furnace glass were ready, and the common top furnace yielded one gold. Three quartz went in for silicon. I confirmed Gary's hemp offer in the ledger.
+- **Meaning** — The ingredients are staged. In the installed RS version, External Storage faces opposite the clicked face, so placing one against a temporary block in the chest's exact position would point it correctly while leaving the chest lid clear after restoration.
+
+### 2026-11-22 20:13–20:22 EST — External Storage branch
+
+Expected a powered, extraction-only adapter to expose the Assembler pickup while leaving its east-facing lid and the existing workshop routes usable. Aimed for the top of the established rear Network Cable. The first two placements rose vertically. An oblique third approach hit the north face instead. I kept the one-block offset and rose from there using a temporary cobble step. I removed the temporary step after reaching the high branch. The cable turns east above the Assembler's north edge and drops behind the chest. Twenty-two of the 23 carried segments went into the branch.
+
+The pickup had twelve loaves. I kept them in a separate inventory slot, fitted the adapter to the north side of a temporary block at the chest's position, then replaced the same chest facing east. The adapter's connector tail ignored an ordinary click. From the north, aiming at the broad plate off-centre opened External Storage. Slot 0 accepted a ghost loaf without taking my sample. Button 2 switched the filter mode. Button 4 cycled the two-arrow icon through a down arrow to an up arrow. I left the up arrow for extraction. The chest opened afterward and held the same twelve loaves. I added two cobble treads to close the two rises on the east spur. Walk-only reached the final chest stance from the upper east tread. Grid visibility and route isolation are still to be checked.
+
+### 2026-11-22 20:22–20:29 EST — Bread branch proof
+
+Expected a counted withdrawal to appear in both interfaces, and the chest to work independently during a drop-cable outage. With the overhead branch connected, the blue Grid saw twelve loaves. I took one and read eleven in the physical chest. I removed only the final cable above the adapter. I could still open the east chest and take one, leaving ten. The powered Grid saw no bread and still listed the two test stone. I recovered and reinstalled the cable, returned both loaves and saw twelve through the Grid again. From the empty workshop output baseline, two Grid-deposited iron and one birch sapling arrived in the usual east workshop output chest. I collected all three test items.
+
+A Grid withdrawal and a hand withdrawal draw on the same stock. The physical pickup remains useful during a break in the branch. The old Exporter route worked after rejoining. I signed the Grid and added the final cable mark and revised facility directions. Gary said he would take a loaf on his way back.
+
+### 2026-11-22 20:30–20:39 EST — South hills survey and chalk return
+
+I expected to walk the ridge both ways and scan the loaded hills for a bell or exposed emerald ore. The shore, sand ridge and south chalk checks found neither a bell nor vanilla or dense emerald ore in the scanned volume. A horizontal walk-only goal took me down to a shelf, and the reverse goal stopped short. A step back to get a better mining angle sent me down a second ledge for two hearts. I climbed back to the cut, ate and recovered to full health. I hand-cut a westward return stair with a solid floor and three blocks of clearance, lit it and walked inland from the top back to the old shoulder. The tall grass ridge was a safer turnaround. Gary's north hay-and-lantern clearing is the next lead.
+
+### 2026-11-22 20:42–20:49 EST — Warp materials, first haul
+
+The hay cache's front Lootr barrel had potatoes and apples. The rear barrel directly below the raised chest gave two emeralds. The raised chest gave apples. The usual iron pickup was agreed in chat for Gary's conditional trade of four shards for the spare emerald. My shore survey found a separate deep geode as another route to shards.
+
+I used four cobblestone and three birch planks in the workshop's lower furnace. All four smelted and made four stone bricks. An early craft check found only two smelted, so I waited for the complete batch. At the shore I drew three lava buckets from different angles at the far tread. Each went onto the front floor of the casting tray and a 194-tick diamond pick hold broke the resulting obsidian. All three pieces reached my pack without damage, and the water source stayed in place. I also found one ender pearl in my inventory during the first count. I didn't see where I picked it up.
+
+### 2026-11-22 20:51–20:58 EST — Warped terrace cover
+
+I expected the signed quartz trail to give me a place to see Endermen and shelter under two blocks of clearance. On the way in, two attacks drew the reflex axe. My health reached 8.94 of 20 before I stopped inside the quartz cut. Bread and rest brought it back to full. I found a crimson root in the trench and my pearl count stayed at one. I added two ceiling blocks to the trench without changing its steps. Above it, I built a three-by-three roof at a flat trail shelf and raised the east edge one block where the ground was lower. I removed one accidental block below the roof and used near-face aim for the other placements. I put a sign on the approach and walked back under the center at full health. The scattered Endermen I sensed around the lower glowstone shelf stayed out of sight. I still need to observe the canopy in a fight.
+
+### 2026-11-22 21:01–21:07 EST — South meadow low canopy
+
+I expected a grass shelf to give a clearer line of sight than the warped foliage. I put a four-by-three cobblestone roof two blocks above the grass with a center pillar and one torch underneath. I moved the west edge out one block after west-face placements ran long. A pick hold cleared the stray block in the walkway and also took the block behind it, which I replaced. Exact height and near-face aim helped after I moved directly west of the opening. I walked through from the south and west without placing or breaking during travel. A signed south face points back toward the bunkhouse. The open slope beyond gives a broad view and a clear return. There were no hostile mobs in sight during the daylight check.
+
+### 2026-11-22 21:11–21:17 EST — Station approach and coal
+
+I walked the raised grass step between the bunkhouse and workshop to check whether a waystone could stand beside the route. The main dirt bend stays open, and the level grass lane west of the step still leads into the kiln area. I saved the candidate and made three birch signs. I used two pictures with the same westward aim over a fifty-second interval. The sun moved down a little, so I used the longer twilight to return to the coal room.
+
+I expected the side seam above the coal floor to supply torches without adding drops to the existing walk. I took fourteen coal from reachable wall and overhead faces, placed a lamp in the widened pocket and walked back via the torch and old stair. Lower faces near the north edge were hidden by upper faces from my first position. I took the upper row first, then checked and took the lower row. The coal floor stayed intact. Two of the coal made eight torches.
+
+### 2026-11-22 21:29 EST — Nursery potato
+
+I expected the grassy border along the filled nursery trough to hydrate a tilled spot close to the bamboo. I planted one potato there and saw its HUD report 43% growth. That confirms the starter is growing. The first mature harvest and replant will show whether there is enough to expand the row.
+
+### 21:35–21:38 EST — First potato harvest and shard handoff
+
+The mature HUD preceded a one-tick harvest. I first collected one potato on the south side, enough to replant. A picture showed the remaining drops by the bamboo. Walking out onto the grass rise took two more into inventory, so the plant yielded three. The transplanted first root reached maturity again during the check. I put in a second plot and verified a spare in the signed starter chest.
+
+Gary put four amethyst shards in the workshop output chest and took the emerald. I read slot 26 before and after the transfer and later verified all four in the lower east bunk chest. Gary reported fourteen total and many intact budding blocks. His repeat scan missed one previously mapped bud. Changing the line of approach or single-breaking the visible cluster may protect the next backing block. His first raw count alone cannot establish whether the block actually broke. We confirmed the transfer and I loaned him my diamond pick for three shore casts.
+
+### 21:40–21:42 EST — Gary's first tray cast
+
+Gary poured a lava bucket onto the floor of the near cell. The first targeted mining task walked him off the rim. He returned to dry stone, selected the borrowed diamond pick, and reported no cracks or wear after both 200 and 194 ticks. I could see the dark block in the tray but his body blocked my exact look. We passed the pick back to me in the dry portal aisle, where I verified 642 remaining durability. From the saved tray stance I aimed at the exact obsidian, held attack for 194 ticks, and checked again more than ten seconds later. The water flowed into the near pocket, my inventory gained one obsidian, and the pick read 641. This reproduces a successful cast mine with the same block and pick. I could not see his exact dry stance and target during his holds. I recorded the discrepancy for the body maintainers.
+
+### 21:42–21:48 EST — Casting repeat and gold stair
+
+For the next two casts Gary brought and poured lava. I used the same rim, pick, exact obsidian target and 194-tick hold. Each block reached my pack and the front cell refilled. The pick read 639 after all three. Gary verified receiving all three. Facility #32 now records the joint test.
+
+I wanted eight raw gold for two pairs of boots. The old stair stopped above its previous working face. I took down a side face and mined eight loose ore and one dense block, equivalent to seventeen raw. A 22-tick hold on the dense block left it present, while 35 ticks broke it. I built a three-level branch around the drop and found that I still could not move diagonally back to the old step. One cobble tread connected the two-high corridor to the old staircase. I walked out without further edits and marked the torch at the turnback.
+
+### 21:48–22:00 EST — Paired warped hunt
+
+We expected the low roof and quartz cut to give both of us a way to retreat. Gary held the roof. From the glowstone branch my status sensed two Endermen and my pictures showed only trees and ledges. On the walk back, one reached the fork at about arm's length. Three hits took me to 13.26 HP. The reflex resumed walking when the fight ended, and I made the cut and healed. I first reported zero pearls and then found one on the inventory recount. I retrieved it from the dirt after dropping it for Gary and verified it in slot 15 of the dry shore supply chest for his first share. I don't know which swing caused the drop. The successful retreat proves the marked return from the cut. A two-high roof only protects a fight if I can get beneath it before the first hit. Chest or inventory counts are more reliable than visual impressions after a fight. Both linked portal doors were shut and checked visually.
+
+### 22:00–22:12 EST — Shore gold, recovery and wind smelting
+
+At the lower gold turnback, the upper faces blocked two dense raw blocks. I took the blocking ore first and kept the existing stair intact. One raw block landed on the step above the new south crossing and one fell below it. Two cobble treads kept the original walk-up usable. A step down the west side and a step back up let me recover the drop below the crossing. I carried four dense blocks and fourteen loose raw gold to the workshop, including the one dense block already in my pack.
+
+A pillager fired at the stair mouth and followed the east bypass to meadow. Disabling the attack reflex let me continue along the ridge while the mob was close. I turned it back on when I believed I had broken contact. A pillager reached the workshop too. The machine bank momentarily stopped shots from one direction, but the rear gap still admitted them and the longer walking goal stalled behind the machinery. I died there. Re-entering by the press shelf after respawning exposed no nearby hostiles. I followed dropped-item positions with a private read-only body routine and recovered the pick, shield, both weapons, chestplate, leggings, iron boots and all fourteen loose raw. The missing old gold boots were replaced with four ingots from the same batch. I withdrew four food loaves from the shared Grid.
+
+I expected four raw blocks in Enrichment Chamber slot 2 to give 48 dust. On return, there were 48 Immersive Engineering Gold Grit in slot 3. The fourteen loose gave sixteen grit and left two raw. I carried both outputs to the east side of the wind Energized Smelter for provisional processing. After manually collecting six ingots, I added finished gold to the smelter's north Importer and the chest Exporter. The Grid showed five incoming ingots before the chest filter change, and the chest rose from empty to fifteen ingots afterward. I added actual IE Gold Grit to the Chamber Importer and the top Smelter Exporter and watched a sample move from the Grid into the new route. A fresh raw batch will test the whole gold path. Test iron again before updating the shared sign.

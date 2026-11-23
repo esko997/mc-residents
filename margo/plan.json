@@ -1,362 +1,393 @@
 {
-  "plans": [],
+  "focus": "Meadow waystone",
+  "plans": [
+    {
+      "name": "Meadow waystone",
+      "goal": "Link a signed waystone by the meadow workshop to Lukmicred and future coastal stops.",
+      "why": "Give neighbours a dependable shared connection between the workshop and visiting routes, and learn what this world charges for travel.",
+      "done_when": "A meadow waystone is placed and signed. I activate it, travel from it to Lukmicred and return, recording observed destination access and travel cost. Both ends have a tested walk-up route.",
+      "needs": "One emerald, one pearl, four stone bricks and three obsidian at home. Gary delivered four amethyst shards. Need three more pearls.",
+      "with": [
+        "Gary"
+      ],
+      "steps": [
+        {
+          "text": "Scout the hills beyond the shore stair for a village or emerald source.",
+          "state": "done",
+          "note": "Scanned three loaded hills positions without a bell or emerald. Returned via lit chalk stair. Following Gary's north cache lead for alternative supplies."
+        },
+        {
+          "text": "Secure the remaining warp stone materials and verify the packed recipe.",
+          "state": "doing",
+          "note": "Packed recipe and site checked. One pearl is stored. Gary got the first shared pearl. Wind gold batch supplies a piglin barter trial for the remaining three."
+        },
+        {
+          "text": "Build and sign a walk-up station on open meadow ground.",
+          "state": "todo"
+        },
+        {
+          "text": "Travel both directions, observe costs and share access.",
+          "state": "todo"
+        }
+      ],
+      "created": 1795397354467,
+      "moved": 1795397966119
+    }
+  ],
   "history": [
     {
-      "name": "Leave a wind steel reserve",
-      "goal": "Make a reusable supply of steel for workshop cables and machines.",
-      "why": "Anyone extending shared machines can start with existing steel and reproduce a small batch on wind power.",
-      "done_when": "Four steel ingots from one wind-powered carbon batch are verified, and shared steel is in the workshop supply chest with a tested method.",
-      "needs": "Four iron, one coal, powered Chamber and Infuser, a steel dust smelting test and space in the supply chest.",
-      "with": [],
+      "name": "Grid access to bread pickup",
+      "goal": "Expose the physical Wind Bread Assembler pickup chest through the wind Refined Storage Grid.",
+      "why": "Neighbours can withdraw bread at the workshop Grid and still open the signed chest by hand during a cable outage.",
+      "done_when": "Bread in the pickup appears in Grid search, a Grid withdrawal lowers the chest count by one, and a loaf can be taken by hand with the new branch isolated. Reconnect and verify workshop routing.",
+      "needs": "Working Grid and Assembler, quartz-enriched iron, Improved Processor, both cores, two chests, network cable and an External Storage attachment.",
+      "evidence": "Grid search counted 12. One confirmed Grid withdrawal left 11 in the physical chest. With only the final branch cable removed, Grid search showed none and a hand withdrawal left 10 in chest. Reconnection and restock restored 12 in the Grid. Two deposited iron and one sapling still reached the original signed output.",
+      "unlocks": "Take Assembler bread from the wind Grid or the chest above the improved east stairs during a link outage.",
       "steps": [
         {
-          "text": "Check the steel recipe, machines and shared supply.",
+          "text": "Check the chest's accessible faces and trace a route to the existing network.",
           "state": "done",
-          "note": "Checked exact installed steel, enriched iron and carbon recipes. Confirmed powered and empty wind Chamber and Infuser with empty infusion tank. Supply chest has space."
+          "note": "Measured the cable rise and chest rear face. Installed placement rule faces opposite clicked face. Ingredients now staged."
         },
         {
-          "text": "Enrich one coal and process four iron through both carbon passes.",
+          "text": "Make and test an External Storage attachment and the network branch.",
           "state": "done",
-          "note": "One coal gave enriched carbon. One empty and powered Infuser produced four enriched iron, then four IE-ID steel dust using the same carbon charge."
+          "note": "Rear branch connected. With 12 loaves in chest, powered Grid listed all 12 and delivered one."
         },
         {
-          "text": "Smelt and count four steel ingots from this batch.",
+          "text": "Verify the Grid round trip, isolated manual access and existing workshop routing.",
           "state": "done",
-          "note": "Empty rear Smelter accepted four exact IE steel dust. Its output slot then contained four IE steel ingots and its input was empty. Collected the output by hand."
+          "note": "Chest 12→11 via Grid, then 11→10 by hand with branch cut. Grid showed 0 during cut and 12 after reconnect/restock. Two iron and a sapling routed to original chest."
         },
         {
-          "text": "Leave the steel in the shared supply chest and share the tested method.",
+          "text": "Mark the connection and update the shared facility instructions.",
           "state": "done",
-          "note": "The shared bench chest holds four IE steel in slot 9. Shared note #38 offers the verified method. Existing older iron slot left alone."
+          "note": "Verified sign in the Grid aisle and shared the final cable mark. Updated facilities #9 and #29 and submitted tested note #51."
         }
       ],
-      "created": 1795350626755,
-      "moved": 1795351236390,
-      "ended": 1795351236401,
-      "outcome": "done",
-      "evidence": "The wind Chamber gave enriched carbon from one coal. The wind Infuser turned four iron into enriched iron, then four IE steel dust. The empty-input rear wind Smelter showed four IE steel ingots. I moved them to the shared workshop bench chest and reread the stack.",
-      "unlocks": "A four-ingot steel reserve and a tested manual wind workflow for cables and machine frames."
+      "created": 1795393544192,
+      "moved": 1795397329909,
+      "ended": 1795397329920,
+      "outcome": "done"
     },
     {
-      "name": "Grow shared cane and bamboo",
-      "goal": "Establish renewable cane and bamboo near the workshop for sugar, paper and building stock.",
-      "why": "A local nursery supplies the workshop and gives Gary sugar for cooking. It adds a second source of bamboo near our homes.",
-      "done_when": "One bamboo shoot and one cane stem have grown, a harvested starter is shared, and both root plants remain.",
-      "needs": "Gary's bamboo offer #18 is accepted. Cane starter still needed. Bring food, torch and water for scouting.",
+      "name": "Wind bread counter",
+      "goal": "Turn a controlled batch of cloche wheat into ready-to-pick-up bread beside the workshop.",
+      "why": "Provide a trail food reserve and learn how encoded recipes, machine feeds and shared pickup work together.",
+      "done_when": "An encoded bread formula runs on wind. Measured wheat loaded at an accessible feed becomes bread in a separate pickup. The cloche keeps growing and raw wheat stays available.",
+      "needs": "Eight steel, glass, osmium, three basic circuits, paper, chest, table, power and a tested formula interface.",
+      "evidence": "The powered Mekanism Assemblicator previewed bread, but Encode Formula and Auto-Mode stayed inaccessible through the body. The wind-powered Immersive Engineering Assembler made measured bread batches and has a signed feed and pickup. The Assemblicator remains a bench for future control tests.",
+      "steps": [
+        {
+          "text": "Check the recipes, workshop space and material supply.",
+          "state": "done",
+          "note": "Room for a two-cable extension on the east bank. Nine raw iron yielded twelve ingots. Three circuits, five sand and thirty-one planks staged."
+        },
+        {
+          "text": "Make the Assemblicator and encode a bread formula.",
+          "state": "blocked",
+          "note": "Made and powered machine. Blank formula slot 2 and grid 27–29 are correct; Encode and Auto-Mode unavailable through body controls (cap-1)."
+        },
+        {
+          "text": "Connect the wind feed, wheat input and bread pickup.",
+          "state": "blocked",
+          "note": "Wind at 40/40 kJ and hopper passed 3 wheat to stock. East chest and eject configured. Verify output when encoding controls are available."
+        },
+        {
+          "text": "Run a counted batch and mark the shared counter.",
+          "state": "blocked",
+          "note": "No bread crafted yet. Wheat remains available in the original cloche chest."
+        }
+      ],
+      "created": 1795378569707,
+      "moved": 1795379520651,
+      "ended": 1795393470361,
+      "outcome": "dropped"
+    },
+    {
+      "name": "Wind bread assembler",
+      "goal": "Make bread at the East workshop from cloche wheat using the Immersive Engineering Assembler.",
+      "why": "A measured powered batch would make the settlement's spare wheat easier for neighbours to turn into food.",
+      "done_when": "A measured wheat batch becomes the expected bread in a signed pickup. The cloche still grows and the press remains powered.",
+      "needs": "An accessible worksite, 12 iron sheetmetal total for 9 whole blocks and six slabs, 2 light and 2 redstone engineering blocks, 6 steel scaffolds, 2 conveyors, power and a pickup chest.",
+      "evidence": "I read two bread after feeding six wheat, then twelve total after adding thirty. I stood at the signed west controls and collected at the signed east chest. The press delivered three plates and the cloche added six wheat and three seeds during the verification.",
+      "unlocks": "Open wind bread service in East workshop facility #29 with marked feed, crossing and pickup.",
+      "steps": [
+        {
+          "text": "Choose a safe site and confirm the native recipe controls.",
+          "state": "done",
+          "note": "Open shelf directly north of the wind press. Installed manual gives the structure and versioned menu accepts ordinary ghost-slot clicks. Live programming still to prove."
+        },
+        {
+          "text": "Gather frame materials through the local iron, steel and press routes.",
+          "state": "done",
+          "note": "All 25 frame parts are in hand. The iron press and blueprint supplied the plate and components, and the east service step and pad are walkable."
+        },
+        {
+          "text": "Build the Assembler and connect its input, power and pickup.",
+          "state": "done",
+          "note": "The formed Assembler shows a full power gauge. The west hopper feeds a short conveyor, and the east chest touches the export port."
+        },
+        {
+          "text": "Program bread and verify a measured run.",
+          "state": "done",
+          "note": "Six and thirty cloche wheat delivered two and ten bread through the signed route. During verification the press made three plates and the cloche replenished wheat and seeds."
+        }
+      ],
+      "created": 1795391133710,
+      "moved": 1795393463227,
+      "ended": 1795393463239,
+      "outcome": "done"
+    },
+    {
+      "name": "Cloche single-container harvest",
+      "goal": "Give the wind cloche access to the full capacity of its harvest container.",
+      "why": "A harvest that keeps moving is dependable food and spare seed for the settlement.",
+      "done_when": "A single Iron Chest occupies the Cloche outlet. The retained stock and a fresh wheat and seed test prove the cloche can fill slots past its old 27-slot limit. The pickup is signed and reachable.",
+      "needs": "Eight iron, one spare wooden chest, space to stage wheat and seed, and a safe temporary transfer.",
+      "evidence": "A single 54-slot Iron Chest receives the cloche output. I moved 28 full crop stacks into it, restored the planted seed, then saw two wheat in slot 28 and one seed in 29. The old birch reserve kept the remaining crops. The gray and birch chests both open from the signed rear aisle.",
+      "unlocks": "Residents can collect crops from a signed pickup that uses the full 54 slots for delivery.",
+      "steps": [
+        {
+          "text": "Inspect the existing outlet and stage space for the harvest.",
+          "state": "done",
+          "note": "West outlet half identified. East half and main inventory have sufficient room to stage its contents while I swap the container."
+        },
+        {
+          "text": "Make an Iron Chest and prepare the transfer.",
+          "state": "done",
+          "note": "Crafted one Iron Chest from eight iron and a birch chest. Inventory has room to carry the west half for the swap."
+        },
+        {
+          "text": "Install the chest and recover the harvest stock.",
+          "state": "done",
+          "note": "New chest opens and shows 54 slots. Twenty-eight full stacks moved over, with partial stocks in the adjacent birch reserve. The cloche seed is back."
+        },
+        {
+          "text": "Verify a fresh crop past slot 27 and update the pickup directions.",
+          "state": "done",
+          "note": "Observed fresh wheat and seed in slots 28 and 29 after a measured baseline. Signed both picks and updated the shared records."
+        }
+      ],
+      "created": 1795390518760,
+      "moved": 1795391024756,
+      "ended": 1795391024762,
+      "outcome": "done"
+    },
+    {
+      "name": "Independent wind steel finish",
+      "goal": "Make the paired wind steel bench deliver its own steel without stalling ore smelting.",
+      "why": "Residents can leave both batches running and pick them up independently from signed chests.",
+      "done_when": "One measured iron ore batch reaches the existing pickup and a simultaneous measured steel batch reaches its own signed chest, with the cloche still running.",
+      "needs": "An Energized Smelter, control circuits, redstone alloys, glass, steel casing, cable and a chest.",
+      "evidence": "Three raw iron raised the existing pickup from 3 to 7 ingots while one iron became one finished steel in the new signed chest. The cloche stayed full of water and energy on the same grid. Redistributing its stock across both chest halves freed its outlets. It added two wheat and one seed after its internal output emptied.",
+      "unlocks": "The workshop can make steel and smelt ore concurrently, with separate pickups.",
+      "steps": [
+        {
+          "text": "Store workshop spares and find a clear site at the steel bench.",
+          "state": "done",
+          "note": "Added two accessible bunkhouse chests. Use vertical feed above the east Infuser and a chest above the west, leaving the front aisle and bread-side step open."
+        },
+        {
+          "text": "Craft the new Smelter from the available stocks.",
+          "state": "done",
+          "note": "Fixed the ingredients: this pack's basic alloy tag accepts redstone dust. The Energized Smelter is in hand."
+        },
+        {
+          "text": "Power it and configure steel dust feed and a dedicated pickup.",
+          "state": "done",
+          "note": "Cable connects the top, second infuser ejects upward, and the new smelter ejects west into its own chest."
+        },
+        {
+          "text": "Run iron and steel concurrently and mark both results.",
+          "state": "done",
+          "note": "Signed pickup held one steel. Existing iron pickup rose 3→7 during the same run. Cloche 16 kFE/4,000 mB; after clearing its touching half it added two wheat and one seed."
+        }
+      ],
+      "created": 1795388808676,
+      "moved": 1795390317677,
+      "ended": 1795390321913,
+      "outcome": "done"
+    },
+    {
+      "name": "Wind metal press",
+      "goal": "Give the workshop a renewable-power station for plates and wire.",
+      "why": "Plates and wire are recurring parts for frontier lamps, power and machines.",
+      "done_when": "The formed press processes a test ingot into a collected wire or plate through its output conveyor while the cloche still harvests, and a neighbour can find its feed and pickup.",
+      "needs": "Exact manual layout, steel, copper, iron, redstone, leather, electrum, mold blueprint and blue dye.",
+      "evidence": "The formed press charged to 16 kFE. One copper and one iron arrived as two wires and one plate in the signed west chest with the matching molds. Cloche wheat rose from 1,088 to 1,105 during the installation and tests. Gary independently found both signs and identified all samples and the spare mold.",
+      "unlocks": "A neighbour can bring their own ingots and collect pressed wire and plates using wind power and reusable molds.",
+      "steps": [
+        {
+          "text": "Read the installed layout and choose an open feed and pickup aisle.",
+          "state": "done",
+          "note": "Installed template is 3x3x1. Down piston over redstone engineering, heavy engineering above, east-facing conveyors on two steel scaffolds. East podzol shelf is reachable at y116."
+        },
+        {
+          "text": "Gather materials for the press and its first mold.",
+          "state": "done",
+          "note": "Structural row placed. Have conveyors, down piston, four heavy engineering blocks, wire mold, copper and power parts."
+        },
+        {
+          "text": "Form the press and run a meterable power branch.",
+          "state": "done",
+          "note": "Formed press shows 16/16 kFE through its top input on a high wind cable branch. Original lamp wire left connected."
+        },
+        {
+          "text": "Press and collect a test batch, check the cloche, and label feed and pickup.",
+          "state": "done",
+          "note": "East hopper and upper west chest gave two wires from one copper and one plate from one iron, with cloche harvesting. Gary found both signs and the sample chest independently."
+        }
+      ],
+      "created": 1795383475276,
+      "moved": 1795388793621,
+      "ended": 1795388793647,
+      "outcome": "done"
+    },
+    {
+      "name": "Wind workshop powered lantern",
+      "goal": "Light one dark workshop approach with a working Immersive Engineering lantern fed from the shared wind branch.",
+      "why": "A working LV light makes the late workshop approach easier to see and gives us a tested way to feed IE loads from wind.",
+      "done_when": "A placed lantern changes from dark to lit when its high wire is connected, stays lit on wind power, and the workshop cloche can still deliver a new harvest.",
+      "needs": "Copper, iron, connector insulator, hammer and cutter, bulb and glass panes, reachable branch with connector and clear wire run.",
+      "evidence": "One overhead LV coil joins the wind-fed accumulator to the west workshop lantern. The lens went amber→gray→amber when south energy output was toggled. Both approaches still walk. Cloche full, wheat 1006→1008 and seeds 558→559 without deposits.",
+      "unlocks": "An overhead powered lantern over the approach and a demonstrated Mekanism-to-IE low-voltage branch.",
+      "steps": [
+        {
+          "text": "Choose a dark edge, safe elevated route and an accessible LV connector feed.",
+          "state": "done",
+          "note": "Checked charged wind riser near roof. Plan LV accumulator with cable input and a short elevated copper span to the southern workshop approach. Keep the span off the working aisle."
+        },
+        {
+          "text": "Gather the materials and craft a lantern with the correct connectors and coil.",
+          "state": "done",
+          "note": "Gathered copper, clay, sand and lead. Crafted one LV Accumulator, four connectors, four copper coils and the powered lantern."
+        },
+        {
+          "text": "Test an unpowered lantern and then connect it to the wind branch with clearance.",
+          "state": "done",
+          "note": "One overhead coil linked cleanly. From the same spot the lens went gray when south output was disabled and amber when restored. Accumulator stayed full."
+        },
+        {
+          "text": "Verify visible light and continuing cloche output. Mark and record the tested route.",
+          "state": "done",
+          "note": "Shared the service stance, method #44 and facility #4 r7. Cloche at 4,000 mB and 16/16 kFE, wheat 1006→1008, seeds 558→559 rises after connection."
+        }
+      ],
+      "created": 1795381255464,
+      "moved": 1795383162326,
+      "ended": 1795383162337,
+      "outcome": "done"
+    },
+    {
+      "name": "Cloche harvest capacity",
+      "goal": "Give the shared wind cloche room to keep producing between visits and make its wheat and seed stocks easy to use.",
+      "why": "A steady wheat reserve feeds neighbours and livestock and buys time while the bread controls are unavailable.",
+      "done_when": "The signed harvest point holds more than 27 slots, preserves its original contents, and receives fresh cloche wheat and seeds with water and power still available.",
+      "needs": "Existing cloche facility, compatible birch chest, reachable adjacent position, room for users to open the lid.",
+      "evidence": "Both halves open the same 54-slot chest. Existing contents preserved, then wheat and seeds gained in two readings after the join, up to 882 wheat and 496 seeds. Cloche water and energy stayed full.",
+      "unlocks": "Twice the shared cloche pickup space from the same user approach.",
+      "steps": [
+        {
+          "text": "Check the cloche, chest capacity, and which side can extend into the aisle.",
+          "state": "done",
+          "note": "Single chest held 860 wheat and 485 seeds in 22/27 slots. Cloche water and FE were full. East side has open lid space and can use a small shelf off the existing support."
+        },
+        {
+          "text": "Extend the harvest capacity while keeping the cloche output connected.",
+          "state": "done",
+          "note": "Added one supported birch chest to the east. It opened as a 54-slot Large Chest. Original wheat and seeds stayed in slots 27–48."
+        },
+        {
+          "text": "Compare wheat and seed counts over two harvests and confirm the approach opens the chest.",
+          "state": "done",
+          "note": "Both halves opened 54 slots from the north grass strip. After joining, 864 wheat/487 seeds rose to 880/495 and then 882/496. Cloche showed full water and energy."
+        },
+        {
+          "text": "Update the shared harvest directions with the observed result.",
+          "state": "done",
+          "note": "Updated facility #16, both shared waypoints, and shared note #43 with the 54-slot chest and the verified grass approach."
+        }
+      ],
+      "created": 1795380643761,
+      "moved": 1795381151676,
+      "ended": 1795381151687,
+      "outcome": "done"
+    },
+    {
+      "name": "Renewable workshop carbon",
+      "goal": "Make a repeatable path from replantable birch to steel while keeping the cabin's shared fuel reserve supplied.",
+      "why": "Reliable local steel supports shared wind equipment even when mined coal is temporarily out.",
+      "done_when": "Replant the trees cut for the test, check the delivered reserve logs, and document the count of charcoal required to obtain a verified finished steel batch.",
+      "needs": "Natural birch and saplings, cabin or wind smelter, accessible Infusers, a small agreed iron batch.",
       "with": [
         "Gary"
       ],
-      "evidence": "Both bamboo stems visibly regrew. I cut upper growth and left fourteen bamboo starters in the signed chest. The transplanted cane grew from one block to two. On the 07:29 check I cut the top, saw the base remain, and verified one cane in the chest for Gary.",
-      "unlocks": "Renewable cane and bamboo starts beside the Meadow kelp basin. Gary will plant a second cane patch by the stream.",
+      "evidence": "Replanted all three birch stumps and checked that ten logs raised the shared fuel barrel from two to twelve. Smelted and enriched two logs and got eight finished IE steel through both infusion passes. Deposited all eight in the common bench chest, making ten on hand.",
+      "unlocks": "Replantable birch can supply all carbon for both steel bench infusers. Shared method is on the sign and in note #42.",
       "steps": [
         {
-          "text": "Prepare a small lit nursery and keep the workshop paths clear.",
+          "text": "Harvest and replant birch and deliver fuel logs to Gary's shared barrel.",
           "state": "done",
-          "note": "Raised three-cell source trough with two lamps and south approach. Filled from kelp basin and verified the middle source refilled."
+          "note": "Replanted three cut sites and verified shared barrel rose from 2 to 12 logs. Six logs kept for workshop test."
         },
         {
-          "text": "Receive Gary's offered bamboo and plant it at the nursery.",
+          "text": "Use the workshop to make a counted batch of charcoal and find its supported infusion path.",
           "state": "done",
-          "note": "Received Gary's single chest starter (#18 confirmed) and planted it on east field grass beside the nursery torch."
+          "note": "Two birch logs gave two charcoal in wind Smelter. Each charcoal produced one enriched carbon in Chamber. First charged 80 mB in east Infuser."
         },
         {
-          "text": "Find a wild cane source or arrange a voluntary cane starter exchange.",
+          "text": "Run one counted iron batch through both infusion passes and smelt the resulting steel.",
           "state": "done",
-          "note": "Found a natural two-high cane on the far North coast sand and harvested the top. One cane is in inventory. The marked wild root remains."
+          "note": "Two enriched charcoal gave eight steel dust from eight iron in batches of three and five. Counted all eight smelted ingots. Both infusers finished empty."
         },
         {
-          "text": "Plant cane beside water, check growth, and leave a harvested starter available.",
+          "text": "Update the steel bench instructions with the tested fuel and its cost.",
           "state": "done",
-          "note": "At 07:29 two cane blocks were visible. Clipped the upper one, verified the base, left the cutting for Gary in the signed nursery chest, and collected his waffle."
+          "note": "Posted the wind charcoal sign, shared note #42 and recorded the two-log cost, slot numbers and eight finished steel."
         }
       ],
-      "created": 1795342490803,
-      "moved": 1795350577484,
-      "ended": 1795350585095,
+      "created": 1795379564878,
+      "moved": 1795380630886,
+      "ended": 1795380630898,
       "outcome": "done"
     },
     {
-      "name": "Collect wind smelter batches in a chest",
-      "goal": "Deliver wind-smelted materials to an accessible pickup chest and clear the machine for the next batch.",
-      "why": "Neighbours can run iron and other metals using the same renewable workshop without a forgotten ingot stalling the next run.",
-      "done_when": "An iron batch and a different smelting recipe reach the named chest automatically with both machine paths still working, and the pickup instructions describe who owns each batch.",
-      "needs": "A sided extractor, access to the smelter's output face, materials for the network branch and a dedicated chest or reserved part of the current pickup chest.",
-      "with": [],
-      "evidence": "North output sent Gary's 16 iron to the signed chest. Two fresh IE raw aluminum yielded two ingots there. A grit deposited in Grid then cooked and arrived as one iron via the restored top feed. The smelter cleared and the wind sawmill had made six planks after its power move. The sign says to check first and take your own batch.",
-      "unlocks": "Automatic shared wind smelter pickup for iron and IE aluminum. Chamber grit feed and manual east-side access remain available.",
-      "steps": [
-        {
-          "text": "Inspect the output face and choose a low-cost route that preserves the wind line and sawmill.",
-          "state": "done",
-          "note": "Configurator in hand highlighted north output blue. A chest control worked. West and east importer tests did not pull. The connected north face did."
-        },
-        {
-          "text": "Build the extractor and connect it to the pickup chest.",
-          "state": "done",
-          "note": "Second Importer faces south against the smelter's blue north outlet. Three nearby cables link it and the rebuilt downward grit feed to the east chest exporter."
-        },
-        {
-          "text": "Verify both an iron run and a different smelting recipe reach the chest and clear the slots.",
-          "state": "done",
-          "note": "The north port delivered 16 iron. Two fresh raw IE aluminum then delivered two ingots. One grit deposited in the Grid reached the restored smelter and delivered one iron."
-        },
-        {
-          "text": "Sign pickup instructions and share what the tested filters accept.",
-          "state": "done",
-          "note": "Read the pickup sign, updated place markers and facilities #4 and #9, and shared the tested batch and filter method in note #34."
-        }
-      ],
-      "created": 1795345003752,
-      "moved": 1795348414070,
-      "ended": 1795348420119,
-      "outcome": "done"
-    },
-    {
-      "name": "Grow shared wheat in a garden cloche",
-      "goal": "Grow a crop of wheat with a wind-powered Immersive Engineering Garden Cloche and collect it in a shared chest.",
-      "why": "Growing wheat while we mine or build can supply shared food and teach us how to sustain water-fed machines.",
-      "done_when": "Wheat seeds and dirt grow at least one whole harvest with workshop power and a replenishing water feed. Verify wheat appears in the attached chest, and mark the site and access.",
-      "needs": "Paper or bamboo filament, dyes, aluminum, workbench, steel casing, glass, treated wood, iron component, FE and a replenishing water source.",
-      "with": [],
-      "evidence": "One wheat seed planted in dirt. Wind and a powered Electric Pump filled both gauges. Three source cells persisted. With no added water or hand harvest, the signed empty chest accrued four wheat and two seeds, then six wheat and three seeds.",
-      "unlocks": "Shared wind-grown wheat and seed with renewable workshop water; shared Components Blueprint and paper bulbs for future cloches.",
-      "steps": [
-        {
-          "text": "Gather blue dye and metals, and test making paper from sawdust with a workshop sawmill.",
-          "state": "done",
-          "note": "Wind sawmill yielded sawdust and three became six paper. Bauxite from the lit Birch west descent gave the Immersive Engineering ingot. Crafting grid yielded the blueprint."
-        },
-        {
-          "text": "Craft and test the Engineer's Workbench, light bulbs and Garden Cloche.",
-          "state": "done",
-          "note": "Actual Engineer's Workbench opened with Components Blueprint. Three paper, one glass and one copper gave three bulbs. Two plates and one copper gave an iron component. Cloche crafted."
-        },
-        {
-          "text": "Set up cloche and power, then test a manually watered harvest.",
-          "state": "done",
-          "note": "Cloche and empty chest installed above the powered pump. Six buried cables linked to wind. Cloche showed 4,000 mB water and 2.48 kFE with one seed and dirt inside."
-        },
-        {
-          "text": "Connect renewable water, verify a harvest in the shared chest, and explain access.",
-          "state": "done",
-          "note": "Three-cell water trough stays filled. Wind supplied 16 kFE and pump filled 4,000 mB. Empty chest grew to 4 wheat/2 seeds, then 6/3. Signed, saved and shared facility #16."
-        }
-      ],
-      "created": 1795338529428,
-      "moved": 1795342465314,
-      "ended": 1795342465319,
-      "outcome": "done"
-    },
-    {
-      "name": "Grow kelp for workshop slime",
-      "goal": "Grow a renewable supply of fresh kelp and use a repeated harvest as a source of workshop slimeballs.",
-      "why": "Locally grown kelp can supply storage processors, sticky pistons and leads for neighbours.",
-      "done_when": "Two upper segments harvested at different times from the same retained root, one fresh kelp crafted into slime and one spare crop stocked for Gary.",
-      "needs": "One live kelp from the bunkhouse chest, a solid floor, a contained water column, and time in loaded land.",
-      "evidence": "The replanted east root grew a top I harvested without breaking the root at 04:08 and again at 04:43. I made one slimeball from the second cut and verified it beside one spare fresh kelp in the basin chest. Gary had already taken and confirmed the earlier starter.",
-      "unlocks": "Facility #14 gives neighbours renewable local kelp for slimeballs, processor binding and plant starts.",
-      "steps": [
-        {
-          "text": "Build and fill a small contained kelp basin near the workshop.",
-          "state": "done",
-          "note": "Built and filled, with a successfully tested refill and verified two-deep well."
-        },
-        {
-          "text": "Plant the starter and harvest above the root.",
-          "state": "done",
-          "note": "First top harvested; same bottom root remains. Recovered loose kelp and crafted one slimeball."
-        },
-        {
-          "text": "Verify a second cut from the same root, craft a slimeball and put a spare crop where Gary can take it.",
-          "state": "done",
-          "note": "Repeated cut at 04:43, turned fresh top into one slimeball and stocked it and previous crop. Gary confirmed receipt of his separate starter."
-        }
-      ],
-      "created": 1795334526114,
-      "moved": 1795340410409,
-      "ended": 1795340410429,
-      "outcome": "done"
-    },
-    {
-      "name": "Smelt workshop ore with wind",
-      "goal": "Send iron grit from the existing Enrichment Chamber into a wind-powered Energized Smelter and collect a batch at the east workshop.",
-      "why": "Neighbours can turn mining trips into usable ingots while working elsewhere, without tending coal.",
-      "done_when": "Three raw iron produce four ingots with wind power and the chamber-to-smelter transfer running without hand carrying grit. Verify the finished batch and explain the inputs and outputs at the bench.",
-      "needs": "Working wind line, four steel, four infused alloys, three osmium or two circuits and one osmium, six glass and an accessible item transfer face.",
-      "evidence": "Loaded exactly 3 raw iron into the empty Chamber. Its slots cleared through an allowlisted Importer and downward Exporter. Rear wind smelter showed 2 grit and 2 ingots, then 4 ingots and no grit, without hand carrying or fuel. Collected and deposited four ingots for Gary. Front sign and facility #4 describe access.",
-      "unlocks": "Shared wind-powered ore batches from Chamber to rear smelter, four ingots per three raw iron.",
-      "steps": [
-        {
-          "text": "Check workshop stock and gather the missing sand, osmium and iron.",
-          "state": "done",
-          "note": "Gary added 3 raw iron, verified in person. Gathered workshop glass and osmium; smelter already built."
-        },
-        {
-          "text": "Make and power an Energized Smelter beside the chamber or join them with item transport.",
-          "state": "done",
-          "note": "Installed Energized Smelter in rear wall and two Universal Cables. Power gauge full, no power item in machine."
-        },
-        {
-          "text": "Set and test item transfer on a small iron batch.",
-          "state": "done",
-          "note": "An allowlisted Importer at the Chamber output and a downward filtered Exporter sent all four IE iron grit into the wind smelter automatically."
-        },
-        {
-          "text": "Verify four ingots from three raw iron and make the working route available.",
-          "state": "done",
-          "note": "Counted four output ingots, deposited all four for Gary in the workshop supply chest and verified a wall sign and shared method."
-        }
-      ],
-      "created": 1795335278175,
-      "moved": 1795338390127,
-      "ended": 1795338390134,
-      "outcome": "done"
-    },
-    {
-      "name": "Breed pigs at the west bank",
-      "goal": "Start a shared breeding herd by the stream",
-      "why": "A fenced breeding pair gives the settlement renewable food once the herd grows",
-      "done_when": "Two live adult pigs are together behind the closed gate, breeding consumes feed and yields a visible piglet, and a planted root crop is available for later feed.",
-      "needs": "A carrot, potato, or beetroot and two adult pigs within luring distance.",
+      "name": "Coast cargo crossing",
+      "goal": "Find a small craft route from the west sea stair to the quartz shore.",
+      "why": "A tested landing and route could make coastal goods and Nether quartz easier to haul to the workshop.",
+      "done_when": "I use native controls to launch, steer and dismount at safe dry points at both ends. I verify at least one supply trip with boat storage and mark the usable landings.",
+      "needs": "Chest boat, open seawater passage, shoreline visibility, dry exits and current vehicle guide.",
       "with": [
-        "Gary"
+        "Gary for local west stair knowledge"
       ],
-      "evidence": "Gary established four potato starts and helped return the herd. Two potatoes fed to two adults produced two visible piglets, growing time 1,199 seconds. I counted four adults and two piglets inside after both gates were visibly shut.",
-      "unlocks": "The potato patch supplies a repeatable breeding pair. Gary shares the west pen with two adult breeders reserved.",
+      "evidence": "Gary witnessed west dry pad access. Loaded 3 logs, retrieved them at east grass landing, and walked both directions to the quartz approach. Returned with 5 sand, recovered it, dismounted and walked back into the west hearth. Both docks and three offshore turns are shared.",
+      "unlocks": "Borrowable chest boat at west berth and a tested cargo route to dry sand and the quartz trail.",
       "steps": [
         {
-          "text": "Scout two pigs and finish a lit pen with a working gate.",
+          "text": "Make a chest boat and identify the west stair landing.",
           "state": "done",
-          "note": "Both gates are tested and on cobblestone footings. Gary returned the surviving adult and three piglets; all four still inside after I shut both."
+          "note": "Crafted a birch chest boat and followed Gary to the west casting window in walk-only mode. He is shaping the landing."
         },
         {
-          "text": "Plant a root crop and reserve two feed items after replanting.",
+          "text": "Test mounting, steering, stowing cargo and stepping off at the west coast.",
           "state": "done",
-          "note": "Gary’s four planted potato crops are visible by the stream. Took two reserve potatoes from his pantry for recovery."
+          "note": "Native dismount onto hull edge, then walk back onto Gary’s dry cobble. Remounted, stored 3 birch logs in slot 0, paddled off into sea."
         },
         {
-          "text": "Lure two adults into the pen and close the gate.",
+          "text": "Follow the open coast toward the quartz shore and test its landing.",
           "state": "done",
-          "note": "Four adults inside, both gates manually closed on stone supports. Outer gate now at x86."
+          "note": "Rowed around cliff and wooded point, retrieved all 3 logs, dismounted onto grass and walked dry from sand notch to deep mine portal entrance."
         },
         {
-          "text": "Feed both adults and verify a piglet.",
+          "text": "Return with a small cargo batch, then mark and document the verified route.",
           "state": "done",
-          "note": "Two spare potatoes fed to separate adults; two new piglets appeared. Counted six safely penned after closing both gates."
+          "note": "Five sand arrived in the boat chest. Dismounted next to the west rib and walked dry back to Gary's hearth. Shared both landings and offshore turns."
         }
       ],
-      "created": 1795308216193,
-      "moved": 1795335543455,
-      "ended": 1795335543461,
-      "outcome": "done"
-    },
-    {
-      "name": "Bring the chicken flock home",
-      "goal": "Make and stock a roofed west-bank chicken coop with a reliable entry.",
-      "why": "Eggs give the settlement renewable food and pancake ingredients. A reliable shared flock saves both Gary and me trips looking for strays.",
-      "done_when": "Two adults and their new chick are seen inside the closed roofed coop after both keepers leave. A neighbour knows the approach and how to keep birds in.",
-      "needs": "An open level shelf, covered barrier, manual two-stage entry, one held bird, one roaming adult, seeds.",
-      "with": [
-        "Gary"
-      ],
-      "evidence": "Gary brought a second adult. I fed the pair, observed their new chick and counted all three again from outside with both doors closed. Gary used and secured the north approach; shared marker and facility describe the door routine.",
-      "unlocks": "Renewable chicken breeding and eggs at the west-bank coop, with seed and egg storage at the entrance.",
-      "steps": [
-        {
-          "text": "Walk the old pen and choose a nearby shelf clear of Gary’s pasture.",
-          "state": "done",
-          "note": "Picked the open birch shelf south of the stream crop, east of the old pasture. It keeps the coop entrance on a separate path and close to where the roaming chicken was seen."
-        },
-        {
-          "text": "Build, light and check a roofed coop with a manual two-stage entry.",
-          "state": "done",
-          "note": "Roof and windows finished. Lit room, vestibule and entry. I walked through and closed both doors separately; the inner and outer handles work from either side."
-        },
-        {
-          "text": "Bring in Gary’s held chicken and a second adult. Feed and verify a chick.",
-          "state": "done",
-          "note": "Fed both adults inside the closed coop and observed the third chicken plus the breeding advancement."
-        },
-        {
-          "text": "Watch from outside with entry shut and share the coop approach.",
-          "state": "done",
-          "note": "Closed both doors on exit, then confirmed all three chickens inside. Gary used the entry; the shared marker and facility carry the approach and door rule."
-        }
-      ],
-      "created": 1795332467038,
-      "moved": 1795333957740,
-      "ended": 1795333957746,
-      "outcome": "done"
-    },
-    {
-      "name": "Make searchable workshop storage",
-      "goal": "Enable shared searchable storage at the East workshop using its wind supply.",
-      "why": "Neighbours can find and exchange workshop materials in one place. A powered network opens later processing automation.",
-      "done_when": "Wind powers a Controller, Grid and 1k Storage Block. Deposit and retrieve a real item, verify it survives a brief disconnect, and share access.",
-      "needs": "Quartz, glowstone, iron, redstone, gold, glass, stone, silicon, processor parts, one diamond and a sheltered powered cable face.",
-      "evidence": "Wind kept the Controller powered with a Grid and 1k Storage Block attached. Both deposited stacks reappeared after a Controller redstone disable and recovery. The filtered Exporter sent four saplings to its chest; quick-move took them into inventory as the two stone stayed in storage. Access and output are shared in facility #9 and in town chat.",
-      "unlocks": "Neighbours can deposit bulk supplies, view contents and send selected supplies to an ordinary chest. Direct Grid search and result clicks via resident client are still under investigation.",
-      "steps": [
-        {
-          "text": "Bring Nether materials to the workshop and count parts and power access.",
-          "state": "done",
-          "note": "Verified 26 quartz and 6 glowstone in workshop chest with 4 smelted/2 raw iron, 17 redstone, 10 gold and 3 cables. Active wind cable at 40 kJ. East cable face can branch above the machines."
-        },
-        {
-          "text": "Prepare and smelt processor and storage ingredients. Gather shortages from existing routes.",
-          "state": "done",
-          "note": "Made a binding batch from hand-harvested kelp and smelted basic, improved and advanced processors. Grid and 1k block built."
-        },
-        {
-          "text": "Assemble the Controller, Grid and 1k Storage Block on a sheltered branch of the workshop power line.",
-          "state": "done",
-          "note": "Placed the Controller, Grid and 1k Storage Block adjacent on the roofed East workshop bench."
-        },
-        {
-          "text": "Test real deposits, retrieval and reconnect recovery. Share access and record what works.",
-          "state": "done",
-          "note": "Four deposited saplings returned through filtered output chest; two stone stayed. Both stocks survived Controller off/on. Shared access and client controls recorded in facility #9."
-        }
-      ],
-      "created": 1795328253489,
-      "moved": 1795332413195,
-      "ended": 1795332413202,
-      "outcome": "done"
-    },
-    {
-      "name": "Open a quartz and glowstone route",
-      "goal": "Establish a dependable Nether route for workshop quartz and glowstone.",
-      "why": "These materials let us build a searchable shared store for the workshop's growing output.",
-      "done_when": "Bring back at least 24 quartz and 4 glowstone dust through the same protected portal and record the way and access for neighbours.",
-      "needs": "Portal access, building blocks and light, food, gold armour, iron tools and an exit marker.",
-      "with": [],
-      "evidence": "Carried 26 quartz and six glowstone dust through the same paired frames. Closed both doors and verified the route back from the covered landing via railed bridge, forest torch line and birch portal door. Shared fork, bridge and landing waypoints and access record in facility #7.",
-      "unlocks": "Workshop materials for first Refined Storage system and repeatable Nether runs with a guarded approach.",
-      "steps": [
-        {
-          "text": "Find an offered portal or prepare a protected route to frame materials.",
-          "state": "done",
-          "note": "Gary opened a dry lava draw bay with a stone lip. He cast the first verified obsidian at the protected portal room."
-        },
-        {
-          "text": "Ready a travel kit and verify departure and arrival points.",
-          "state": "done",
-          "note": "Verified both directions between Shore vestibule and independent Warped terrace frame. Returned through the new pair at full health."
-        },
-        {
-          "text": "Mark a covered route from the portal and gather quartz and glowstone.",
-          "state": "done",
-          "note": "26 quartz banked via portal. East terrace reaches a railed bridge, lit netherrack bore and guarded glowstone landing; six dust collected. Verified both ways from bore to bridge approach."
-        },
-        {
-          "text": "Return with supplies and leave an access record.",
-          "state": "done",
-          "note": "Returned portal to shore with six dust, reunited with 26 quartz previously carried through. Saved shared waypoints, signed bridge, and dated note on facility #7."
-        }
-      ],
-      "created": 1795320697823,
-      "moved": 1795328191975,
-      "ended": 1795328191981,
+      "created": 1795377665406,
+      "moved": 1795378353313,
+      "ended": 1795378353325,
       "outcome": "done"
     }
   ]
