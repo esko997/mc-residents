@@ -541,7 +541,8 @@ brings it back; a later sighting does, and the history keeps both.
 
 `library/read` (the tool server's `read_book` by `id` or `shelf`) asks the bridge for the caller's position at
 that moment (`/v1/snapshot`; it must be online, the bridge `ok` or `degraded`, and the position at most
-`POSITION_MAX_AGE_MS` = 5 s old), then reads the shelf at the copy's position and the slot's pages. Pages are
+`POSITION_MAX_AGE_MS` = 5 s old), then reads the shelf at the copy's position and the slot's pages; both reads must
+answer `ok`, and the position is checked again once the pages arrive (still at most 5 s old). Pages are
 returned only within `READING_RADIUS` = 4 blocks from the centre of that block to the caller's position, in the
 same dimension, for a book the bridge sees there now; otherwise the reply is a sentence naming the nearest copy
 and its distance, or why the bridge cannot tell. The read updates the catalogue with what the shelf holds.

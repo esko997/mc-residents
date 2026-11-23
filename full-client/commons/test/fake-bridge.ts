@@ -36,6 +36,8 @@ export function fakeBridge(clock: () => number) {
     /** The shelf list answers 503 `scanning` this many more times. */
     scanning: 0,
     requests: [] as string[],
+    /** Runs as each request arrives, before it is answered: the world changing between two reads. */
+    onRequest: undefined as ((path: string) => void) | undefined,
   };
   const put = (dimension: string, x: number, y: number, z: number, shelf: FakeShelf) => world.shelves.set(key(dimension, x, y, z), shelf);
   const envelope = (body: Record<string, unknown>): ObserverReach => ({
@@ -57,6 +59,7 @@ export function fakeBridge(clock: () => number) {
   };
   async function get(_source: unknown, path: string): Promise<ObserverReach> {
     world.requests.push(path);
+    world.onRequest?.(path);
     if (world.failAfter !== null && world.failAfter-- <= 0) world.down = true;
     if (world.down) return { ok: false, status: "offline", detail: "The server observer did not answer (server down, tunnel down, or mod not loaded)." };
     const url = new URL(path, "http://bridge.test"), q = url.searchParams;

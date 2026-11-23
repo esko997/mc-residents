@@ -273,6 +273,23 @@ test("reading at the shelf refuses, and says why, when the bridge cannot place t
   expect(text(await none.as("Piper").read({ shelf: { x: 100, y: 64, z: -200 } }))).toContain("needs the server bridge, and this hub has none");
 });
 
+test("the gate holds to the last read: a bridge turning unhealthy, or a position aging past 5 s, while the shelf is read releases no pages", async () => {
+  const h = library({ x: 101, y: 64, z: -199 });
+  await h.scan.pass();
+  const piper = h.as("Piper");
+  h.world.onRequest = path => { if (path.startsWith("/v1/library/book")) h.world.state = "tripped"; };
+  expect(text(await piper.read({ id: 1 }))).toBe("The server bridge is tripped, so it could not read slot 3 at 100,64,-200; nothing was read. Try again later.");
+  h.world.state = "ok";
+  // Seen 2 s before the call (fresh at the gate); the reads take 4 s more.
+  h.world.bodies.set("Piper", { x: 101, y: 64, z: -199, atMs: start - 2000 });
+  h.world.onRequest = path => { if (path.startsWith("/v1/library/book")) h.advance(4000); };
+  expect(text(await piper.read({ shelf: { x: 100, y: 64, z: -200 }, slot: 3 })))
+    .toBe("The server's sight of where you stand was 6 s old by the time the shelf was read (at most 5 s counts), so nothing was read. Try again.");
+  h.world.onRequest = undefined;
+  h.world.bodies.set("Piper", { x: 101, y: 64, z: -199 });
+  expect(text(await piper.read({ id: 1 }))).toStartWith("PAGES");
+});
+
 test("reading by id when the book has just left the nearby shelf: the catalogue learns it, the reply names the next copy", async () => {
   const h = library({ x: 101, y: 64, z: -199 });
   await h.scan.pass();

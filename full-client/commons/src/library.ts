@@ -222,8 +222,8 @@ export function migrateLegacyLibrary(db: Database) {
 
 // === what a resident asks ===
 
-/** Where the server bridge has a resident now, or the sentence saying why it cannot tell. */
-type Standing = { dimension: string; x: number; y: number; z: number } | { text: string };
+/** Where the server bridge has a resident now (`at`: when it saw that, on this hub's clock), or the sentence saying why it cannot tell. */
+type Standing = { dimension: string; x: number; y: number; z: number; at: number } | { text: string };
 
 export function createLibrary(db: Database, resident: string, deps: LibraryDeps = {}) {
   const now = deps.now ?? Date.now;
@@ -289,14 +289,14 @@ export function createLibrary(db: Database, resident: string, deps: LibraryDeps 
     if (!me.online || !me.body) return { text: "The server does not see you online, so it cannot tell where you stand; nothing was read." };
     const age = now() - me.body.at;
     if (age > POSITION_MAX_AGE_MS) return { text: `The server's latest sight of where you stand is ${Math.round(age / 1000)} s old (at most ${POSITION_MAX_AGE_MS / 1000} s counts), so nothing was read. Try again in a moment.` };
-    return { dimension: me.body.dimension, ...me.body.pos };
+    return { dimension: me.body.dimension, ...me.body.pos, at: me.body.at };
   };
 
   /**
    * Reads the shelf or lectern at `place` through the bridge now (updating the catalogue with what it sees) and then
    * the chosen slot's pages. `wanted`: content hashes of the book asked for by id; null when no slot holds one of them.
    */
-  const readAt = async (place: ShelfPlace, me: { x: number; y: number; z: number }, slot: number | undefined, wanted?: Set<string>): Promise<ShelfReading | null> => {
+  const readAt = async (place: ShelfPlace, me: { x: number; y: number; z: number; at: number }, slot: number | undefined, wanted?: Set<string>): Promise<ShelfReading | null> => {
     const at = { x: place.pos[0], y: place.pos[1], z: place.pos[2] };
     const shelfReply = await observerShelf(deps.observer!, place, get);
     if (!shelfReply.ok) return { text: `The server bridge could not read ${coords(at)} (${shelfReply.status}: ${shelfReply.detail}); nothing was read.` };
@@ -332,10 +332,14 @@ export function createLibrary(db: Database, resident: string, deps: LibraryDeps 
     const book = books.get(slot)!;
     const pagesReply = await observerBook(deps.observer!, { ...place, slot }, get);
     if (!pagesReply.ok) return { text: `The server bridge could not read slot ${slot} at ${coords(at)} (${pagesReply.status}: ${pagesReply.detail}); nothing was read.` };
+    if (pagesReply.data.state !== "ok") return { text: `The server bridge is ${pagesReply.data.state}, so it could not read slot ${slot} at ${coords(at)}; nothing was read. Try again later.` };
     const read = pagesReply.data.book;
     if (read.status !== "observed" || !read.book) return { text: `The server could not read the book in slot ${slot} at ${coords(at)} (${read.status}${read.reason ? `: ${read.reason}` : ""}).` };
     if (read.book.contentHash !== book.content_hash) return { text: `The book in slot ${slot} at ${coords(at)} changed while it was being read; read again.` };
     if (!storeText(db, book, read.pages, "server", now())) return { text: `The pages the server sent for slot ${slot} at ${coords(at)} do not match that book; nothing was read.` };
+    // The shelf and book reads take time: the position the gate used must still count as where the caller stands.
+    const age = now() - me.at;
+    if (age > POSITION_MAX_AGE_MS) return { text: `The server's sight of where you stand was ${Math.round(age / 1000)} s old by the time the shelf was read (at most ${POSITION_MAX_AGE_MS / 1000} s counts), so nothing was read. Try again.` };
     const distance = reach(at, me);
     return {
       book: { id: book.id, kind: book.kind, title: book.title, author: book.author, generation: book.generation },
