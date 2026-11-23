@@ -61,6 +61,22 @@ if (haveInputs && !existsSync(dbPath)) throw new Error("Real cache inputs exist;
     expect(() => knowledge!.searchGuides('"Foliot" OR *')).not.toThrow();
     expect(knowledge!.findItems("ingot", 0)).toEqual([]);
   });
+  test("pack overview: Mekanism's tab starts at smelted osmium; TaCZ's gun pack is counted", () => {
+    const mods = new Map(knowledge!.modList!()!.map((mod) => [mod.id, mod]));
+    expect(mods.get("mekanism")?.tabStart).toMatchObject({ id: "mekanism:ingot_osmium", advancement: "First Steps" });
+    expect(mods.get("mekanism")?.tabStart?.recipe.type).toBe("minecraft:smelting");
+    expect(mods.get("tacz")?.guns).toBeGreaterThan(20);
+    expect(mods.get("occultism")?.books.map((book) => book.item)).toEqual(["occultism:dictionary_of_spirits"]);
+  });
+  test("first crafts: an add-on's counts its parent's parts; a namesake beats a busier part", () => {
+    const mods = new Map(knowledge!.modList!()!.map((mod) => [mod.id, mod]));
+    // Not the Fusion Reactor Frame (ultimate alloy, polonium, steel casing), which counts as "nothing from the add-on".
+    expect(mods.get("mekanismgenerators")?.firstCraft).toMatchObject({ id: "mekanismgenerators:heat_generator", steps: 2 });
+    // Not the Upgrade Base, which is as cheap and used by every upgrade; the backpack is made in its own grid type.
+    expect(mods.get("sophisticatedbackpacks")?.firstCraft).toMatchObject({ id: "sophisticatedbackpacks:backpack", steps: 1 });
+    expect(mods.get("tacz")?.firstCraft?.id).toBe("tacz:gun_smith_table");
+    expect(mods.get("refinedstorage")?.firstCraft?.id).toBe("refinedstorage:quartz_enriched_iron");
+  });
 });
 
 describe("recipe and guide boundaries", () => {

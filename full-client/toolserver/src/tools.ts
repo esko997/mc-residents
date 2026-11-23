@@ -12,6 +12,7 @@ import { Skills, skillDefinitions, type SkillRun, type ToolReply } from "./skill
 import { createPlans, planDefinitions, type Plans } from "./plan.ts";
 import { readPlaces, snapshotOf, whatNext } from "./ideas.ts";
 import { guideDefinition, lookupGuide } from "./guides.ts";
+import { fromMod, modsDefinition, modsReply, packKinds } from "./mods.ts";
 import { CommonsClient } from "./commons.ts";
 import { createSociety, societyDefinitions, type Society } from "./society.ts";
 import { KnowledgeGaps, guideFeedbackDefinition, guideUpdatesDefinition, registerResidentTools } from "./knowledge-gaps.ts";
@@ -55,6 +56,7 @@ export const definitions = {
   recipes: { description: "Recipes producing an item id, including shaped grids.", schema: z.object({ item: itemId }) },
   craft: { description: "Craft an item in one call: looks up the recipe, lays it out in the grid and takes the result into your inventory; prefer it to click_slot. Works at an open crafting table (3x3); recipes that fit 2x2 also work with no screen open, because it opens your own inventory itself. count is the number of crafting operations, not items (one craft of sticks gives 4); default 1. The screen stays open afterwards.", schema: z.object({ item: itemId, count: z.number().int().min(1).max(16).optional() }).strict() },
   uses: { description: "Recipes consuming an item id (including matching tags).", schema: z.object({ item: itemId }) },
+  mods: modsDefinition,
   guide: guideDefinition,
   guide_feedback: guideFeedbackDefinition,
   guide_updates: guideUpdatesDefinition,
@@ -88,7 +90,7 @@ function limitCap(schema: unknown): number | undefined {
 }
 const limitCaps: Partial<Record<string, number>> = Object.fromEntries(Object.entries(definitions)
   .map(([tool, definition]): [string, number | undefined] => [tool, limitCap(definition.schema)]).filter(([, cap]) => cap !== undefined));
-const knowledgeNames = ["find_item", "recipes", "craft", "uses"];
+const knowledgeNames = ["find_item", "recipes", "craft", "uses", "mods"];
 const takeoverTools = ["look", "use", "attack", "select_hotbar", "eat", "open_inventory", "close_screen", "click_slot", "craft", "click_button", "type_text", "press_key", "write_sign", "mount", "dismount", "vehicle_control", "vehicle_boost", "vehicle_inventory", ...machineToolNames];
 /** The resident's own actions on a screen. While one of these was called in the last 30 s, auto-eat leaves an open screen alone. */
 const screenTools = ["use", "open_inventory", "screen", "click_slot", "click_button", "craft", "type_text", "press_key", "close_screen", "write_sign", "vehicle_inventory", ...machineToolNames];
@@ -452,8 +454,13 @@ export class Tools {
             if (recipes.length) { matchedId = item.id; break; }
           }
         }
-        const prefix = matchedId ? `Using ${matchedId} (matched ${args.item}).\n` : "";
-        return recipes.length ? prefix + recipes.map(recipeText).join("\n") : `No indexed recipes for ${args.item}. Mod-specific or runtime recipes may not be exported.`;
+        const origin = fromMod(this.knowledge, matchedId ?? args.item);
+        const prefix = `${matchedId ? `Using ${matchedId} (matched ${args.item}).\n` : ""}${origin ? `${origin}\n` : ""}`;
+        return recipes.length ? prefix + recipes.map(recipeText).join("\n") : `${prefix}No indexed recipes for ${args.item}. Mod-specific or runtime recipes may not be exported.`;
+      }
+      case "mods": {
+        if (!this.knowledge) throw new Error(`Knowledge unavailable: ${this.knowledgeError}`);
+        return modsReply(this.knowledge, args);
       }
       case "craft": {
         if (!this.knowledge) throw new Error(`Knowledge unavailable: ${this.knowledgeError}`);
@@ -491,7 +498,7 @@ export class Tools {
       case "what_next": {
         const [state, saved, plan] = await Promise.all([api.state(true), readPlaces(body.config.residentDir, this.commons), this.plans.focused().catch(() => undefined)]);
         const society = await this.society.snapshot({ project: plan?.name, needs: [plan?.goal, plan?.needs].filter(Boolean).join(" "), dimension: state.dimension });
-        return whatNext(snapshotOf(state, { now: this.now(), ...saved, plan, knowledge: this.knowledge, society }));
+        return whatNext(snapshotOf(state, { now: this.now(), ...saved, plan, knowledge: this.knowledge, society, pack: this.knowledge && packKinds(this.knowledge) }));
       }
       case "set_reflexes":
         Object.assign(body.reflexes, args);

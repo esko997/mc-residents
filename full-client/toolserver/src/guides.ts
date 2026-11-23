@@ -29,7 +29,7 @@ function phraseScore(query: string, aliases: readonly string[]): number {
 }
 
 function topics(prefix = "Offline reference topics"): string {
-  return `${prefix}\n${referenceGuides.map(guide => `${guide.id}: ${guide.title}`).join("\n")}\nCall guide with a topic as query; sections are shown there. query=references browses researched references. Other queries search installed books. Recipes/JEI override generic instructions; references are not live-tested skills.`;
+  return `${prefix}\n${referenceGuides.map(guide => `${guide.id}: ${guide.title}`).join("\n")}\nCall guide with a topic as query; sections are shown there. query=references browses researched references. Other queries search installed books. Recipes/JEI override generic instructions; references are not live-tested skills. mods lists every installed mod by kind.`;
 }
 
 function chooseGuide(query: string): ReferenceGuide | undefined {

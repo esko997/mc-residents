@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { GuideHit, ItemHit, Knowledge, RecipeSummary } from "./types";
+import type { GuideHit, ItemHit, Knowledge, ModFacts, RecipeSummary } from "./types";
 
 function boundedLimit(limit: number | undefined, fallback: number): number {
   return Number.isFinite(limit) ? Math.max(0, Math.min(500, Math.trunc(limit!))) : fallback;
@@ -64,6 +64,29 @@ export function openKnowledge(dbPath: string): Knowledge {
       try {
         return (db.query("SELECT item FROM block_drops WHERE block = ? ORDER BY item").all(blockId) as { item: string }[]).map((row) => row.item);
       } catch { return undefined; } // An export built before loot tables were indexed.
+    },
+    // Exports built before the pack overview have no mods tables: answer undefined, as blockDrops does.
+    modList() {
+      try {
+        return (db.query("SELECT facts FROM mods ORDER BY lower(name), id").all() as { facts: string }[]).map((row) => JSON.parse(row.facts) as ModFacts);
+      } catch { return undefined; }
+    },
+    modOf(itemId) {
+      try {
+        return db.query<{ id: string; name: string }, [string]>(`SELECT m.id AS id, m.name AS name FROM namespaces n JOIN mods m ON m.id = n.mod
+          WHERE n.namespace = substr(?1, 1, instr(?1, ':') - 1)`).get(itemId) ?? undefined;
+      } catch { return undefined; }
+    },
+    modItems(mod, words, offset, limit) {
+      // Every word must appear in the display name or the id, as in JEI's search box.
+      const terms = words.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [];
+      const where = terms.map((_, i) => `AND (instr(lower(coalesce(i.name, '')), ?${i + 2}) > 0 OR instr(lower(r.id), ?${i + 2}) > 0)`).join(" ");
+      const from = `FROM registered r JOIN items i ON i.id = r.id WHERE r.mod = ?1 ${where}`;
+      const total = db.query<{ n: number }, string[]>(`SELECT count(*) AS n ${from}`).get(mod, ...terms)?.n ?? 0;
+      // Both bounds are whole numbers here, so they go into the statement text.
+      const items = db.query<ItemHit & { kind: string }, string[]>(`SELECT r.id AS id, i.name AS name, r.kind AS kind ${from}
+        ORDER BY lower(coalesce(i.name, r.id)), r.id LIMIT ${boundedLimit(limit, 20)} OFFSET ${Math.max(0, Math.trunc(offset) || 0)}`).all(mod, ...terms);
+      return { items, total };
     },
     close() { db.close(); },
   };

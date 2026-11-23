@@ -32,8 +32,16 @@ export interface Snapshot {
   plan?: PlanFocus;
   /** Recipes of this modpack; without it the rules use the vanilla recipes written beside them. */
   knowledge?: Pick<Knowledge, "recipesFor" | "itemsInTag">;
+  /** The installed mods sorted into kinds, when the knowledge export has the pack overview. */
+  pack?: PackKinds;
   /** Bounded resident reports, never machine-verified prerequisites. */
   society?: SocietySnapshot;
+}
+/** Kinds of installed mods (as `mods` lists them) and which kind an item's mod belongs to. */
+export interface PackKinds {
+  kinds: { name: string; mods: number }[];
+  /** Undefined for the base game, libraries and client-side helpers. */
+  kindOf(itemId: string): string | undefined;
 }
 export interface Rule {
   id: string;
@@ -364,6 +372,22 @@ export const rules: Rule[] = [
     id: "no_plan", priority: 10,
     suggest(view) { return view.snapshot.plan ? undefined : "No project is written. Choose a useful outcome serving your vision; plan_set keeps why, done_when and immediate steps across restarts. guide explains mechanics; skill_find may offer a tested routine."; },
   },
+  {
+    // The pack is large and residents met only what they stumbled on: name the kinds nothing carried comes from.
+    id: "mod_kinds", priority: 8,
+    suggest(view) {
+      const pack = view.snapshot.pack;
+      if (!pack) return undefined;
+      const held = new Set<string>();
+      for (const item of [...view.counts.keys(), ...view.snapshot.armour.filter(nonempty).map(stack => stack.item)]) {
+        const kind = pack.kindOf(item);
+        if (kind) held.add(kind);
+      }
+      const untouched = pack.kinds.filter(kind => !held.has(kind.name));
+      if (untouched.length < 3) return undefined;
+      return `None of what you carry or wear comes from these kinds of installed mods: ${untouched.map(kind => kind.name).join("; ")}. mods describes each kind.`;
+    },
+  },
 ];
 
 /** Every rule that has something to say about this snapshot, most useful first. */
@@ -398,7 +422,7 @@ export function whatNext(snapshot: Snapshot, table: Rule[] = rules, limit = 1300
 }
 
 /** A snapshot of the body as Synapse reports it; the caller adds what the stores know. */
-export function snapshotOf(state: State, rest: Pick<Snapshot, "now" | "places" | "deaths" | "plan" | "knowledge" | "society">): Snapshot {
+export function snapshotOf(state: State, rest: Pick<Snapshot, "now" | "places" | "deaths" | "plan" | "knowledge" | "society" | "pack">): Snapshot {
   if (!state.inventory) throw new Error("Synapse did not provide inventory.");
   return {
     ...rest, health: state.health, food: state.food, pos: state.pos, dimension: state.dimension,
