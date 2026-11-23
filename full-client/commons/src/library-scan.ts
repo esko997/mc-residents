@@ -98,7 +98,7 @@ export class LibraryScan {
       }
       const list = this.healthy(reply, "shelf list").shelves;
       // A shelf the bridge could not list completely (a malformed or oversized book) is unknown: its copies wait for a re-read.
-      for (const item of list.items) if (item.status === "observed") for (const id of applyShelf(this.db, item, list.scannedAt, false)) confirmed.add(id);
+      for (const item of list.items) if (item.status === "observed") for (const id of applyShelf(this.db, item, item.observedAt, false)) confirmed.add(id);
       shelves += list.items.length;
       truncated ||= list.truncated;
       after = list.next;

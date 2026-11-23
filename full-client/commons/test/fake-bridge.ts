@@ -86,9 +86,9 @@ export function fakeBridge(clock: () => number) {
         const items = listed.slice(from, from + limit).map(([k]) => {
           const [dim, x, y, z] = k.split(" ");
           const { block, status, reason, slots: books } = shelfAt(dim!, [Number(x), Number(y), Number(z)]);
-          return { dimension: dim, pos: [Number(x), Number(y), Number(z)], block, status, reason, slots: books };
+          return { dimension: dim, pos: [Number(x), Number(y), Number(z)], block, status, reason, slots: books, observedAtMs: clock() - world.listAge };
         });
-        return envelope({ shelves: { items, next: from + limit < listed.length ? String(from + limit) : null, loadedOnly: true, scannedAtMs: clock() - world.listAge, truncated: world.cutAfter !== null, total: all.length } });
+        return envelope({ shelves: { items, next: from + limit < listed.length ? String(from + limit) : null, loadedOnly: true, scannedAtMs: clock() - world.listAge, completedAtMs: clock(), truncated: world.cutAfter !== null, total: all.length } });
       }
       default: return { ok: false, status: "error", detail: `Observer: no ${url.pathname}`, httpStatus: 404 };
     }

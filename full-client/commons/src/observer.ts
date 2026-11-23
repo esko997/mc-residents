@@ -122,10 +122,11 @@ export interface ObserverBook extends ShelfPlace { status: LibraryStatus; reason
 /** One page of the bridge's list of chiseled bookshelves and lecterns holding a book, in loaded chunks only. An item
  * whose `status` is not `observed` could not be listed completely (it has no slots): unknown, not empty. */
 export interface ObserverShelves {
-  items: (ShelfPlace & { block: string | null; status: LibraryStatus; slots: BookInfo[] })[];
+  items: (ShelfPlace & { block: string | null; status: LibraryStatus; slots: BookInfo[]; observedAt: number })[];
   next: string | null;
-  /** When the bridge scanned them, on this machine's clock. */
+  /** Pass start and finish, on this machine's clock. Individual holders may be observed much later than the start. */
   scannedAt: number;
+  completedAt: number;
   truncated: boolean;
 }
 export interface WatchResident { name: string; uuid: string }
@@ -264,17 +265,18 @@ export async function observerShelves(
   if (!integerIn(args.limit, 1, 200)) return observerError("Shelves take a limit from 1 to 200.");
   const query = new URLSearchParams({ ...(args.after ? { after: args.after } : {}), limit: String(args.limit) });
   return observerRead(source, `/v1/library/shelves?${query}`, get, (raw, shift) => {
-    const list = record(raw.shelves), scannedAtMs = finite(list.scannedAtMs);
-    if (!Array.isArray(list.items) || scannedAtMs === undefined || !nullableText(list.next) || typeof list.truncated !== "boolean") return null;
+    const list = record(raw.shelves), scannedAtMs = finite(list.scannedAtMs), completedAtMs = finite(list.completedAtMs);
+    if (!Array.isArray(list.items) || scannedAtMs === undefined || completedAtMs === undefined || !nullableText(list.next) || typeof list.truncated !== "boolean") return null;
     const items: ObserverShelves["items"] = [];
     for (const entry of list.items) {
-      const item = record(entry), pos = blockPos(item.pos), slots = bookSlots(item.slots);
+      const item = record(entry), pos = blockPos(item.pos), slots = bookSlots(item.slots), observedAtMs = finite(item.observedAtMs);
       const status = item.status ?? "observed";
-      if (!pos || !slots || typeof item.dimension !== "string" || !nullableText(item.block ?? null)
+      if (!pos || !slots || observedAtMs === undefined || typeof item.dimension !== "string" || !nullableText(item.block ?? null)
         || typeof status !== "string" || !Object.hasOwn(LIBRARY_STATUSES, status)) return null;
-      items.push({ dimension: item.dimension, pos, block: (item.block as string | null | undefined) ?? null, status: status as LibraryStatus, slots });
+      items.push({ dimension: item.dimension, pos, block: (item.block as string | null | undefined) ?? null, status: status as LibraryStatus, slots,
+        observedAt: observedAtMs + shift });
     }
-    return { shelves: { items, next: list.next, scannedAt: scannedAtMs + shift, truncated: list.truncated } };
+    return { shelves: { items, next: list.next, scannedAt: scannedAtMs + shift, completedAt: completedAtMs + shift, truncated: list.truncated } };
   });
 }
 

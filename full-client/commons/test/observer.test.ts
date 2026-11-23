@@ -190,15 +190,18 @@ test("library non-observations remain explicit status/reason outcomes, not inven
   }
 });
 
-test("the shelf list pages with its cursor, moves its scan time onto this clock, and says when it was cut", async () => {
+test("a slow discovery pass preserves each holder's observation time on the hub's clock", async () => {
   const seen: Seen[] = [], src = source();
   const items = [{ ...place, block: "minecraft:lectern", status: "observed" as const, slots: [{ ...bookMetadata, slot: 0 }] }, { dimension: "minecraft:the_nether", pos: [1, 2, 3] as [number, number, number], block: "minecraft:chiseled_bookshelf", status: "invalid" as const, slots: [] }];
-  const get = getWith(fakeFetch({ "/v1/library/shelves": json(endpointReply({ shelves: { items, next: "c2", loadedOnly: true, scannedAtMs: SERVED - 20_000, truncated: true } })) }, seen));
+  const times = { scannedAtMs: SERVED - 67_000, completedAtMs: SERVED - 1000 };
+  const list = { ...times, items: items.map((item, i) => ({ ...item, observedAtMs: SERVED - (i === 0 ? 60_000 : 2000) })), next: "c2", loadedOnly: true, truncated: true };
+  const get = getWith(fakeFetch({ "/v1/library/shelves": json(endpointReply({ shelves: list })) }, seen));
   const page = await observerShelves(src, { after: "c1", limit: 200 }, get);
   if (!page.ok) throw new Error(page.detail);
-  expect(page.data.shelves).toEqual({ items, next: "c2", scannedAt: SERVED + 5000 - 20_000, truncated: true });
+  expect(page.data.shelves).toEqual({ items: items.map((item, i) => ({ ...item, observedAt: list.items[i].observedAtMs + 5000 })),
+    next: "c2", scannedAt: times.scannedAtMs + 5000, completedAt: times.completedAtMs + 5000, truncated: true });
   expect([...new URL(seen[0].url).searchParams]).toEqual([["after", "c1"], ["limit", "200"]]);
-  expect(await observerShelves(src, { limit: 200 }, getWith(fakeFetch({ "/v1/library/shelves": json(endpointReply({ shelves: { items: [{ ...items[0], pos: [1, 2] }], next: null, scannedAtMs: SERVED, truncated: false } })) }))))
+  expect(await observerShelves(src, { limit: 200 }, getWith(fakeFetch({ "/v1/library/shelves": json(endpointReply({ shelves: { ...list, items: [{ ...list.items[0], pos: [1, 2] }] } })) }))))
     .toMatchObject({ ok: false, status: "error" });
 });
 
