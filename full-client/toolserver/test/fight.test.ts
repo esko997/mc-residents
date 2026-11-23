@@ -92,10 +92,10 @@ test("a player who steps into the crosshair after the body's read is not struck:
   const f = await fixture(); f.state.hotbar = [{ slot: 0, item: "minecraft:iron_sword", count: 1 }]; await f.body.poll();
   const zombie = { type: "entity", entity: "minecraft:zombie", entityId: 9 };
   f.state.health = 17;
-  f.state.nearbyEntities = [mob(9, "minecraft:zombie", 2), { id: 3, type: "minecraft:player", player: true, name: "Levi", pos: [0.3, 64, 1], distance: 1 }];
+  f.state.nearbyEntities = [mob(9, "minecraft:zombie", 2), { id: 3, type: "minecraft:player", player: true, name: "Piper", pos: [0.3, 64, 1], distance: 1 }];
   f.state.lookingAt = zombie;
   await f.body.poll();
-  // The body sees the zombie in its sights; by the time the click arrives Levi stands in the way.
+  // The body sees the zombie in its sights; by the time the click arrives Piper stands in the way.
   f.options.beforeAttack = state => { state.lookingAt = { type: "entity", entity: "minecraft:player", entityId: 3 }; f.options.beforeAttack = undefined; };
   f.tick(250); await f.body.poll();
   expect(f.requests.filter(r => r.body.action === "attack").map(r => r.body)).toEqual([{ action: "attack", expectEntityId: 9 }]);
