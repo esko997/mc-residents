@@ -2,6 +2,8 @@
 import { coverOf, dimensionName as dimensionLabel, equivalent, heightColour, heightDomain, mapDimensions, mergeMapTrail, nearestIndex, passedPlaces, profileSeries, SEA_LEVEL, splitByHeight } from "./map-trails.js";
 import { createLiveView } from "./live-view.js";
 import { createRunControls } from "./run-control.js";
+import { createServerRecord } from "./server-record.js";
+import { createBlockLayer } from "./map-blocks.js";
 // The Shared Knowledge page. No framework and no build step: each panel fetches JSON from
 // api/<route> (relative, so the token in the address carries over) and patches
 // only the parts of the page whose content changed, so nothing flickers and
@@ -500,6 +502,12 @@ function whereText(dimension, x, z) {
 }
 const PORTAL = "#b07cff";
 const BAND_TINT = { the_nether: "rgba(229,100,90,.14)", the_end: "rgba(180,139,224,.16)" };
+// Building and digging under the trails (public/map-blocks.js), from the hub's server record.
+const blockLayer = createBlockLayer($("#map-blocks"), {
+  html, setHtml, get, colour, canvasColour, stamp, clock, ago, now: serverNow, dimensionLabel,
+  hours: () => map.hours, dimension: () => map.dimension, places: () => map.places, residents: () => state.residents,
+  redraw: () => drawMap(), centre: (dimension, x, z) => showOnMap(dimension, x, z),
+});
 
 function heightRange() {
   const [min, max] = heightDomain(map.dimension), saved = map.heights[map.dimension];
@@ -671,6 +679,7 @@ function drawMap() {
     ctx.beginPath(); ctx.moveTo(0, Math.round(sy) + .5); ctx.lineTo(width, Math.round(sy) + .5); ctx.stroke();
     if (sy > 16) { ctx.fillStyle = faint; ctx.textAlign = "left"; ctx.fillText(String(z), 3, sy - 7); }
   }
+  blockLayer.draw(ctx, toScreen, width, height);
   ctx.fillStyle = "rgba(20,23,27,.85)"; ctx.fillRect(0, height - 20, 236, 20);
   ctx.fillStyle = faint; ctx.textAlign = "left";
   ctx.fillText(`${dimensionLabel(dimension)} · grid ${step} blocks · x → east, z ↓ south`.slice(0, 70), 6, height - 10);
@@ -774,7 +783,8 @@ function nearestFeature(sx, sy, wanted = () => true) {
 }
 function readout(sx, sy) {
   const [x, z] = toWorld(sx, sy), nearest = nearestFeature(sx, sy);
-  $("#map-readout").textContent = `${whereText(map.dimension, x, z)}${nearest ? `   ${nearest.text}` : ""}`;
+  const text = nearest?.text ?? blockLayer.describe(x, z);
+  $("#map-readout").textContent = `${whereText(map.dimension, x, z)}${text ? `   ${text}` : ""}`;
 }
 
 function renderHeights() {
@@ -819,11 +829,14 @@ function renderMap() {
   renderMapPlaces();
   if (!map.fitted && map.canvas.clientWidth) { fitMap(); map.fitted = true; }
   drawMap();
+  blockLayer.render();
   renderProfile();
 }
 async function loadMap() {
-  map.data = await get(`api/map?hours=${map.hours}`);
-  map.dimensions = mapDimensions(map.data);
+  const [data] = await Promise.all([get(`api/map?hours=${map.hours}`), blockLayer.load()]);
+  map.data = data;
+  // Dimensions with block changes but no trail or place still get a map.
+  map.dimensions = mapDimensions({ ...map.data, places: [...map.data.places, ...blockLayer.dimensions().map(dimension => ({ dimension }))] });
   const shown = map.dimensions.includes(map.want) ? map.want : "overworld";
   if (shown !== map.dimension) { map.dimension = shown; map.fitted = false; }
   map.places = map.data.places.map(place => ({ ...place, key: placeKey(place),
@@ -831,7 +844,20 @@ async function loadMap() {
     .sort((a, b) => a.owner.localeCompare(b.owner) || a.name.localeCompare(b.name));
   rebuildTrails();
   renderMap();
+  if (map.goTo) { const { dimension, x, z } = map.goTo; map.goTo = null; showOnMap(dimension, x, z); }
 }
+/** From another panel: open the Map centred on a spot (once the map has its data). */
+function goToMap(dimension, x, z) {
+  map.goTo = { dimension, x, z };
+  show("map");
+  if (map.data) { map.goTo = null; showOnMap(dimension, x, z); }
+}
+
+// ---------- Server record (public/server-record.js) ----------
+const serverRecord = createServerRecord($("#p-record"), {
+  html, setHtml, get, colour, stamp, clock, ago, now: serverNow, residents: () => state.residents, places: () => map.places, goToMap,
+  openFacility: id => { commons.focus = id; show("commons"); if (commons.data) renderCommons(); },
+});
 
 // ---------- Map: elevation profile ----------
 function profileFor(name) {
@@ -1050,6 +1076,7 @@ function drawProfile() {
       const nearest = nearestFeature(point[0], point[1], feature => feature.key || feature.go);
       if (nearest?.key) selectMapPlace(nearest.key);
       else if (nearest?.go) showOnMap(nearest.go.dimension, nearest.go.x, nearest.go.z);
+      else { const [x, z] = toWorld(point[0], point[1]); blockLayer.select(x, z); }
     }
   };
   canvas.addEventListener("pointerup", release);
@@ -1291,6 +1318,13 @@ function renderObserver(observation) {
         ${observedStock(contents)}` : html`<p>No stock observation available. Unloaded or inaccessible does not mean empty.</p>`}`);
   }, "article");
   $("#g-observed-empty").hidden = facilities.length > 0;
+  // Arrived from a ledger in Server record: bring that facility's card (or, if it is not in the snapshot, this list) into view.
+  if (commons.focus) {
+    const card = [...$("#g-observed-facilities").children].find(child => child.dataset.key === commons.focus);
+    commons.focus = null;
+    (card ?? $("#g-observed-facilities").closest("section")).scrollIntoView({ block: card ? "center" : "start" });
+    if (card) { card.classList.add("focus"); setTimeout(() => card.classList.remove("focus"), 3000); }
+  }
 }
 
 function renderCommons() {
@@ -1627,6 +1661,7 @@ const panels = [
   { id: "residents", title: "Residents", every: 5000, load: loadResidents, always: true },
   { id: "live", title: "Live", every: 5000, load: () => liveView.loadStatus() },
   { id: "activity", title: "Activity", every: 4000, load: loadActivity },
+  { id: "record", title: "Server record", every: 30000, load: () => serverRecord.load() },
   { id: "map", title: "Map", every: 10000, load: loadMap },
   { id: "notes", title: "Notes", every: 30000, load: loadNotes },
   { id: "commons", title: "Shared Knowledge", every: 15000, load: loadCommons },

@@ -122,6 +122,17 @@
     <p id="feed-empty" class="empty" hidden></p>
   </section>
 
+  <section id="p-record" class="panel" aria-labelledby="t-record" hidden>
+    <div class="controls">
+      <span class="map-heights-label">Changes over</span>
+      <div id="record-window" class="seg" role="group" aria-label="Window for the changes in statistics"></div>
+      <span class="map-heights-label">Blocks and containers</span>
+      <div id="record-span" class="seg" role="group" aria-label="Period for building, digging and container flows"></div>
+    </div>
+    <p class="fine">What the Minecraft server itself counted for each resident, as opposed to what they said or noted: its statistics, advancements, the blocks they placed and broke, and changes in registered containers. Each section says where its figures come from and what they miss.</p>
+    <div id="record-body"></div>
+  </section>
+
   <section id="p-map" class="panel" aria-labelledby="t-map" hidden>
     <div class="controls">
       <div id="map-hours" class="seg" role="group" aria-label="How far back the trails go"></div>
@@ -143,6 +154,20 @@
     <p id="map-readout" class="readout">Move over the map for coordinates. Select a saved-place dot or a place below.</p>
     <div id="map-legend" class="strip"></div>
     <p id="map-help" class="fine">One dimension at a time; north (−z) up. Nether coordinates are shown with their Overworld equivalent (×8). Trails are snapped to a four-block grid, in eight-block height bands: thicker lines mean more overlapping samples, not exact trip counts; higher trails are drawn over lower ones, so use Heights to see what lies beneath. Long sampling gaps, large jumps and dimension changes are not joined; ◆ marks a dimension change between two consecutive samples (select it to see the other side). Drag to pan; pinch or use +/− to zoom.</p>
+    <section id="map-blocks" aria-labelledby="map-blocks-title" hidden>
+      <div class="controls">
+        <h2 id="map-blocks-title">Building and digging</h2>
+        <div id="mb-show" class="seg" role="group" aria-label="Which block changes to shade on the map"></div>
+        <div id="mb-who" class="seg" role="group" aria-label="Whose block changes"></div>
+      </div>
+      <p id="mb-source" class="fine source"></p>
+      <div id="mb-hours" class="hour-bars" role="group" aria-label="Block changes per hour in the map's window; select an hour to show only it"></div>
+      <p id="mb-summary" class="fine"></p>
+      <div class="map-browse">
+        <div id="mb-areas"></div>
+        <section id="mb-cell" aria-label="Selected chunk"></section>
+      </div>
+    </section>
     <section id="map-profile-box" aria-labelledby="map-profile-title">
       <div class="controls">
         <h2 id="map-profile-title">Elevation</h2>
