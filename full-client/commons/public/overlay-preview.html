@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#23374b">
+<title>Broadcast preview</title>
+<link rel="stylesheet" href="../overlay.css">
+<script type="module" src="../overlay-preview.js"></script>
+</head>
+<body>
+<header class="station-header"><div><h1>Broadcast preview</h1><p>Resident field station</p></div><nav aria-label="Broadcast pages"><a data-route="overlay/control">Broadcast desk</a><a data-route="overlay" target="_blank" rel="noopener noreferrer">Transparent overlay</a><a data-route="">Commons</a></nav></header>
+<div class="connection-line" role="status"><span id="connection-dot" class="status-dot"></span><p id="sync-status">Connecting to the broadcast desk…</p><button id="retry" type="button">Reconnect overlay</button></div>
+<main class="preview-workspace">
+  <div class="preview-controls">
+    <label>Resident<select id="preview-resident" disabled></select></label>
+    <button id="watch" class="primary" type="button" disabled>Watch</button>
+    <button id="stop" type="button" disabled>Stop</button>
+    <button id="audio" type="button" disabled>Unmute audio</button>
+    <button id="fullscreen" type="button" disabled>Fullscreen</button>
+    <p id="media-status" class="session-message preview-status" role="status">Choose Watch to start a viewing session. Opening this page does not start video.</p>
+  </div>
+  <div id="stage-viewport" class="stage-viewport">
+    <video id="preview-video" class="preview-video" autoplay muted playsinline hidden></video>
+    <div id="preview-blank" class="preview-blank"><h2>Video is stopped</h2><p>Press Watch to composite live video with the saved overlay. The overlay remains available without video.</p></div>
+    <div id="overlay-stage" class="overlay-stage" aria-label="Broadcast overlay preview"></div>
+  </div>
+  <div class="preview-notes"><p>The transparent overlay never starts capture. This preview holds a shared viewing lease only after Watch. Leaving or hiding this page releases it; returning never restarts video.</p><p>Navigation is an X/Z schematic, not terrain. Missing or stale resident context is labeled honestly.</p></div>
+</main>
+</body>
+</html>

@@ -128,7 +128,7 @@ export function normalizeState(data: unknown): ResidentState | null {
     dimension: typeof raw.dimension === "string" ? shortId(raw.dimension) : "unknown",
     health: round1(finite(raw.health) ?? 0), maxHealth: finite(record(raw.attributes).maxHealth) ?? 20,
     food: finite(raw.food) ?? 0,
-    ...(air !== undefined && maxAir !== undefined && air < maxAir ? { air: { now: air, max: maxAir } } : {}),
+    ...(air !== undefined && maxAir !== undefined ? { air: { now: air, max: maxAir } } : {}),
     dangers, gameMode: typeof raw.gameMode === "string" ? raw.gameMode : undefined,
     held: hotbar.find(entry => entry.slot === selectedSlot) ?? null, selectedSlot,
     screen: typeof raw.screen === "string" && raw.screen !== "none" ? raw.screen : null,

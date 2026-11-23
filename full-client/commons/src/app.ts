@@ -24,6 +24,7 @@ import { ResidentApi } from "./resident-api.ts";
 import { importSharedPlaces, sharedPlaces } from "./resident-places.ts";
 import { alarmActivityText, recentAlarms } from "./resident-alarms.ts";
 import type { AlarmEvent } from "./resident-contracts-alarm.ts";
+import { Overlay } from "./overlay.ts";
 
 /** The JSON each GET route under /<token>/api/ returns, for whoever reads it (the page, the tests). */
 export interface Replies {
@@ -47,6 +48,11 @@ const STATIC: Record<string, string> = {
   "map-trails.js": "text/javascript; charset=utf-8",
   "watch-layout.js": "text/javascript; charset=utf-8", "watch-layout.css": "text/css; charset=utf-8",
   "live-view.js": "text/javascript; charset=utf-8", "live-view.css": "text/css; charset=utf-8",
+  "overlay": "text/html; charset=utf-8", "overlay/control": "text/html; charset=utf-8", "overlay/preview": "text/html; charset=utf-8",
+  "overlay.js": "text/javascript; charset=utf-8", "overlay-control.js": "text/javascript; charset=utf-8",
+  "overlay-preview.js": "text/javascript; charset=utf-8", "overlay-core.js": "text/javascript; charset=utf-8",
+  "overlay-media.js": "text/javascript; charset=utf-8", "overlay.css": "text/css; charset=utf-8",
+  "overlay-font.ttf": "font/ttf", "overlay-font-LICENSE.txt": "text/plain; charset=utf-8",
 };
 const MAX_BODY = 8192;
 
@@ -75,6 +81,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     },
     resident: name => config.residents.find(resident => resident.name.toLowerCase() === name?.toLowerCase()),
   };
+  const overlay = new Overlay(context, token, log);
   const localRoutes: Routes = {
     ...residentRoutes(context), ...activityRoutes(context), ...mapRoutes(context), ...notesRoutes(context),
     ...(config.role === "hub" ? { ...commonsRoutes(context), ...consoleRoutes(context) } : {}),
@@ -88,6 +95,11 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     // Without the trailing slash the page's own relative requests would lose the token.
     if (rest.length === 0) return new Response(null, { status: 308, headers: { Location: `/${token}/` } });
     const route = rest.join("/");
+    if (request.method === "GET" && ["overlay/", "overlay/control/", "overlay/preview/"].includes(route)) {
+      return new Response(null, { status: 308, headers: { Location: `/${token}/${route.slice(0, -1)}`, "Referrer-Policy": "no-referrer" } });
+    }
+    // Overlay owns bounded bodies, same-origin writes and bounded streaming replies.
+    if (rest[0] === "api" && rest[1] === "overlay") return overlay.handle(request, rest.slice(2).join("/"));
     // The URL token was checked before this dispatch. Live owns its larger,
     // stream-bounded SDP body limit and same-origin mutation checks.
     if (rest[0] === "api" && rest[1] === "live") {
@@ -104,7 +116,8 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     }
     const type = STATIC[route];
     if (!type || request.method !== "GET") return refuse(404, "Not found.");
-    const file = Bun.file(join(config.publicDir, route || "index.html"));
+    const page = route === "overlay" ? "overlay.html" : route === "overlay/control" ? "overlay-control.html" : route === "overlay/preview" ? "overlay-preview.html" : route || "index.html";
+    const file = Bun.file(join(config.publicDir, page));
     if (!await file.exists()) return refuse(404, "Not found.");
     return new Response(file, { headers: { "Content-Type": type, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
   }
@@ -134,6 +147,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     },
     start() { watcher.start(); if (config.role === "hub") feed.start(); federation?.start(); void context.readSessions(); },
     stop() {
+      overlay.stop();
       // Abort capture and signal FFmpeg now; TERM → KILL/reap continues boundedly.
       void live.shutdown().catch(() => log("Live video encoder cleanup failed; restart Commons before streaming again."));
       residentApi?.close();

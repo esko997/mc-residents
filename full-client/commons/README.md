@@ -215,12 +215,12 @@ once; later starts print only where the token file is.
 
 ## Private live video
 
-The **Live** panel selects any configured resident. Watch starts one shared,
-video-only channel; selecting another resident switches it for all viewers.
-Up to four viewers may share that channel. Stop, leaving Live, or hiding the
-page releases that viewer; capture and encoding stop when the last viewer
-leaves. Lost viewers expire after 30 seconds. Errors require an explicit Watch,
-not an automatic reconnect. There is no audio, recording, or desktop capture.
+The **Live** panel selects any configured local resident. Watch starts one shared
+channel; selecting another resident switches it for all viewers. Up to four
+viewers may share that channel. Stop, leaving Live, or hiding the page releases
+that viewer; capture and encoding stop when the last viewer leaves. Lost viewers
+expire after 30 seconds. Errors require an explicit Watch, not an automatic
+reconnect. Audio is opt-in; there is no recording or desktop capture.
 
 The path is the client's main framebuffer → authenticated loopback raw frames
 → FFmpeg → loopback RTSP → MediaMTX → WebRTC. Only encoded WebRTC media listens
@@ -230,8 +230,9 @@ Internet traversal, STUN or TURN is configured. Status beside the video has its
 own sample time; it is not frame-synchronized and does not infer the resident's
 current action.
 
-Install FFmpeg with `h264_nvenc` support and MediaMTX **1.21.4** on the client
-host. Copy the MediaMTX executable to `~/gary-client/bin/mediamtx`, and
+Install FFmpeg with the explicitly selected H.264 encoder (NVENC, VAAPI or
+libx264), plus Pulse input and libopus for optional audio, and MediaMTX **1.21.4**.
+Copy the MediaMTX executable to `~/gary-client/bin/mediamtx`, and
 `../live/mediamtx.yml` to `~/gary-client/live/mediamtx.yml`. Install
 `../live/resident-video.service` as a user service and
 `../live/commons-live.conf` as
@@ -249,8 +250,14 @@ never silently retried with software encoding.
 Optional overrides: `COMMONS_LIVE_FFMPEG` (executable path),
 `COMMONS_LIVE_RTSP_URL` (default `rtsp://127.0.0.1:8554/resident`) and
 `COMMONS_LIVE_WHEP_URL` (default `http://127.0.0.1:8889/resident/whep`).
-Both URLs must remain loopback-only. `COMMONS_LIVE_ENCODER=libx264` is an
-explicit isolated-test option, not a production fallback.
+Both publish/signaling URLs must remain loopback-only. Set
+`COMMONS_LIVE_ENCODER` explicitly to `h264_nvenc`, `h264_vaapi` or `libx264`;
+VAAPI also requires `COMMONS_LIVE_VAAPI_DEVICE`. No fallback is automatic.
+
+The experimental [Twitch mode guide](../../docs/TWITCH-MODE.md) covers isolated
+per-client audio, OBS RTSP pull, transparent overlays, the second-window scene
+editor and composite preview. These pages live under the existing secret URL:
+`overlay`, `overlay/control`, `overlay/preview`. Keep that URL off stream.
 
 ### Less obstructive client HUD
 

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#23374b">
+<title>Broadcast desk</title>
+<link rel="stylesheet" href="../overlay.css">
+<script type="module" src="../overlay-control.js"></script>
+</head>
+<body>
+<header class="station-header">
+  <div><h1>Broadcast desk</h1><p>Resident field station</p></div>
+  <nav aria-label="Broadcast pages"><a data-route="overlay/preview">Video preview</a><a data-route="overlay" target="_blank" rel="noopener noreferrer">Transparent overlay</a><a data-route="">Commons</a></nav>
+</header>
+<div class="connection-line" role="status"><span id="connection-dot" class="status-dot"></span><p id="save-status">Connecting to the broadcast desk…</p><button id="retry" type="button">Reconnect</button></div>
+<section id="conflict" class="conflict-box" aria-labelledby="conflict-title" hidden>
+  <h2 id="conflict-title">This layout changed in another window</h2>
+  <p>Your edits are still on this desk. Choose which layout to keep before saving again.</p>
+  <div class="button-row"><button id="take-server" type="button">Use saved layout</button><button id="keep-mine" type="button">Save my layout instead</button></div>
+</section>
+<main class="control-workspace">
+  <section class="stage-column" aria-labelledby="stage-title">
+    <div class="stage-toolbar"><h2 id="stage-title">On-air layout</h2><p id="stage-size">Waiting for saved layout</p></div>
+    <div id="stage-viewport" class="stage-viewport control-stage"><div id="overlay-stage" class="overlay-stage" aria-label="Editable overlay stage"></div></div>
+    <div class="stage-foot"><span>Drag a widget by its heading. Use the inspector for exact placement.</span><span>Only privacy-filtered context is shown.</span></div>
+  </section>
+  <aside class="inspector" aria-label="Broadcast settings">
+    <section><h2>Channel</h2><div class="field-stack">
+      <label>Resident<select id="resident" disabled></select></label>
+      <label>Canvas<select id="layout" disabled><option value="1920x1080">1920 × 1080</option><option value="1280x720">1280 × 720</option></select></label>
+      <label>Layout preset<select id="preset" disabled><option value="exploring">Exploring</option><option value="building">Building</option><option value="chat-heavy">Chat-heavy</option><option value="custom">Custom</option></select></label>
+      <p class="help">Changing a preset replaces widget placement, themes and visibility. Other channel settings stay.</p>
+    </div></section>
+    <section><h2>Widgets</h2><div id="widget-picker" class="widget-picker" aria-label="Select a widget"></div>
+      <div class="field-stack"><h3 id="selected-widget">Choose a widget</h3>
+        <label class="check"><input id="widget-enabled" type="checkbox" disabled>Show on air</label>
+        <div class="field-pair"><label>X position<input id="widget-x" type="number" min="0" step="1" disabled></label><label>Y position<input id="widget-y" type="number" min="0" step="1" disabled></label></div>
+        <label>Scale<input id="widget-scale" type="number" min="0.5" max="2" step="0.05" disabled></label>
+        <label>Theme<select id="widget-theme" disabled><option value="slate">Slate</option><option value="paper">Paper</option><option value="minimal">Minimal</option></select></label>
+      </div>
+    </section>
+    <section><h2>Nameplate & privacy</h2><div class="field-stack">
+      <label>Broadcast title<input id="broadcast-title" type="text" maxlength="160" autocomplete="off" disabled></label>
+      <label>Now playing<input id="now-playing" type="text" maxlength="160" autocomplete="off" disabled></label>
+      <label>Hide names<textarea id="hide-names" rows="3" maxlength="1000" spellcheck="false" disabled></textarea></label>
+      <p class="help">One name per line. Matching is case-insensitive and also hides mentions. Titles and context pass through the same on-air privacy filter.</p>
+    </div></section>
+    <section><h2>Saved for every window</h2><p class="help">Edits save to the server automatically. Open overlays and previews update together. The stage uses the same renderer as the transparent overlay.</p><div class="button-row"><button id="save-now" type="button" disabled>Save now</button></div></section>
+  </aside>
+</main>
+</body>
+</html>
