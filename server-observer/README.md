@@ -267,12 +267,14 @@ and whatever facilities leave), so a tick overruns its budget by at most one uni
   slices (each skips the ones already examined by stepping the map's iterator), so a dense chunk is
   finished over several units, never cut off;
 - *holder*: read one noted shelf or lectern at its position, as `/v1/library/shelf` does, decoding at most
-  **one** book the bridge has not already seen unchanged (it remembers each book stack's result while the
-  stack and its tags are the same objects; a changed book gets new tag objects, so it is decoded again). A
-  shelf of six new books takes six units and is published from the unit in which all its slots are known,
-  so the listing is one consistent read; a shelf whose books keep changing gets its remaining books in its
-  eighth unit, so it always ends. An unchanged library therefore costs one cheap unit per holder per scan.
-  One book is bounded by the book limits (by default 100 pages and 65,536 characters).
+  **one** book the bridge has not already seen unchanged. It remembers each successfully selected book while
+  its item stack and the tags it read are the same objects (a changed book gets new tag objects, so it is
+  decoded again); checking that compares at most `maxBookPages` page tags, and plain, enchanted and `other`
+  items keep no tag at all. Failed or oversized books are not remembered: they are tried again, within the
+  book limits. A shelf of six new books takes six units and is published from the unit in which all its
+  slots are known, so the listing is one consistent read; a shelf whose books keep changing gets its
+  remaining books in its eighth unit, so it always ends. An unchanged library costs one cheap unit per holder
+  per scan. One book is bounded by the book limits (by default 100 pages and 65,536 characters).
 
 A chunk unloaded before its first slice, or a level that has gone, is simply not loaded (counted in
 `lastChunksGone` for chunks); a chunk unloaded between two of its slices, or a unit that throws (counted in
@@ -502,7 +504,7 @@ players, large modded chunks and other dimensions loaded.
 ## Verification
 
 0.3.0 (2026-11-23): `gradlew build` on Inspiron (Forge 47.4.20, Java 17, the access transformer
-applied), BUILD SUCCESSFUL, **144 JUnit tests** pass (101 in 0.2.0): watch list parsing, caps and
+applied), BUILD SUCCESSFUL, **147 JUnit tests** pass (101 in 0.2.0): watch list parsing, caps and
 strictness; the PUT's refusals over the real JDK server (scope, Host, browser, content type, body limit
 with and without `Content-Length`, malformed and non-UTF-8 bodies, `library: true`, rate limit, methods)
 with nothing changed after each; atomic replacement while ticks run on another thread (no snapshot ever
@@ -510,7 +512,8 @@ mixes two lists, every push ends applied or superseded, no tick fails); history 
 across pushes; a server with no list yet; old config subjects ignored; the five shelf answers and
 "unloaded is never no_shelf or an empty shelf"; book reads; `other` items; discovery rules, cursor
 paging across a rescan; the scan's per-tick bound, one new book per unit and free rescans of unchanged
-books, dense chunks finished over several slices, a pass slower than 30 s still served with its real read
+books (the real book memo over real NBT, its work bounded by the page cap), dense chunks finished over
+several slices, a pass slower than 30 s still served with its real read
 times, caps, chunks and levels that vanish mid-scan, a throwing chunk contained, demand and the cache.
 The isolated server smoke (with measured costs) is described in the 0.3.0 runbook next to the built jar.
 
