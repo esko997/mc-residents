@@ -55,9 +55,126 @@ case "$backend" in
   *) echo "unknown GARY_CLIENT_DISPLAY_BACKEND: $backend" >&2; exit 2 ;;
 esac
 
-exec "${display[@]}" "$base/venv/bin/portablemc" --main-dir "$base/main" start \
-  --resolution "${width}x${height}" \
-  --mc-dir "$game" --jvm "$java" "--jvm-arg=-Xmx$heap" "--jvm-arg=-Xms512m" \
-  --username "$name" \
-  --join-server 192.168.1.233 --join-server-port 25570 \
-  forge::1.20.1-47.4.10
+command=("${display[@]}" "$base/venv/bin/portablemc" --main-dir "$base/main" start
+  --resolution "${width}x${height}"
+  --mc-dir "$game" --jvm "$java" "--jvm-arg=-Xmx$heap" "--jvm-arg=-Xms512m"
+  --username "$name"
+  --join-server 192.168.1.233 --join-server-port 25570
+  forge::1.20.1-47.4.10)
+
+# Audio is off unless this resident has an explicitly dedicated sink. Preserve
+# the original exec path (and process identity) for every existing deployment.
+audio=${GARY_CLIENT_AUDIO_SINK:-}
+if [ -z "$audio" ]; then
+  exec "${command[@]}"
+fi
+if [[ ! $audio =~ ^resident_[A-Za-z0-9_]{1,48}$ ]]; then
+  echo "resident audio requires a dedicated resident_ sink name" >&2
+  exit 2
+fi
+for tool in pactl python3 setsid timeout; do
+  if ! command -v "$tool" >/dev/null; then
+    echo "resident audio requires Pulse control, Python 3 and session isolation" >&2
+    exit 2
+  fi
+done
+
+module= child= creating=0
+pulse_control() { timeout 5s pactl "$@"; }
+# Never reuse a sink, including one left behind by another client. Only the
+# module created below may be unloaded, and the game process group dies first.
+owned_module() {
+  pulse_control list short modules 2>/dev/null | python3 -c '
+import re,sys
+try:
+    modules=[line.rstrip("\n").split("\t") for line in sys.stdin]
+    found=[m for m in modules if len(m)>=3 and m[1]=="module-null-sink"
+           and ("sink_name="+sys.argv[2]) in m[2].split()
+           and re.search(r"resident[.]launch_id="+re.escape(sys.argv[3])+r"(?![0-9])",m[2])]
+    if len(found)>1: sys.exit(1)
+    if found and sys.argv[1] and found[0][0]!=sys.argv[1]: sys.exit(1)
+    print(found[0][0] if found else "")
+except Exception: sys.exit(1)
+' "$module" "$audio" "$$"
+}
+cleanup_audio() {
+  local result=$?
+  trap - EXIT
+  trap '' HUP INT TERM
+  # Also covers a signal between spawning the sole job and assigning $!.
+  if [ -z "$child" ]; then child=$(jobs -pr); fi
+  if [ -n "$child" ]; then
+    kill -TERM -- "-$child" 2>/dev/null || true
+    kill -TERM "$child" 2>/dev/null || true
+    for ((attempt=0; attempt<20; attempt++)); do
+      kill -0 -- "-$child" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -KILL -- "-$child" 2>/dev/null || true
+    kill -KILL "$child" 2>/dev/null || true
+    wait "$child" 2>/dev/null || true
+  fi
+  # The launch marker also covers termination after load-module succeeded but
+  # before its command substitution assigned the returned module ID.
+  if [ -n "$module" ] || [ "$creating" = 1 ]; then
+    local owned
+    if owned=$(owned_module); then
+      if [ -n "$owned" ]; then
+        pulse_control unload-module "$owned" >/dev/null 2>&1 || {
+          echo "resident audio cleanup could not unload its owned null sink" >&2
+          result=2
+        }
+      fi
+    else
+      echo "resident audio cleanup could not verify ownership; refusing to unload another module" >&2
+      result=2
+    fi
+  fi
+  exit "$result"
+}
+trap cleanup_audio EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+audio_error() { echo "$1" >&2; exit 2; }
+
+# A pre-existing default is required: never install the first/default device.
+default_sink=$(pulse_control get-default-sink 2>/dev/null) || audio_error "resident audio cannot read the existing Pulse default sink"
+[ -n "$default_sink" ] || audio_error "resident audio requires an existing default sink"
+existing=$(pulse_control list short sinks 2>/dev/null) || audio_error "resident audio cannot inspect Pulse sinks"
+if awk -v sink="$audio" '$2 == sink { found=1 } END { exit !found }' <<< "$existing"; then
+  audio_error "resident audio sink already exists; reuse is refused"
+fi
+# Abstract/virtual sinks are ignored by the normal switch-on-connect policy.
+# Do not export PULSE_SINK globally or change any user's default audio device.
+creating=1
+module=$(pulse_control load-module module-null-sink "sink_name=$audio" \
+  "sink_properties=device.description=Resident_game_audio device.class=abstract resident.launch_id=$$" \
+  rate=48000 channels=2 2>/dev/null) || audio_error "resident audio could not create its dedicated Pulse null sink"
+[[ $module =~ ^[0-9]+$ ]] || audio_error "resident audio returned an invalid module identity"
+if ! pulse_control --format=json list sinks 2>/dev/null | python3 -c '
+import json,sys
+try:
+    sinks=json.load(sys.stdin)
+    matches=[s for s in sinks if s["name"]==sys.argv[1]]
+    ok=len(matches)==1 and str(matches[0].get("owner_module"))==sys.argv[2] and matches[0].get("monitor_source")==sys.argv[1]+".monitor" and matches[0].get("properties",{}).get("device.class")=="abstract"
+    sys.exit(0 if ok else 1)
+except Exception: sys.exit(1)
+' "$audio" "$module"; then
+  audio_error "resident audio sink ownership or isolated monitor validation failed"
+fi
+current_default=$(pulse_control get-default-sink 2>/dev/null) || audio_error "resident audio could not verify the unchanged default sink"
+if [ "$current_default" != "$default_sink" ]; then
+  pulse_control set-default-sink "$default_sink" >/dev/null 2>&1 || true
+  audio_error "Pulse policy changed the default sink; resident audio launch refused"
+fi
+
+# Force OpenAL's Pulse backend for this child only; never monitor speakers,
+# microphones, or a mixed default output. Minecraft volume remains operator-set.
+ALSOFT_DRIVERS=pulse PULSE_SINK="$audio" setsid "${command[@]}" &
+child=$!
+set +e
+wait "$child"
+result=$?
+set -e
+exit "$result"

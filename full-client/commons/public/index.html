@@ -51,7 +51,7 @@
       <p id="live-detail" class="fine">Choose a resident, then press Watch.</p>
     </div>
     <div id="live-stage">
-      <header><h2 id="live-name">Resident view</h2><span class="fine">Video only · No audio · No recording</span></header>
+      <header><h2 id="live-name">Resident view</h2><span id="live-media-note" class="fine">No recording · Audio only with operator opt-in</span></header>
       <div class="live-body">
         <div class="live-picture">
           <video id="live-video" autoplay playsinline muted aria-label="Selected resident's live game view" hidden></video>
@@ -68,6 +68,7 @@
       </div>
       <footer>
         <button type="button" id="live-fullscreen" disabled>Fullscreen</button>
+        <button type="button" id="live-audio" aria-pressed="false" disabled>Unmute game audio</button>
         <p id="live-fullscreen-note" class="fine" role="status"></p>
       </footer>
     </div>

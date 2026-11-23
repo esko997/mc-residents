@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createLiveView } from "../public/live-view.js";
 
-// A small DOM harness for the controls used before a viewing lease is acquired.
+// Small media/DOM harness: no browser, capture device or real WebRTC connection.
 class Element {
   value = "";
   options = [];
@@ -13,11 +13,14 @@ class Element {
     this.value = children[0]?.value ?? "";
   }
   removeAttribute() {}
+  setAttribute() {}
+  append() {}
+  play() { return Promise.resolve(); }
   pause() {}
   load() {}
 }
 
-async function withLiveView(run) {
+async function withLiveView(run, overrides = {}) {
   const elements = new Map();
   const find = selector => {
     if (!elements.has(selector)) elements.set(selector, new Element());
@@ -25,11 +28,12 @@ async function withLiveView(run) {
   };
   const fetchStatus = mock(async () => ({ ok: true, json: async () => ({ enabled: true, state: "idle", viewers: 0 }) }));
   const globals = {
-    document: { hidden: false, fullscreenElement: null, addEventListener() {} },
+    document: { hidden: false, fullscreenElement: null, addEventListener() {}, createElement() { return new Element(); } },
     window: { addEventListener() {} },
     RTCPeerConnection: class {},
     Option: class { constructor(text, value) { this.text = text; this.value = value; } },
     fetch: fetchStatus,
+    ...overrides,
   };
   const originals = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   try {
@@ -112,4 +116,64 @@ describe("federated Live controls", () => {
       expect(find("#live-resident").options[0].text).toContain("Live unavailable");
     });
   });
+});
+
+test("Live receives optional audio without replacing video and requires explicit unmute", async () => {
+  for (const audio of [false, true]) {
+    let peer, negotiated;
+    const ready = new Promise(resolve => { negotiated = resolve; });
+    class Peer {
+      iceGatheringState = "complete";
+      transceivers = [];
+      constructor() { peer = this; }
+      addTransceiver(kind, options) { this.transceivers.push({ kind, ...options }); }
+      async createOffer() { return { type: "offer", sdp: "v=0" }; }
+      async setLocalDescription(offer) { this.localDescription = offer; }
+      async setRemoteDescription() { negotiated(); }
+      getReceivers() { return []; }
+      close() {}
+    }
+    class Stream {
+      tracks = [];
+      addTrack(track) { this.tracks.push(track); }
+      getTracks() { return this.tracks; }
+    }
+    await withLiveView(async ({ view, find, fetchStatus }) => {
+      fetchStatus.mockImplementation(async route => ({
+        ok: true,
+        json: async () => route.endsWith("/offer") ? { sdp: "v=0\\r\\n" } : {
+          enabled: true, state: "live", resident: "Gary", generation: 1, lease: "fixture-lease", viewers: 1, audio, videoOnly: !audio,
+        },
+      }));
+      view.updateResidents(reply([resident("Gary", "inspiron", true)]));
+      view.setActive(true);
+      find("#live-watch").listeners.click();
+      await ready;
+      try {
+        expect(peer.transceivers).toEqual((audio ? ["video", "audio"] : ["video"]).map(kind => ({ kind, direction: "recvonly" })));
+        const videoTrack = { kind: "video", stop: mock(() => {}) };
+        const audioTrack = { kind: "audio", stop: mock(() => {}) };
+        peer.ontrack({ track: videoTrack });
+        const video = find("#live-video"), media = video.srcObject;
+        peer.ontrack({ track: audioTrack });
+        expect(video.srcObject).toBe(media);
+        expect(media.getTracks()).toHaveLength(audio ? 2 : 1);
+        expect(audioTrack.stop).toHaveBeenCalledTimes(audio ? 0 : 1);
+        video.readyState = 2;
+        video.onplaying();
+        expect(video.muted).toBe(true);
+        expect(find("#live-audio").disabled).toBe(!audio);
+        find("#live-audio").listeners.click();
+        expect(video.muted).toBe(!audio);
+        if (audio) {
+          find("#live-audio").listeners.click();
+          expect(video.muted).toBe(true);
+        }
+      } finally {
+        find("#live-stop").listeners.click();
+        expect(find("#live-video").srcObject).toBeNull();
+        expect(find("#live-video").muted).toBe(true);
+      }
+    }, { RTCPeerConnection: Peer, MediaStream: Stream });
+  }
 });

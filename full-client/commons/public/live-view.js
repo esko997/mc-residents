@@ -9,6 +9,7 @@ export function createLiveView(root, { now, stamp, colour }) {
   const status = find("#live-status"), detail = find("#live-detail"), channel = find("#live-channel");
   const context = find("#live-context"), facts = find("#live-facts"), contextTime = find("#live-context-time");
   const fullscreen = find("#live-fullscreen"), fullscreenNote = find("#live-fullscreen-note");
+  const audioButton = find("#live-audio"), mediaNote = find("#live-media-note");
   const supported = typeof RTCPeerConnection === "function";
   let active = false, enabled = null, current = null, pendingWatch = false, revision = 0;
   let residents = [], sampleSeconds = 5, mode = "idle", station = false;
@@ -75,6 +76,9 @@ export function createLiveView(root, { now, stamp, colour }) {
     stop.disabled = !current;
     select.disabled = residents.length === 0;
     fullscreen.disabled = !current?.playing;
+    audioButton.disabled = !current?.playing || !current.audio;
+    audioButton.textContent = video.muted ? "Unmute game audio" : "Mute game audio";
+    audioButton.setAttribute("aria-pressed", String(!video.muted));
   }
 
   function setState(next, message) {
@@ -92,6 +96,8 @@ export function createLiveView(root, { now, stamp, colour }) {
     blank.hidden = false;
     video.onplaying = null;
     video.pause();
+    video.muted = true;
+    mediaNote.textContent = "No recording · Audio only with operator opt-in";
     for (const track of video.srcObject?.getTracks() ?? []) track.stop();
     video.srcObject = null;
     video.removeAttribute("src");
@@ -257,6 +263,8 @@ export function createLiveView(root, { now, stamp, colour }) {
       }, 25000);
       const peer = session.peer = new RTCPeerConnection({ iceServers: [] });
       peer.addTransceiver("video", { direction: "recvonly" });
+      session.audio = data.audio === true;
+      if (session.audio) peer.addTransceiver("audio", { direction: "recvonly" });
       peer.onconnectionstatechange = () => {
         if (current !== session) return;
         if (["failed", "disconnected", "closed"].includes(peer.connectionState)) {
@@ -264,14 +272,16 @@ export function createLiveView(root, { now, stamp, colour }) {
         }
       };
       peer.ontrack = event => {
-        if (current !== session || event.track.kind !== "video") { event.track.stop(); return; }
+        if (current !== session || (event.track.kind !== "video" && !(session.audio && event.track.kind === "audio"))) { event.track.stop(); return; }
         event.track.onended = () => {
-          if (current === session) end("The video track ended. Press Watch to reconnect.", "error");
+          if (current === session) end(`The ${event.track.kind} track ended. Press Watch to reconnect.`, "error");
         };
+        if (!video.srcObject) video.srcObject = new MediaStream();
+        video.srcObject.addTrack(event.track);
+        if (event.track.kind === "audio") return;
         event.track.onmute = () => {
           if (current === session && session.playing) end("Video is no longer arriving. Press Watch to reconnect.", "error");
         };
-        video.srcObject = new MediaStream([event.track]);
         video.onplaying = () => {
           if (current !== session || video.readyState < 2) return;
           clearTimeout(session.deadline);
@@ -280,7 +290,9 @@ export function createLiveView(root, { now, stamp, colour }) {
           blank.hidden = true;
           find("#live-name").textContent = session.resident;
           stage.style.setProperty("--who", colour(session.resident));
-          setState("live", "Receiving live video. Video only; no audio is captured or played.");
+          mediaNote.textContent = session.audio ? "Dedicated game audio · No recording" : "Video only · No audio · No recording";
+          setState("live", session.audio ? "Receiving live video and dedicated game audio. Audio starts muted; use Unmute game audio to listen."
+            : "Receiving live video. Video only; no audio is captured or played.");
           renderContext();
         };
         void video.play().catch(() => {
@@ -308,6 +320,18 @@ export function createLiveView(root, { now, stamp, colour }) {
   });
   watch.addEventListener("click", () => { void start(); });
   stop.addEventListener("click", () => end());
+  audioButton.addEventListener("click", () => {
+    if (!current?.playing || !current.audio) return;
+    const session = current;
+    video.muted = !video.muted;
+    buttons();
+    void video.play().catch(() => {
+      if (current !== session) return;
+      video.muted = true;
+      buttons();
+      detail.textContent = "The browser refused audio playback. Game audio remains muted.";
+    });
+  });
   fullscreen.addEventListener("click", async () => {
     if (!current?.playing) return;
     try {

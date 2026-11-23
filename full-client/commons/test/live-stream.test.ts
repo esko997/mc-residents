@@ -351,3 +351,67 @@ test("four shared viewers fit the MediaMTX reader cap; a fifth is refused withou
     expect(f.counts().cancelled).toBe(0);
   } finally { await f.close(); }
 });
+
+test("dedicated audio is explicit and uses the same channel lease and cleanup", async () => {
+  const f = fixture();
+  f.config.live!.audio = true;
+  f.config.residents[0].audioSink = "resident_Gary";
+  try {
+    const a = await f.stream.watch("Gary");
+    expect(a).toMatchObject({ audio: true, videoOnly: false });
+    expect(f.commands[0]).toContain("resident_Gary.monitor");
+    expect(f.commands[0]).toContain("libopus");
+    expect((await f.stream.stop(a.lease, a.generation))).toMatchObject({ audio: false, videoOnly: true, state: "idle" });
+    expect(f.counts()).toEqual({ active: 0, peak: 1, cancelled: 1 });
+  } finally { await f.close(); }
+});
+
+test("audio off never opens Pulse even when a resident sink is configured", async () => {
+  const f = fixture();
+  f.config.residents[0].audioSink = "resident_Gary";
+  try {
+    expect(await f.stream.watch("Gary")).toMatchObject({ audio: false, videoOnly: true });
+    expect(f.commands[0]).not.toContain("pulse");
+    expect(f.commands[0]).toContain("-an");
+  } finally { await f.close(); }
+});
+
+test("missing dedicated audio sink fails before capture without silently dropping audio", async () => {
+  const f = fixture();
+  f.config.live!.audio = true;
+  try {
+    await expect(f.stream.watch("Gary")).rejects.toThrow("dedicated launcher-owned Pulse sink");
+    expect(f.requests).toEqual([]);
+    expect(f.commands).toEqual([]);
+    expect(f.stream.status()).toMatchObject({ state: "error", viewers: 0 });
+  } finally { await f.close(); }
+});
+
+test("VAAPI refuses a non-render path before requesting source frames", async () => {
+  const f = fixture();
+  f.config.live!.encoder = "h264_vaapi";
+  f.config.live!.vaapiDevice = "/tmp/private-secret";
+  try {
+    await expect(f.stream.watch("Gary")).rejects.toThrow("DRM render character device");
+    expect(f.requests).toEqual([]);
+    expect(f.children).toEqual([]);
+    expect(JSON.stringify(f.stream.status())).not.toContain("private-secret");
+  } finally { await f.close(); }
+});
+
+test("audio failure stays sanitized and does not fall back to video-only or another encoder", async () => {
+  const f = fixture();
+  f.config.live!.audio = true;
+  f.config.residents[0].audioSink = "resident_Gary";
+  try {
+    await f.stream.watch("Gary");
+    f.children[0].encoder.errors.emit("data", Buffer.from("pulse input failed /private-secret rtsp://private-secret"));
+    f.children[0].exit(1);
+    await f.children[0].encoder.exited;
+    expect(f.stream.status().detail).toContain("Resident audio setup failed with h264_nvenc");
+    expect(JSON.stringify(f.stream.status())).not.toContain("private-secret");
+    expect(f.children).toHaveLength(1);
+    await f.stream.shutdown();
+    expect(f.counts().active).toBe(0);
+  } finally { await f.close(); }
+});
