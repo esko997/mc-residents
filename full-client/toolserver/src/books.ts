@@ -30,8 +30,8 @@ export const bookDefinitions = {
       .refine(a => a.draft === true || a.title !== undefined, "A signed book needs a title; use draft: true to keep it unsigned."),
   },
   read_book: {
-    description: "Read a written book or a book and quill you can read now: in your hand (default), offhand, an inventory slot, or on a lectern whose screen is open (use the lectern first). A book in a chiseled bookshelf has to be taken out to be read: use the shelf where the book stands (its front is six slots, three across and two high) and it goes into your inventory; read it; use an empty slot holding it to put it back. Shows whole pages from page (default 1); a long book continues with page, and a page too long for one reply continues with part.",
-    schema: z.object({ from: from.optional(), page: z.number().int().min(1).max(100).optional(), part: z.number().int().min(1).max(40).optional() }).strict(),
+    description: "Read a written book or a book and quill you can read now: in your hand (default), offhand, an inventory slot, or on a lectern whose screen is open (use the lectern first). A book in a chiseled bookshelf has to be taken out to be read: use the shelf where the book stands (its front is six slots, three across and two high) and it goes into your inventory; read it; use an empty slot holding it to put it back. Shows whole pages from page (default 1); a long book continues with page, and a page too long for one reply continues with at (a character offset); the reply gives the exact handle.",
+    schema: z.object({ from: from.optional(), page: z.number().int().min(1).max(100).optional(), at: z.number().int().min(0).max(32_767).optional() }).strict(),
   },
   book_register: {
     description: "Put a written book in the shared book catalogue so neighbours can find it: your body reads its text from the book (in hand by default, or from: an inventory slot, offhand, or the open lectern), and at says where it is or will be (the block in your sights by default, such as the shelf or lectern, or x,y,z). Optional facility (a registered facility's name, such as your library), subjects and note. A book is for knowledge worth reading in full; a shared note (note_share) is a short tip. The same text in the same place twice is refused unless another_copy: true.",
@@ -212,32 +212,34 @@ export class Books {
     }
   }
 
-  async read(args: Args<"read_book">): Promise<string> {
+  /** `budget`: characters the reply may use; the tool server gives what its event tail leaves (see Tools.call). */
+  async read(args: Args<"read_book">, budget = REPLY_CHARS): Promise<string> {
     const read = await this.resolve(args.from);
     const { book } = read;
     const head = book.kind === "written"
       ? `"${book.title}" by ${book.author} (${generationName(book.generation)}), ${book.pageCount} page${book.pageCount === 1 ? "" : "s"}; from ${read.label}${book.source === "lectern" ? `, open at page ${(book.page ?? 0) + 1}` : ""}.`
       : `A book and quill (not signed), ${book.pageCount} page${book.pageCount === 1 ? "" : "s"}; from ${read.label}.`;
     if (!book.pages.length || book.pages.every(page => !page)) return `${head}\nIt is empty.`;
-    const start = args.page ?? 1, part = args.part ?? 1;
+    const start = args.page ?? 1, offset = args.at ?? 0;
     if (start > book.pages.length) return `${head}\nThere is no page ${start}.`;
     const fromArg = typeof args.from === "number" ? args.from : args.from ? `"${args.from}"` : read.slot === 40 ? `"offhand"` : read.slot !== undefined ? read.slot : `"lectern"`;
-    const handle = (page: number, piece?: number) => `Continue: read_book {from: ${fromArg}, page: ${page}${piece ? `, part: ${piece}` : ""}}`;
-    // A page written outside the editor (a command, an older item) can hold up to 32,767 characters: read it in parts.
-    const room = REPLY_CHARS - head.length - 120;
+    const handle = (page: number, at?: number) => `Continue: read_book {from: ${fromArg}, page: ${page}${at ? `, at: ${at}` : ""}}`;
+    // A page written outside the editor (a command, an older item) can hold up to 32,767 characters: read it in
+    // pieces. The handle carries the character offset, so pieces join exactly whatever each reply's room was.
+    const room = Math.max(100, budget - head.length - 120);
     const first = book.pages[start - 1]!;
-    if (first.length > room || part > 1) {
-      const parts = Math.max(1, Math.ceil(first.length / room));
-      if (part > parts) return `${head}\nPage ${start} has ${parts} part${parts === 1 ? "" : "s"}.`;
-      // The handle goes first: if a long event tail cuts the reply, it is the text that is cut, not the way on.
-      return [head, ...(part < parts ? [handle(start, part + 1)] : start < book.pages.length ? [handle(start + 1)] : []),
-        `— page ${start}, part ${part} of ${parts} —`, first.slice((part - 1) * room, part * room)].join("\n");
+    if (first.length > room || offset > 0) {
+      if (offset >= first.length) return `${head}\nPage ${start} has ${first.length} characters.`;
+      const end = Math.min(first.length, offset + room);
+      // The handle goes first: if a reply is ever cut, it is the text that is cut, not the way on.
+      return [head, ...(end < first.length ? [handle(start, end)] : start < book.pages.length ? [handle(start + 1)] : []),
+        `— page ${start}, characters ${offset + 1}-${end} of ${first.length} —`, first.slice(offset, end)].join("\n");
     }
     const out = [head];
     let size = head.length + 60, next = start;
     for (let index = start; index <= book.pages.length; index++) {
       const text = `— page ${index} —\n${book.pages[index - 1]}`;
-      if (index > start && size + text.length > REPLY_CHARS) break;
+      if (index > start && size + text.length > budget) break;
       out.push(text); size += text.length + 1; next = index + 1;
     }
     if (next <= book.pages.length) out.splice(1, 0, handle(next));

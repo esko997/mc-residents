@@ -63,9 +63,9 @@ test("read_book reads whole pages from hand or lectern, continues long books, an
   const f = await body([written(0)], { books: { 0: { kind: "written", title: "Long", author: "Tobin", generation: 1, pages } } });
   const first = text(await f.tools.call("read_book", {}));
   expect(first).toContain('"Long" by Tobin (copy of original), 5 pages; from H0.');
-  expect(first).toContain("end of page 2");
-  expect(first).not.toContain("end of page 3");
-  expect(first).toContain("Continue: read_book {from: 0, page: 3}");
+  expect(first).toContain("end of page 3");
+  expect(first).not.toContain("end of page 4");
+  expect(first).toContain("Continue: read_book {from: 0, page: 4}");
   expect(text(await f.tools.call("read_book", { from: 0, page: 5 }))).toContain("— page 5 —");
   const lectern = await body([], { lectern: { kind: "written", title: "Rules", author: "Wren", generation: 0, pages: ["Shut the gate."] } });
   lectern.setScreen({ screen: "LecternScreen" });
@@ -84,14 +84,14 @@ test("read_book reads a page longer than one reply in parts, each bounded, with 
   for (let guard = 0; guard < 12; guard++) {
     const reply = text(await f.tools.call("read_book", args));
     replies.push(reply);
-    const next = /Continue: read_book \{from: 4, page: (\d+)(?:, part: (\d+))?\}/.exec(reply);
+    const next = /Continue: read_book \{from: 4, page: (\d+)(?:, at: (\d+))?\}/.exec(reply);
     if (!next) break;
-    args = { from: 4, page: Number(next[1]), ...(next[2] ? { part: Number(next[2]) } : {}) };
+    args = { from: 4, page: Number(next[1]), ...(next[2] ? { at: Number(next[2]) } : {}) };
   }
-  expect(replies[0]).toMatch(/— page 1, part 1 of \d+ —/);
+  expect(replies[0]).toMatch(/— page 1, characters 1-\d+ of 5000 —/);
   for (const reply of replies) expect(reply.length).toBeLessThan(1499);
   expect(replies.at(-1)).toContain("short tail");
-  const parts = replies.slice(0, -1).map(reply => reply.split(/— page 1, part \d+ of \d+ —\n/)[1]!.split("\n\nSince last time")[0]!);
+  const parts = replies.slice(0, -1).map(reply => reply.split(/— page 1, characters \d+-\d+ of \d+ —\n/)[1]!.split("\n\nSince last time")[0]!);
   expect(parts.join("")).toBe(long);
 });
 
@@ -109,12 +109,14 @@ test("read_book loses no text when a full event tail shares the reply: following
     expect(reply).not.toContain("remaining output omitted");
     expect(reply).toContain("Since last time:");
     const body = reply.split("\n\nSince last time:")[0]!;
-    for (const [, page, part, content] of body.matchAll(/— page (\d+)(?:, part (\d+) of \d+)? —\n([\s\S]*?)(?=\n— page |$)/g)) {
-      read[Number(page)] = (part && Number(part) > 1 ? read[Number(page)] ?? "" : "") + content;
+    for (const [, page, from, content] of body.matchAll(/— page (\d+)(?:, characters (\d+)-\d+ of \d+)? —\n([\s\S]*?)(?=\n— page |$)/g)) {
+      // A piece must start exactly where the text read so far ends: nothing skipped, nothing repeated.
+      if (from) expect(Number(from) - 1).toBe((read[Number(page)] ?? "").length);
+      read[Number(page)] = (from && Number(from) > 1 ? read[Number(page)] ?? "" : "") + content;
     }
-    const next = /Continue: read_book \{from: 0, page: (\d+)(?:, part: (\d+))?\}/.exec(body);
+    const next = /Continue: read_book \{from: 0, page: (\d+)(?:, at: (\d+))?\}/.exec(body);
     if (!next) break;
-    args = { from: 0, page: Number(next[1]), ...(next[2] ? { part: Number(next[2]) } : {}) };
+    args = { from: 0, page: Number(next[1]), ...(next[2] ? { at: Number(next[2]) } : {}) };
   }
   expect(Object.keys(read).map(Number)).toEqual(pages.map((_, i) => i + 1));
   pages.forEach((page, i) => expect(read[i + 1]).toBe(page));
