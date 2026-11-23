@@ -153,8 +153,10 @@ fi
 # Abstract/virtual sinks are ignored by the normal switch-on-connect policy.
 # Do not export PULSE_SINK globally or change any user's default audio device.
 creating=1
+# The property list is quoted: real PulseAudio splits module arguments on
+# spaces (PipeWire's Pulse server accepts both forms).
 module=$(pulse_control load-module module-null-sink "sink_name=$audio" \
-  "sink_properties=device.description=Resident_game_audio device.class=abstract resident.launch_id=$$" \
+  "sink_properties='device.description=Resident_game_audio device.class=abstract resident.launch_id=$$'" \
   rate=48000 channels=2 2>/dev/null) || audio_error "resident audio could not create its dedicated Pulse null sink"
 [[ $module =~ ^[0-9]+$ ]] || audio_error "resident audio returned an invalid module identity"
 sink_index=$(pulse_control --format=json list sinks 2>/dev/null | python3 -c '
