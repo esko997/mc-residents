@@ -268,6 +268,11 @@ the interruption, then resume or deliberately revise the project.
   agreements. `facility_show` finds capabilities and access terms; recent
   condition/stock entries are still someone's dated report, not guaranteed
   supplies. Ask or inspect before duplicating a facility or relying on stock.
+- When there is room, `what_next` also names a few advancements within reach:
+  ones whose previous step you have done, as the advancements screen shows
+  them, with what is still missing and how old the server's record is. They
+  are something to look at, not a list to work through;
+  `what_next {advancements: "Nether"}` (a tab or mod) shows more of one tab.
 - Success should leave useful capabilities: facilities, resources, knowledge
   or tested skills. Before solving a repeated problem, check `skill_find` and
   `notes_shared`. Save a routine when a real recurring task warrants it, not

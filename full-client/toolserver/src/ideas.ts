@@ -6,6 +6,7 @@ import { span, type PlanFocus } from "./plan.ts";
 import { beneficiaryOf, performerOf, type SocietySnapshot } from "./society.ts";
 import { z } from "zod";
 import type { CommonsClient } from "./commons.ts";
+import { frontierText, type Frontier } from "./advancement-ideas.ts";
 
 /**
  * `what_next`: suggestions worked out from what the body can see, for a
@@ -31,11 +32,13 @@ export interface Snapshot {
   /** The plan in focus, when one is written. */
   plan?: PlanFocus;
   /** Recipes of this modpack; without it the rules use the vanilla recipes written beside them. */
-  knowledge?: Pick<Knowledge, "recipesFor" | "itemsInTag">;
+  knowledge?: Pick<Knowledge, "recipesFor" | "itemsInTag" | "advancement" | "modOf">;
   /** The installed mods sorted into kinds, when the knowledge export has the pack overview. */
   pack?: PackKinds;
   /** Bounded resident reports, never machine-verified prerequisites. */
   society?: SocietySnapshot;
+  /** Advancements one step from what the resident has done, from the hub, when it has them. */
+  frontier?: Frontier;
 }
 /** Kinds of installed mods (as `mods` lists them) and which kind an item's mod belongs to. */
 export interface PackKinds {
@@ -47,9 +50,11 @@ export interface Rule {
   id: string;
   /** Higher is shown first. */
   priority: number;
+  /** Never gives way to advancement lines although below `keptFrom`: safety. */
+  keeps?: boolean;
   suggest(view: View): string | undefined;
 }
-export interface Suggestion { id: string; priority: number; text: string }
+export interface Suggestion { id: string; priority: number; text: string; keeps: boolean }
 
 type Match = (id: string) => boolean;
 /** One ingredient of a recipe: `count` items out of those `accepts` allows. */
@@ -344,7 +349,7 @@ export const rules: Rule[] = [
     },
   },
   {
-    id: "no_armour", priority: 50,
+    id: "no_armour", priority: 50, keeps: true,
     suggest(view) {
       if (view.snapshot.armour.some(nonempty)) return undefined;
       const pieces = view.carried(suffix("_helmet", "_chestplate", "_leggings", "_boots"));
@@ -395,8 +400,21 @@ export function suggestions(snapshot: Snapshot, table: Rule[] = rules): Suggesti
   const view = new View(snapshot);
   return table.flatMap(rule => {
     const text = rule.suggest(view);
-    return text ? [{ id: rule.id, priority: rule.priority, text }] : [];
+    return text ? [{ id: rule.id, priority: rule.priority, text, keeps: rule.keeps === true || rule.priority >= keptFrom }] : [];
   }).sort((a, b) => b.priority - a.priority);
+}
+
+/**
+ * A stalled plan and everything above it (safety, agreements with neighbours, carried means going unused), and rules
+ * marked `keeps`, never give way to advancement lines. Those come after the other suggestions, at most three.
+ */
+const keptFrom = 62, frontierMost = 3, frontierLeast = 2;
+
+/** How many advancement lines `what_next` has room for: up to three, at least two unless kept suggestions fill the five places. */
+export function frontierRoom(snapshot: Snapshot, table: Rule[] = rules): number {
+  const found = suggestions(snapshot, table), kept = found.filter(suggestion => suggestion.keeps).length;
+  const free = Math.max(0, maxSuggestions - kept);
+  return Math.min(frontierMost, free, Math.max(free - (found.length - kept), frontierLeast));
 }
 
 /** The reply of `what_next`: the resident's own current step first, then at most five suggestions. */
@@ -409,12 +427,14 @@ export function whatNext(snapshot: Snapshot, table: Rule[] = rules, limit = 1300
     const blocked = plan.blocked[0];
     lines.push(`Your plan "${plan.name}" has no step todo or doing${blocked ? `; step ${blocked.number} of ${plan.total} is blocked${blocked.note ? `: ${blocked.note}` : ""}` : ""}.`);
   }
-  const found = suggestions(snapshot, table).slice(0, maxSuggestions);
+  const all = suggestions(snapshot, table), frontier = snapshot.frontier;
+  const advancements = frontier ? frontier.entries.slice(0, frontierRoom(snapshot, table)).map(entry => frontierText(entry, frontier, snapshot.knowledge)) : [];
+  let room = maxSuggestions - advancements.length - all.filter(suggestion => suggestion.keeps).length;
+  const found = all.filter(suggestion => suggestion.keeps || room-- > 0).slice(0, maxSuggestions);
   if (!found.length) lines.push(`Nothing ${plan ? "else " : ""}to suggest: none of the ${table.length} checks of what you carry, wear and have saved found something missing or unused.`);
-  for (const [index, suggestion] of found.entries()) {
-    const text = suggestion.text.length > suggestionLimit ? `${suggestion.text.slice(0, suggestionLimit - 1)}…` : suggestion.text;
-    const line = `${index + 1}. ${text}`;
-    // Less useful suggestions give way, never a more useful one further up.
+  for (const [index, text] of [...found.map(suggestion => suggestion.text), ...advancements].entries()) {
+    const line = `${index + 1}. ${text.length > suggestionLimit ? `${text.slice(0, suggestionLimit - 1)}…` : text}`;
+    // Less useful suggestions give way, never a more useful one further up; advancement lines come last.
     if ([...lines, line].join("\n").length > limit) break;
     lines.push(line);
   }

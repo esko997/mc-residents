@@ -88,6 +88,12 @@ export function openKnowledge(dbPath: string): Knowledge {
         ORDER BY lower(coalesce(i.name, r.id)), r.id LIMIT ${boundedLimit(limit, 20)} OFFSET ${Math.max(0, Math.trunc(offset) || 0)}`).all(mod, ...terms);
       return { items, total };
     },
+    advancement(id) {
+      try {
+        const row = db.query<{ title: string; description: string; items: string }, [string]>("SELECT title, description, items FROM advancements WHERE id = ?").get(id);
+        return row ? { title: row.title, description: row.description, items: JSON.parse(row.items) as string[] } : undefined;
+      } catch { return undefined; }
+    },
     close() { db.close(); },
   };
 }

@@ -65,6 +65,9 @@ export interface Knowledge {
   modOf?(itemId: string): { id: string; name: string } | undefined;
   /** One mod's registered items, by display name, like JEI's `@mod` search; `words` narrows by name or id. */
   modItems?(mod: string, words: string, offset: number, limit: number): { items: (ItemHit & { kind: string })[]; total: number };
+  /** A displayed, not hidden advancement as the pack's jars define it, with its English title and description and the
+   * item ids its criteria name; undefined when the export has no such advancement (or predates advancements). */
+  advancement?(id: string): { title: string; description: string; items: string[] } | undefined;
   close(): void;
 }
 
