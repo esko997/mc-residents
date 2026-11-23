@@ -1805,8 +1805,9 @@ function setChat(url) {
   drawTabs();
 }
 function drawTabs() {
+  // The broadcast desk (stream overlay editor, preview and transparent overlay) is its own page: a link, not a panel.
   setHtml($("#tabs"), html`${panels.filter(panel => !panel.hidden).map(panel => html`<button type="button" id="t-${panel.id}" data-panel="${panel.id}"
-    ${panel.id === state.active ? html`aria-current="page"` : ""}>${panel.title}${badges[panel.id] ? html`<span class="badge" title="new, not looked at yet">${badges[panel.id]}</span>` : ""}</button>`)}`);
+    ${panel.id === state.active ? html`aria-current="page"` : ""}>${panel.title}${badges[panel.id] ? html`<span class="badge" title="new, not looked at yet">${badges[panel.id]}</span>` : ""}</button>`)}<a id="t-broadcast" href="overlay/control" target="_blank" rel="noopener" title="Stream overlay editor, video preview and the transparent overlay for OBS (opens in a new tab)">Broadcast desk ↗</a>`);
   // On a phone the tab bar scrolls sideways; keep the open tab in sight.
   $("#tabs [aria-current]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
