@@ -134,6 +134,14 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #15181c; borde
 .feed li.long .what { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .feed li.long.open .what { display: block; }
 
+/* Diorama */
+#dio-box { height: min(68dvh, 680px); border: 2px solid var(--seam); background: #14171b; }
+#dio { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.dio-cut { display: inline-flex; gap: 8px; align-items: center; font-size: .875rem; color: var(--lichen); flex-wrap: wrap; }
+#dio-cut { width: min(16rem, 60vw); accent-color: var(--glow); }
+#dio-cut-value { font-size: .8125rem; min-width: 9ch; }
+#dio-status { min-height: 3em; }
+
 /* Map */
 #map-box { position: relative; height: min(62dvh, 640px); border: 2px solid var(--seam); background: #14171b; touch-action: none; }
 #map { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
@@ -331,3 +339,56 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #15181c; borde
 @media (prefers-reduced-motion: no-preference) {
   .musings > li.fresh { animation: arrive .6s ease-out; }
 }
+
+/* Server record (server-record.js) and the Map's building layer (map-blocks.js). */
+.source { margin: 0 0 10px; padding-left: 10px; border-left: 3px solid var(--seam); max-width: 90ch; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.record-scroll { overflow-x: auto; margin-bottom: 6px; }
+.record-table { border-collapse: collapse; font-size: .875rem; min-width: 100%; }
+.record-table th, .record-table td { padding: 6px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--seam-soft); }
+.record-table thead th { border-top: 4px solid var(--who); background: var(--basalt); min-width: 12em; font-weight: 400; }
+.record-table thead th b { color: var(--who); font-size: 1rem; }
+.record-table thead th:first-child { border-top-color: transparent; background: none; min-width: 9em; }
+.record-table .window { display: block; font-size: .75rem; color: var(--lichen); margin-top: 2px; }
+.record-table tbody th { font-weight: 700; color: var(--lichen); }
+.record-table tbody th .meta { display: block; font-weight: 400; font-size: .75rem; }
+.record-table td b { font-family: var(--data); font-size: .9375rem; display: block; }
+.record-table .change, .record-list .moved b { color: var(--moss); font-family: var(--data); font-size: .8125rem; }
+.record-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.record-cards .card p { font-size: .875rem; }
+#record-body { margin-top: 18px; }
+.group > h3, #mb-areas > h3 { font-size: 1rem; margin: 14px 0 6px; }
+.card h4, .group h4, #mb-cell h4 { font-size: .8125rem; margin: 12px 0 4px; }
+.record-list p { font-size: .8125rem; overflow-wrap: anywhere; }
+.record-list .moved { color: var(--parchment); }
+.tab-progress li { display: grid; grid-template-columns: minmax(0, 1fr) 90px minmax(5.5em, auto); gap: 8px; align-items: center; font-size: .8125rem; padding: 2px 0; }
+.tab-progress li > .data { white-space: nowrap; }
+.tab-progress .bar, .ledger .bar { height: 8px; background: var(--seam); border-radius: 1px; overflow: hidden; }
+.tab-progress .bar i { display: block; height: 100%; width: var(--p); background: var(--who); }
+.record-timeline li { display: grid; grid-template-columns: 7.2em 1fr; gap: 8px; font-size: .8125rem; padding: 3px 0; border-bottom: 1px solid var(--seam-soft); }
+.record-timeline time { font-family: var(--data); font-size: .75rem; color: var(--lichen); }
+.record-timeline .meta { display: block; }
+.record-plain li { font-size: .875rem; padding: 3px 0; }
+.who-line { border-left: 4px solid var(--who); padding-left: 8px !important; margin-bottom: 4px; }
+.record-areas li { border-left: 4px solid var(--who); padding: 6px 0 6px 10px; border-bottom: 1px solid var(--seam-soft); font-size: .875rem; }
+.record-areas b { color: var(--who); }
+button.link { background: none; border: 0; padding: 0 2px; color: var(--glow); text-decoration: underline; cursor: pointer; font-size: .8125rem; }
+.made { font-style: italic; }
+.ledger-table { border-collapse: collapse; font-size: .8125rem; margin: 6px 0; }
+.ledger-table th, .ledger-table td { padding: 3px 10px 3px 0; text-align: left; border-bottom: 1px solid var(--seam-soft); }
+.ledger-table thead th { color: var(--lichen); font-weight: 400; }
+.card.ledger { border-left-color: var(--seam); }
+.card.focus { outline: 3px solid var(--glow); outline-offset: 2px; }
+#map-blocks { margin-top: 14px; }
+#map-blocks h2 { font-size: 1.0625rem; }
+.hour-bars { display: flex; align-items: flex-end; gap: 1px; height: 54px; border-bottom: 1px solid var(--seam); margin: 6px 0 4px; }
+.hour-bars button { flex: 1 1 0; min-width: 2px; height: 100%; display: flex; flex-direction: column-reverse; padding: 0; border: 0; background: none; cursor: pointer; }
+.hour-bars button:hover, .hour-bars button[aria-pressed="true"] { background: var(--seam-soft); }
+.hour-bars button[aria-pressed="true"] { outline: 1px solid var(--parchment); }
+.hour-bars i { display: block; width: 100%; }
+.hour-bars i.p { height: var(--p); background: var(--moss); }
+.hour-bars i.b { height: var(--b); background: #b9875a; }
+#mb-cell { align-self: start; min-width: 0; border: 2px solid var(--seam); padding: 12px; background: var(--basalt); overflow-wrap: anywhere; }
+#mb-cell h3 { font-size: 1rem; margin-bottom: 4px; }
+/* On a narrow screen the figure names stay in view while the residents' columns scroll. */
+.record-table tbody th, .record-table thead th:first-child { position: sticky; left: 0; background: var(--deepslate); z-index: 1; }

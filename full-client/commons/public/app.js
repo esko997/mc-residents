@@ -1,7 +1,10 @@
 "use strict";
 import { coverOf, dimensionName as dimensionLabel, equivalent, heightColour, heightDomain, mapDimensions, mergeMapTrail, nearestIndex, passedPlaces, profileSeries, SEA_LEVEL, splitByHeight } from "./map-trails.js";
+import { buildGrid, decodeSection, defaultCut, faces as dioramaFaces, paint as paintDiorama, pick as pickDiorama } from "./diorama.js";
 import { createLiveView } from "./live-view.js";
 import { createRunControls } from "./run-control.js";
+import { createServerRecord } from "./server-record.js";
+import { createBlockLayer } from "./map-blocks.js";
 // The Shared Knowledge page. No framework and no build step: each panel fetches JSON from
 // api/<route> (relative, so the token in the address carries over) and patches
 // only the parts of the page whose content changed, so nothing flickers and
@@ -500,6 +503,12 @@ function whereText(dimension, x, z) {
 }
 const PORTAL = "#b07cff";
 const BAND_TINT = { the_nether: "rgba(229,100,90,.14)", the_end: "rgba(180,139,224,.16)" };
+// Building and digging under the trails (public/map-blocks.js), from the hub's server record.
+const blockLayer = createBlockLayer($("#map-blocks"), {
+  html, setHtml, get, colour, canvasColour, stamp, clock, ago, now: serverNow, dimensionLabel,
+  hours: () => map.hours, dimension: () => map.dimension, places: () => map.places, residents: () => state.residents,
+  redraw: () => drawMap(), centre: (dimension, x, z) => showOnMap(dimension, x, z),
+});
 
 function heightRange() {
   const [min, max] = heightDomain(map.dimension), saved = map.heights[map.dimension];
@@ -671,6 +680,7 @@ function drawMap() {
     ctx.beginPath(); ctx.moveTo(0, Math.round(sy) + .5); ctx.lineTo(width, Math.round(sy) + .5); ctx.stroke();
     if (sy > 16) { ctx.fillStyle = faint; ctx.textAlign = "left"; ctx.fillText(String(z), 3, sy - 7); }
   }
+  blockLayer.draw(ctx, toScreen, width, height);
   ctx.fillStyle = "rgba(20,23,27,.85)"; ctx.fillRect(0, height - 20, 236, 20);
   ctx.fillStyle = faint; ctx.textAlign = "left";
   ctx.fillText(`${dimensionLabel(dimension)} · grid ${step} blocks · x → east, z ↓ south`.slice(0, 70), 6, height - 10);
@@ -774,7 +784,8 @@ function nearestFeature(sx, sy, wanted = () => true) {
 }
 function readout(sx, sy) {
   const [x, z] = toWorld(sx, sy), nearest = nearestFeature(sx, sy);
-  $("#map-readout").textContent = `${whereText(map.dimension, x, z)}${nearest ? `   ${nearest.text}` : ""}`;
+  const text = nearest?.text ?? blockLayer.describe(x, z);
+  $("#map-readout").textContent = `${whereText(map.dimension, x, z)}${text ? `   ${text}` : ""}`;
 }
 
 function renderHeights() {
@@ -819,11 +830,14 @@ function renderMap() {
   renderMapPlaces();
   if (!map.fitted && map.canvas.clientWidth) { fitMap(); map.fitted = true; }
   drawMap();
+  blockLayer.render();
   renderProfile();
 }
 async function loadMap() {
-  map.data = await get(`api/map?hours=${map.hours}`);
-  map.dimensions = mapDimensions(map.data);
+  const [data] = await Promise.all([get(`api/map?hours=${map.hours}`), blockLayer.load()]);
+  map.data = data;
+  // Dimensions with block changes but no trail or place still get a map.
+  map.dimensions = mapDimensions({ ...map.data, places: [...map.data.places, ...blockLayer.dimensions().map(dimension => ({ dimension }))] });
   const shown = map.dimensions.includes(map.want) ? map.want : "overworld";
   if (shown !== map.dimension) { map.dimension = shown; map.fitted = false; }
   map.places = map.data.places.map(place => ({ ...place, key: placeKey(place),
@@ -831,7 +845,20 @@ async function loadMap() {
     .sort((a, b) => a.owner.localeCompare(b.owner) || a.name.localeCompare(b.name));
   rebuildTrails();
   renderMap();
+  if (map.goTo) { const { dimension, x, z } = map.goTo; map.goTo = null; showOnMap(dimension, x, z); }
 }
+/** From another panel: open the Map centred on a spot (once the map has its data). */
+function goToMap(dimension, x, z) {
+  map.goTo = { dimension, x, z };
+  show("map");
+  if (map.data) { map.goTo = null; showOnMap(dimension, x, z); }
+}
+
+// ---------- Server record (public/server-record.js) ----------
+const serverRecord = createServerRecord($("#p-record"), {
+  html, setHtml, get, colour, stamp, clock, ago, now: serverNow, residents: () => state.residents, places: () => map.places, goToMap,
+  openFacility: id => { commons.focus = id; show("commons"); if (commons.data) renderCommons(); },
+});
 
 // ---------- Map: elevation profile ----------
 function profileFor(name) {
@@ -1050,6 +1077,7 @@ function drawProfile() {
       const nearest = nearestFeature(point[0], point[1], feature => feature.key || feature.go);
       if (nearest?.key) selectMapPlace(nearest.key);
       else if (nearest?.go) showOnMap(nearest.go.dimension, nearest.go.x, nearest.go.z);
+      else { const [x, z] = toWorld(point[0], point[1]); blockLayer.select(x, z); }
     }
   };
   canvas.addEventListener("pointerup", release);
@@ -1078,6 +1106,130 @@ function drawProfile() {
   $("#map-h-all").onclick = () => setHeights(null);
   $("#map-h-under").onclick = () => setHeights([heightDomain(map.dimension)[0], SEA_LEVEL - 1]);
   new ResizeObserver(() => { if (map.data && !map.fitted && canvas.clientWidth) { fitMap(); map.fitted = true; } drawMap(); }).observe(canvas);
+}
+
+// ---------- Diorama: the blocks around one resident (public/diorama.js) ----------
+// Read only while this tab is open (the refresh loop loads the active panel only); the host asks
+// the client at most every ten seconds whoever is looking. Sections are kept here by revision and
+// sent back as `have`, so an unchanged section comes as {same:true}.
+const DIO_KEY = "commons.diorama";
+const dio = { who: (() => { try { return localStorage.getItem(DIO_KEY); } catch { return null; } })(),
+  reply: null, problem: "", decoded: new Map(), dimension: null, colours: null, grid: null, list: null, listCut: null,
+  cut: null, userCut: false, geometry: null, canvas: $("#dio") };
+function dioCut(view) {
+  // World y of the highest layer shown; null shows the whole window.
+  const cut = dio.userCut ? dio.cut : defaultCut(view);
+  return cut === null || cut >= view.maxY ? null : Math.max(view.minY, cut);
+}
+async function loadDiorama() {
+  dio.colours ??= await get("api/block-colours").catch(() => ({ colours: {}, builtAt: null, problem: "the colour table could not be read" }));
+  const residents = state.residents?.residents ?? [];
+  if (!residents.some(resident => resident.name === dio.who)) {
+    dio.who = (residents.find(resident => resident.status === "online" && !resident.hostUnreachable) ?? residents[0])?.name ?? null;
+  }
+  segmented($("#dio-who"), residents.map(resident => ({ value: resident.name, label: resident.name, who: resident.name })), dio.who, value => {
+    dio.who = value; dio.reply = null; dio.grid = null; dio.decoded.clear(); dio.dimension = null; dio.userCut = false;
+    $("#dio-readout").textContent = "Move over or tap the blocks for their coordinates and name.";
+    try { localStorage.setItem(DIO_KEY, value); } catch { /* private mode */ }
+    renderDiorama(); refresh("diorama");
+  });
+  if (!dio.who) { renderDiorama(); return; }
+  const who = dio.who, have = [...dio.decoded.values()].map(entry => entry.rev).join(",");
+  let reply;
+  try { reply = await get(`api/diorama?${new URLSearchParams({ resident: who, ...(have ? { have } : {}) })}`); }
+  catch (error) { dio.problem = error.message; renderDiorama(); return; }
+  if (who !== dio.who) return;
+  dio.problem = "";
+  const view = reply.view;
+  if (view && view.dimension !== dio.dimension) { dio.decoded.clear(); dio.dimension = view.dimension; dio.userCut = false; }
+  let changed = !view || !dio.grid || dio.reply?.view?.minY !== view.minY || dio.reply?.view?.origin.join() !== view.origin.join();
+  if (view) {
+    const next = new Map();
+    for (const section of view.sections) {
+      const key = `${section.x},${section.y},${section.z}`, old = dio.decoded.get(key);
+      if (old?.rev === section.rev) { next.set(key, old); continue; }
+      // A `same` for a revision this page no longer holds: start again without `have`.
+      if (section.same) { dio.decoded.clear(); refresh("diorama"); return; }
+      next.set(key, { rev: section.rev, palette: section.palette, indices: await decodeSection(section) });
+      changed = true;
+    }
+    if (next.size !== dio.decoded.size) changed = true;
+    dio.decoded = next;
+    if (changed) { dio.grid = buildGrid(view, next, dio.colours.colours); dio.list = null; }
+  } else dio.grid = null;
+  dio.reply = reply;
+  renderDiorama();
+}
+function renderDiorama() {
+  const reply = dio.reply, view = reply?.view, status = $("#dio-status");
+  const cutInput = $("#dio-cut");
+  if (!dio.who) status.textContent = "No resident to show.";
+  else if (dio.problem) status.textContent = `${dio.who}: ${dio.problem}`;
+  else if (!reply) status.textContent = `Reading what ${dio.who}'s client holds…`;
+  else {
+    const where = view ? `${dimensionLabel(view.dimension)}, feet at ${whereText(view.dimension, view.origin[0], view.origin[2])}, y ${view.origin[1]}` : "";
+    const host = reply.host ? ` on ${reply.host}` : "";
+    const parts = reply.status === "ok"
+      ? [`${reply.resident}${host}: ${where}`, `blocks as of ${clock(reply.asOf)} (${ago(reply.asOf)})`]
+      : reply.status === "unavailable" ? [`${reply.resident}: no diorama available. ${reply.detail ?? ""}`]
+      : [`${reply.resident}${host}: ${reply.status === "offline" ? "the client is not running" : reply.detail ?? reply.status}`,
+        view ? `showing what it held at ${stamp(reply.asOf)} (${ago(reply.asOf)}): ${where}` : "nothing read from it yet"];
+    if (view?.missing.length) parts.push(`${view.missing.length} of ${view.missing.length + view.chunks.length} chunks not loaded by the client (hatched)`);
+    if (view && view.sections.length === 0 && !view.missing.length) parts.push("the window lies outside the world's height");
+    if (dio.colours?.problem) parts.push(`colours from the built-in list: ${dio.colours.problem}`);
+    status.textContent = `${parts.join(" · ")}.`;
+  }
+  cutInput.disabled = !view;
+  if (view) {
+    const cut = dioCut(view);
+    cutInput.min = String(view.minY); cutInput.max = String(view.maxY); cutInput.value = String(cut ?? view.maxY);
+    $("#dio-cut-value").textContent = cut === null ? `none (top y ${view.maxY})` : `y ${cut}`;
+    $("#dio-cut-reset").setAttribute("aria-pressed", String(!dio.userCut));
+    $("#dio-cut-none").setAttribute("aria-pressed", String(dio.userCut && cut === null));
+  } else $("#dio-cut-value").textContent = "";
+  drawDiorama();
+}
+function drawDiorama() {
+  const canvas = dio.canvas, width = canvas.clientWidth, height = canvas.clientHeight;
+  if (!width || !height) return;
+  const ratio = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  const view = dio.reply?.view;
+  if (!view || !dio.grid) {
+    ctx.fillStyle = "#14171b"; ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = css("--lichen"); ctx.font = `13px ${css("--data")}`; ctx.textAlign = "center";
+    ctx.fillText(dio.who ? "No blocks to draw." : "No resident.", width / 2, height / 2); ctx.textAlign = "start";
+    dio.geometry = null;
+    return;
+  }
+  const cut = dioCut(view), gridCut = (cut ?? view.maxY) - view.minY;
+  if (!dio.list || dio.listCut !== gridCut) { dio.list = dioramaFaces(dio.grid, gridCut); dio.listCut = gridCut; }
+  dio.geometry = paintDiorama(ctx, dio.grid, dio.list, { width, height, cut: gridCut, players: view.players,
+    colour: canvasColour(dio.reply.resident), ink: css("--parchment") });
+}
+{
+  const canvas = dio.canvas;
+  $("#dio-cut").addEventListener("input", () => {
+    const view = dio.reply?.view;
+    if (!view) return;
+    dio.userCut = true; dio.cut = Number($("#dio-cut").value) >= view.maxY ? null : Number($("#dio-cut").value);
+    renderDiorama();
+  });
+  $("#dio-cut-reset").onclick = () => { dio.userCut = false; renderDiorama(); };
+  $("#dio-cut-none").onclick = () => { dio.userCut = true; dio.cut = null; renderDiorama(); };
+  const readout = event => {
+    const view = dio.reply?.view;
+    if (!view || !dio.geometry) return;
+    const box = canvas.getBoundingClientRect(), hit = pickDiorama(dio.grid, dio.geometry, (dioCut(view) ?? view.maxY) - view.minY, event.clientX - box.left, event.clientY - box.top);
+    $("#dio-readout").textContent = hit
+      ? `x ${hit.x + dio.grid.minX}, y ${hit.y + dio.grid.minY}, z ${hit.z + dio.grid.minZ} · ${hit.id.replace(/^minecraft:/, "")}`
+      : `Slab x ${dio.grid.minX} to ${dio.grid.minX + dio.grid.side - 1}, z ${dio.grid.minZ} to ${dio.grid.minZ + dio.grid.side - 1}, y ${view.minY} to ${view.maxY}.`;
+  };
+  canvas.addEventListener("pointermove", readout);
+  canvas.addEventListener("pointerdown", readout);
+  new ResizeObserver(() => { if (state.active === "diorama") drawDiorama(); }).observe(canvas);
 }
 
 // ---------- Notes ----------
@@ -1291,6 +1443,13 @@ function renderObserver(observation) {
         ${observedStock(contents)}` : html`<p>No stock observation available. Unloaded or inaccessible does not mean empty.</p>`}`);
   }, "article");
   $("#g-observed-empty").hidden = facilities.length > 0;
+  // Arrived from a ledger in Server record: bring that facility's card (or, if it is not in the snapshot, this list) into view.
+  if (commons.focus) {
+    const card = [...$("#g-observed-facilities").children].find(child => child.dataset.key === commons.focus);
+    commons.focus = null;
+    (card ?? $("#g-observed-facilities").closest("section")).scrollIntoView({ block: card ? "center" : "start" });
+    if (card) { card.classList.add("focus"); setTimeout(() => card.classList.remove("focus"), 3000); }
+  }
 }
 
 function renderCommons() {
@@ -1627,7 +1786,10 @@ const panels = [
   { id: "residents", title: "Residents", every: 5000, load: loadResidents, always: true },
   { id: "live", title: "Live", every: 5000, load: () => liveView.loadStatus() },
   { id: "activity", title: "Activity", every: 4000, load: loadActivity },
+  { id: "record", title: "Server record", every: 30000, load: () => serverRecord.load() },
   { id: "map", title: "Map", every: 10000, load: loadMap },
+  // The host reads the client at most every 10 s; asking every 15 s keeps each view under ~25 s old.
+  { id: "diorama", title: "Diorama", every: 15000, load: loadDiorama },
   { id: "notes", title: "Notes", every: 30000, load: loadNotes },
   { id: "commons", title: "Shared Knowledge", every: 15000, load: loadCommons },
   // One poll also feeds the visible chat beside Residents or Live.
@@ -1661,6 +1823,7 @@ function show(id) {
   drawTabs();
   $("main").scrollTop = 0;
   if (panel.id === "map") requestAnimationFrame(() => { if (map.data) renderMap(); });
+  if (panel.id === "diorama") requestAnimationFrame(drawDiorama);
   drawConsoles();
   tick();
 }

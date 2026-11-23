@@ -10,6 +10,7 @@ import type { CommonsReply } from "./routes/commons.ts";
 import { refuse, type Ask, type Routes } from "./routes/context.ts";
 import type { MapReply } from "./routes/map.ts";
 import { dimensionKey } from "./positions.ts";
+import { parseHave, validReply, type DioramaReply } from "./diorama.ts";
 import type { NotesReply } from "./routes/notes.ts";
 import type { ResidentsReply } from "./routes/residents.ts";
 
@@ -26,7 +27,8 @@ export type LiveTarget =
 const TTL = 5000;
 const MAX_REPLY = 4 * 1024 * 1024;
 // A station resident's thoughts come from its own host, through the same five-second cache as its notes.
-const SCOPED: Record<string, true> = { notes: true, file: true, picture: true, "map-picture": true, thoughts: true };
+// The diorama's blocks come from the host that runs the resident's client, validated here (see `diorama`).
+const SCOPED: Record<string, true> = { notes: true, file: true, picture: true, "map-picture": true, thoughts: true, diorama: true };
 const nameKey = (name: string) => name.toLowerCase();
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const parse = <T>(cached?: Cached): T | undefined => {
@@ -261,6 +263,10 @@ export class Federation {
       query.set("resident", name);
       if (route === "file") query.set("path", ask.query.get("path") ?? "");
       if (route === "picture" && ask.query.get("fresh") === "1") query.set("fresh", "1");
+      if (route === "diorama") {
+        const have = parseHave(ask.query.get("have"));
+        if (have.size) query.set("have", [...have].join(","));
+      }
     }
     if (owners.length > 1) return refuse(409, "Duplicate resident name across hosts; fix station configuration.");
     const owner = owners[0];
@@ -281,6 +287,7 @@ export class Federation {
         if (Object.hasOwn(SCOPED, route)) {
           const forwarded = await this.forward(route, ask);
           if (forwarded) {
+            if (route === "diorama") return await this.diorama(forwarded, ask.query.get("resident") ?? "");
             if (route !== "notes" || !forwarded.ok) return forwarded;
             const notes = await forwarded.json() as NotesReply;
             return { ...notes, shared: { places: this.options.sharedPlaces?.() ?? [], deaths: [] } };
@@ -319,6 +326,20 @@ export class Federation {
       };
     }
     return wrapped;
+  }
+
+  /**
+   * A station's diorama reply, checked section by section. A station that cannot answer (an older
+   * Commons has no such route, or it is down) or answers another shape reads as "unavailable".
+   */
+  private async diorama(forwarded: Response, name: string): Promise<DioramaReply | Response> {
+    const owner = this.owners(name)[0];
+    if (forwarded.status === 409 || !owner || owner === "local") return forwarded;
+    const unavailable = (detail: string): DioramaReply => ({ resident: name, host: owner.host, status: "unavailable", detail, asOf: null, checkedAt: null, view: null });
+    if (forwarded.status === 404) return unavailable(`${owner.host} has no diorama for ${name}: it runs an older Commons.`);
+    if (!forwarded.ok) return unavailable(`${owner.host} is unreachable.`);
+    const reply = validReply(await forwarded.json().catch(() => undefined));
+    return reply ? { ...reply, host: owner.host } : unavailable(`${owner.host} answered with a diorama this hub cannot read (another Commons version?).`);
   }
 
   /** Server-side only: where a resident's Live signaling goes. The URL never reaches a browser. */

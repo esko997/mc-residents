@@ -109,6 +109,10 @@ Merged dashboard shapes preserve existing fields:
     bun run demo               # anywhere: made-up data, a stand-in client for Gary, Margo offline
     bun test && bun run typecheck   # needs `bun install` once (types and tsc only)
 
+The demo also stores a made-up week of the server record (`scripts/demo-server-data.ts`) and
+runs a stand-in server bridge; `DEMO_OLD_BRIDGE=1 bun run demo` makes it an older bridge
+without queries, to see how the Server record says so.
+
 As a service: see `commons.service`.
 
 The dedicated resident host is **Inspiron**, `swatson@192.168.1.69` (Debian 13).
@@ -228,7 +232,12 @@ jar swap. Read API, hub only: `GET api/server-data` (summary and ingest health),
 `server-data/stats?resident=&type=&key=&since=`, `server-data/advancements?resident=`,
 `server-data/blocks?since=&until=&resident=&dimension=&limit=`,
 `server-data/block-changes?since=&resident=&limit=`, `server-data/flows?since=&facility=&limit=`,
-`server-data/gaps?since=`. Times there are the server's clock.
+`server-data/gaps?since=`. Times there are the server's clock. The **Server record** panel and
+the Map's building layer read four more, aggregated on the hub and bounded
+(`src/server-data-views.ts`): `server-data/record?window=session|24h|7d`,
+`server-data/block-map?since=&until=&dimension=&resident=&limit=`,
+`server-data/block-cell?dimension=&chunkX=&chunkZ=&since=&until=&limit=` and
+`server-data/ledger?since=` (see [Panels](#panels-and-what-each-reads)).
 
 Dashboard addresses are `http://<machine>:<PORT>/<token>/...`. A wrong or missing token
 gets 404. `/<token>` redirects to `/<token>/`. Keep the address private and off
@@ -422,6 +431,7 @@ Omit `--enable-video` to adjust only the HUD.
 | `COMMONS_SYSTEMCTL` | `systemctl` | Where there is no systemd, every unit reads `unknown`. |
 | `COMMONS_SAMPLE_SECONDS` | `10` | How often each client's state is read and its position recorded. |
 | `COMMONS_ACTIVITY_DAYS` | `2` | How far back session files are loaded. |
+| `COMMONS_BLOCK_COLOURS` | `~/gary-client/commons-data/block-colours.json` | The Diorama's block colour table, built at deploy by `scripts/build-block-colours.ts`. Missing: the page uses its built-in vanilla list and hashed colours. |
 | `COMMONS_AUTO_ACCEPT` | on | Accept first, review after: every proposed shared note becomes visible to residents at the next tick. `off`, `0`, `false` or `no` makes notes wait for a person's keep. |
 | `COMMONS_OWNER` | `spesk01` | In-game names of the people who play on the server, space or comma separated. A mod's line that mentions one of them (or a resident, or anyone seen joining or chatting) is not treated as noise. |
 | `CHAT_URL` | unset | Address of the phone chat page on the server machine, `http://<host>:<port>/<its token>/`; adds a Chat tab that embeds it. |
@@ -468,6 +478,9 @@ are rejected. Every actor/author/consent comes from the authenticated resident.
 | `library/register` | `{book:{kind:"written",title,author,generation,pages},read_from,at:{x,y,z,dimension},holder?,facility?,subjects?,note?,another_copy?}` → text; body bound 256 KiB |
 | `library/find`, `report`, `update` | `book_find` (plus `near`), `book_report` (`kind`, `at`, `checked:{content_hash,read_from}`), `book_update` args → text; caretakers may `find` only |
 | `records/query` | `{kind,resident?,since?,until?,area?:{x,z,radius,dimension?},page?}` (ms) → text; residents only |
+
+`GET advancements/frontier?tab=&limit=` (resident only) returns the caller's own
+advancements one step away; see "Advancement frontier" below.
 
 `GET events?after=<seq>&wait=<0..25>` returns
 `{result:{events:[{seq,type,fields}],seq,gap}}`. Payloads are a 512-entry memory ring;
@@ -605,6 +618,41 @@ after API note submission. Preserve the place-picture cache beside the database.
   resident's card data arrives with `residents`, its thoughts in the merged
   `activity`, and `thoughts` is forwarded to its station through the five-second
   scoped cache. Thoughts are dashboard-only: the stream overlay never receives them.
+- **Server record** (hub only; a station's page says to open the hub's): what the
+  Minecraft server itself counted for every resident, whichever machine runs them,
+  from the hub's copy of the server bridge's queries (`server_*` tables). Stations hold
+  none of this; the hub ingests it for all residents. Each section says next to its
+  figures where they come from, how fresh they are, the known gaps, and plainly when the
+  running bridge does not offer that query (an older jar).
+  - **What they have done**: per resident, side by side in roster order (never ranked,
+    with a note on arrival dates, machines and personas), time played, distance on foot,
+    swimming, by boat, riding and gliding, blocks mined, items crafted, mobs killed,
+    deaths and damage, each all-time and changed over the chosen window; then the most
+    mined, crafted, used, picked up and killed things by name, and every other counter.
+    Windows: **Last session** (found from the saves alone: play time grows only while
+    online, so two stored saves whose play time grew by less than half the time between
+    them have an absence between them), 24 h or 7 days, each measured from the value in
+    force at its start. When the hub's record does not reach back that far, the change
+    counts from the first stored save and says so. Statistics are the server's files,
+    written about every five minutes while playing and at logout.
+  - **Advancements**: per resident, done of the advancements loaded on the server, per
+    in-game tab (the root each advancement's parents lead to, so a mod's advancements
+    hung under a vanilla tab count there; ones whose parent is not loaded are grouped as
+    "<mod>, outside the tabs"), the recently earned ones with times, those started but not
+    finished, and "one step away" (visible, not started, the one before it done). Titles
+    that are untranslated keys (`advancements.occultism.craft_satchel.title`) are shown
+    as words made from the key, in italics.
+  - **Building and digging**: per resident, placed and broken in 24 h, 7 or 30 days, and
+    "who built where" by 64-block area, named after the nearest saved place within 64
+    blocks, with a link to the spot on the Map. Changes counted without a position (the
+    bridge's table was full) are added separately.
+  - **Container flows**: per registered facility, what went in and out by item, the
+    nearest resident at each change and the changes with none near, and why a change may
+    be incomplete; labelled as evidence, not proof (human players are never considered;
+    hoppers, pipes and machines are invisible). "Facility entry" opens that facility's
+    card under Shared Knowledge.
+  - **Where this comes from**: each data set's state at the bridge, the hub's last read,
+    the newest time in it and known gaps over 7 days.
 - **Map**: the `positions` table (this app writes one row per online resident
   every 10 s: x, y, z, the dimension id, health, food and `sky`, the sky light
   0-15 at the feet from the client's full state; older rows have `sky` NULL),
@@ -653,8 +701,16 @@ after API note submission. Preserve the place-picture cache beside the database.
   - Federation: stations send the same reply; the hub adds `host`. A station still
     running an older Commons (flat overworld `trail`, no heights) shows no trail
     until it is updated, rather than a guessed one; update stations and hub together.
-  - A block-level 3D "diorama" is assessed in [docs/map-3d.md](docs/map-3d.md); its
-    canvas prototype is the unlinked page `iso-chunk.html` (synthetic terrain only).
+  - **Building and digging** (hub only): per-chunk counts of blocks residents placed and
+    broke in the map's window, from the server bridge's hour cells, shaded under the
+    trails of the shown dimension in the resident's colour (logarithmic strength; a
+    corner marks a second resident). Below the map: Off / placed and broken / placed /
+    broken, a resident filter, one bar per hour of the window (select one to shade only
+    that hour), "who built where", and the selected chunk's hours, block kinds, and the
+    recent individual changes the hub still keeps (a sample: the bridge skips some in
+    bursts and the hub keeps them 14 days; the counts are complete). Explosions, pistons,
+    fluids, mobs, machines and bucket placement are never seen. Dimensions with block
+    changes are offered on the dimension switch even without a trail.
   New/revised places may also receive a saved view: within 30 seconds of observing
   the file save, the named resident must still be in the same dimension and
   within 12 blocks, alive and without a GUI open, both before and after capture.
@@ -667,6 +723,44 @@ after API note submission. Preserve the place-picture cache beside the database.
   removed or revised places discard obsolete views. PNGs are limited to 2 MiB.
   Files are private, read by opaque hash IDs through the authenticated dashboard,
   and separate from resident-authored notes.
+- **Diorama**: the blocks around one resident as an isometric slab (see
+  [docs/map-3d.md](docs/map-3d.md)): 3 × 3 chunks (48 × 48 blocks) and the three
+  16-block sections around the feet (about 16 below to 16 above), from the
+  resident's **own client** through Synapse `GET /chunks`, which reads only chunks
+  the client already holds (it never loads one or asks the server). Ores and
+  everything else are shown as they are.
+  - **Read only while watched.** Nothing polls: a host asks a resident's client
+    only when a dashboard requests `GET diorama` (the page does every 15 s while
+    the tab is open and the page visible), and at most every 10 s per resident
+    whoever is looking (`MIN_REFRESH_MS` in `src/diorama.ts`). Each read sends the
+    section revisions the host already holds (`have`), so the client returns only
+    changed sections; the page does the same with the host.
+  - **Honest time.** The status line says when the blocks were read; when the
+    client is offline or refuses, the last view stays with its own time and the
+    reason. Columns the client had not loaded are hatched and counted; nothing is
+    drawn there.
+  - **Cut.** Underground (sky light 0 at the feet in a dimension with sky) the cut
+    starts two blocks above the feet; in the Nether (a ceiling) always, three above;
+    on the surface and in the End there is none. The slider moves it; *Default cut*
+    and *No cut* reset it. Darker tops are cut surfaces (and the slab's top, where
+    the data ends). Dashed outlines mark the resident and every other non-spectator
+    player the client sees in the slab, through rock. Tap or hover for a block's
+    coordinates and id; a compass shows north (−z).
+  - **Colours** come from `GET block-colours`: the host's table built at deploy
+    from the modpack's jars (`scripts/build-block-colours.ts`, the average colour
+    of each block's top or all-side texture, biome-tinted ones with plains colours,
+    ores with the colour of their specks rather than the stone around them),
+    then a small hand-written vanilla list in `public/diorama.js`, then a muted
+    colour hashed from the id. The table is derived from mod textures: it lives in
+    the data directory (`COMMONS_BLOCK_COLOURS`) and is never committed.
+  - **Federation.** A station serves its own residents; the hub forwards
+    `GET diorama` (with `have`) to the owning station and checks every section
+    (palette ids, bits matching the palette, zlib data of the exact length, at most
+    125 sections and 64 players) before passing it on. A station on an older
+    Commons, an unreachable one, or one answering another shape reads as
+    `unavailable` with the reason, never as blocks.
+  - **Dashboard only.** Block data is never sent to the stream overlay, the Live
+    status or the Resident API.
 - **Notes**: `memory.md`, the last 12 KB of `journal.md`, every other `.md`
   file under the resident's directory, and the places files. Read-only.
 - **Shared Knowledge**: `skills`, `skill_runs`, `shared_notes`, `reviews`, `feedback`
@@ -725,7 +819,8 @@ All under `/<token>/api/`, JSON, `Cache-Control: no-store`:
 `GET residents`, `GET picture?resident=&fresh=1` (PNG), `GET activity?boot=&after=&limit=`,
 `GET map-picture?id=<opaque-id>` (PNG for a current saved-place view),
 `GET map?hours=1|6|24|72|168`, `GET notes?resident=`, `GET file?resident=&path=`,
-`GET commons`,
+`GET commons`, `GET diorama?resident=&have=<rev,…>` (the blocks around a resident, see Diorama),
+`GET block-colours` (`{colours: {id: "#rrggbb"}, builtAt, problem?}`),
 `POST review` with `{kind: "skill"|"note", id, action: "keep"|"remove"|"restore"|"comment"|"edit", text, reviewer, updatedAt?, fields?}`
 (`fields` for edit: `{topic, text}` or `{description, params, expect}`, the last two as JSON text),
 `GET console?boot=&after=<rev>` (lines added or changed since that revision, and ids withdrawn),
@@ -779,6 +874,46 @@ it (`src/resident-sight.ts`). A resident body asks only for an alarm beyond its
 48-block earshot and within 96 blocks in the same dimension, and perceives it
 only when `visible` is `true`.
 
+## Advancement frontier (Resident API)
+
+Resident-only `GET /resident-api/v1/advancements/frontier?tab=<tab or mod>&limit=<1..10>`
+(`src/resident-advancements.ts`) answers the caller's own advancements one step away, as
+the advancements screen shows them: not done, and the parent done, or the root of a tab
+the resident has started (any progress in it). It is worked out from the ingested
+`server_advancement_catalog` and the caller's `server_advancements` rows (resident name
+matched case-insensitively). There is no parameter naming anyone else: any other parameter
+is 400, a caretaker gets 403, and another resident's progress is never read.
+
+Left out: hidden advancements (the game shows them only once done), recipe unlocks
+(`ns:recipes/...`), and anything under a parent the catalog
+lacks (a parent without a display, such as Occultism's root: the game shows nothing below
+it). A title that is empty or still a translation key (the server resolved no language
+entry) becomes a readable form of the id with `titleIsId: true`.
+
+`{result: {status: "unavailable", reason}}` when there is nothing trustworthy: no ingest on
+this hub, an older bridge, the bridge unreachable or not yet reached since the hub started,
+advancement kinds not offered, the last advancement read failed, no catalog yet, or no
+progress stored for the caller. Otherwise `{result: {status: "ok", savedAt, ageMs, readAt,
+catalogBuiltAt, scope, scopeMatched, total, turn, tabs, tabsTotal, entries}}`: `savedAt` is the
+server's save of the file the hub last read (server clock; the server saves at autosave about
+every 5 minutes and at logout, the hub reads every 30 minutes), `ageMs` the hub's clock minus
+it, `readAt` the hub's last good advancement read since it started. `entries[]` are
+`{id, mod, title, titleIsId, frame, tab, parent, criteria: {met, total, needs: all|any|groups,
+groups, metNames}}` (the files list met criteria only, at most 8 names here; the missing ones
+are never named). `tabs[]` (at most 40, those with something within reach) are `{id, title,
+titleIsId, mod, done, total, withinReach}`, `total` counting what the game shows (hidden ones
+only once done). `tab` narrows to entries whose own namespace, tab root, tab namespace or tab
+title equals it (case-insensitive); an unmatched one returns no entries and `scopeMatched:
+false`.
+
+Bounded and rotated: each call advances the caller's turn for that scope (a matched scope
+only; `resident_api_state` key `advancement_turn:<resident>:<scope>`). Page `turn` takes
+counter values `seed + turn*limit` onward; value c picks tab `c mod T` (tabs by id) and that
+tab's entry `floor(c / T)` (ones with progress first, then by id), wrapping. A page so draws
+from different tabs whenever there are enough, every entry comes round over successive calls,
+and the per-resident seed keeps residents from opening on the same tab. Each tab is treated
+alike, base game or mod; nothing is ranked.
+
 ## The phone-chat service on the server machine
 
 `phone-chat/phone_chat.py` (one Python file, no dependencies) must be the
@@ -809,5 +944,19 @@ in `~/gary-client/tools/`, a per-host `~/gary-client/run.conf` and controller cr
 (see [docs/run-controller.md](docs/run-controller.md#deploying)); no unit change. The
 database (`commons.sqlite*`) and `token` live in the same directory by default:
 a copy that deletes unknown files (`rsync --delete`) must exclude them, or set
-`COMMONS_DB` to a directory of its own. `fixtures/`, `test/`, `scripts/` and
-`node_modules/` are not needed on the game machine.
+`COMMONS_DB` to a directory of its own. `fixtures/`, `test/` and `node_modules/` are
+not needed on the game machine; of `scripts/`, only `build-block-colours.ts` is.
+
+The Diorama's colour table is built on each host that serves a dashboard (hub and
+stations), against a game directory it already has, and rebuilt when the modpack
+changes (the jars are only read):
+
+```sh
+cd ~/gary-client/commons
+bun scripts/build-block-colours.ts --jar <minecraft 1.20.1 client jar> \
+  --mods ~/gary-client/game/mods --out ~/gary-client/commons-data/block-colours.json
+```
+
+The Diorama needs Synapse with `GET /chunks` in each resident's game directory
+(older clients answer "Unknown endpoint", shown as the reason) and the same Commons
+on hub and stations (an older station shows "unavailable").

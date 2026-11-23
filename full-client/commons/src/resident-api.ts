@@ -13,6 +13,7 @@ import { AlarmRateLimitError, ResidentAlarms, type ResidentAlarmOptions } from "
 import { ResidentSight, type ResidentSightOptions } from "./resident-sight.ts";
 import { libraryOperation, type LibraryDeps } from "./library.ts";
 import { recordsOperation, type RecordsDeps } from "./records.ts";
+import { MAX_LIMIT, residentFrontier, type FrontierOptions } from "./resident-advancements.ts";
 
 /** Book catalogue and records: the observer for shelf reads, the console's chat ring, players nobody perceives. */
 export interface HistoryOptions extends Pick<LibraryDeps, "observer" | "get">, Pick<RecordsDeps, "chat" | "unseen"> {}
@@ -36,7 +37,7 @@ export class ResidentApi {
   private credentials: Credential[] = [];
   private alarms: ResidentAlarms;
   private sight: ResidentSight;
-  constructor(private db: Database, private credentialsFile: string, private acceptNotes = true, options: ResidentAlarmOptions = {}, sight: ResidentSightOptions = {}, private history: HistoryOptions = {}) {
+  constructor(private db: Database, private credentialsFile: string, private acceptNotes = true, options: ResidentAlarmOptions = {}, sight: ResidentSightOptions = {}, private advancements: FrontierOptions = {}, private history: HistoryOptions = {}) {
     this.events = new ResidentEvents(db);
     this.alarms = new ResidentAlarms(db, this.events, options);
     this.sight = new ResidentSight(sight);
@@ -116,6 +117,17 @@ export class ResidentApi {
         ? this.credentials.find(c => c.role === "resident" && c.name.toLowerCase() === asked.toLowerCase()) : undefined;
       if (!other || other.name.toLowerCase() === who.name.toLowerCase()) return failure(400, "invalid_request", "to must name another resident; sight is always from the caller.");
       return response({ result: await this.sight.between(who.name, other.name) });
+    }
+    if (path === "advancements/frontier" && request.method === "GET") {
+      // Always the caller's own progress: there is no parameter naming anyone, and caretakers get none.
+      if (who.role !== "resident") return failure(403, "forbidden", "Advancement progress is only for the resident it belongs to.");
+      const params = url.searchParams, tab = params.get("tab") ?? undefined, limit = params.get("limit");
+      if ([...params.keys()].some(key => key !== "tab" && key !== "limit") || (tab !== undefined && tab.length > 64)
+        || (limit !== null && !(Number.isSafeInteger(Number(limit)) && Number(limit) >= 1 && Number(limit) <= MAX_LIMIT))) {
+        return failure(400, "invalid_request", `Only tab (a tab or mod, at most 64 characters) and limit (1..${MAX_LIMIT}); it is always your own progress.`);
+      }
+      try { return response({ result: residentFrontier(this.db, who.name, { scope: tab, limit: limit === null ? undefined : Number(limit) }, this.advancements) }); }
+      catch { return failure(503, "store_unavailable", "Advancement data is unavailable on the hub."); }
     }
     const [group, operation, extra] = path.split("/");
     if (request.method !== "POST" || !group || !operation || extra !== undefined || !Object.hasOwn(reads, group)) return failure(404, "not_found", "Resident API endpoint not found.");

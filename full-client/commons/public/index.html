@@ -122,6 +122,17 @@
     <p id="feed-empty" class="empty" hidden></p>
   </section>
 
+  <section id="p-record" class="panel" aria-labelledby="t-record" hidden>
+    <div class="controls">
+      <span class="map-heights-label">Changes over</span>
+      <div id="record-window" class="seg" role="group" aria-label="Window for the changes in statistics"></div>
+      <span class="map-heights-label">Blocks and containers</span>
+      <div id="record-span" class="seg" role="group" aria-label="Period for building, digging and container flows"></div>
+    </div>
+    <p class="fine">What the Minecraft server itself counted for each resident, as opposed to what they said or noted: its statistics, advancements, the blocks they placed and broke, and changes in registered containers. Each section says where its figures come from and what they miss.</p>
+    <div id="record-body"></div>
+  </section>
+
   <section id="p-map" class="panel" aria-labelledby="t-map" hidden>
     <div class="controls">
       <div id="map-hours" class="seg" role="group" aria-label="How far back the trails go"></div>
@@ -143,6 +154,20 @@
     <p id="map-readout" class="readout">Move over the map for coordinates. Select a saved-place dot or a place below.</p>
     <div id="map-legend" class="strip"></div>
     <p id="map-help" class="fine">One dimension at a time; north (−z) up. Nether coordinates are shown with their Overworld equivalent (×8). Trails are snapped to a four-block grid, in eight-block height bands: thicker lines mean more overlapping samples, not exact trip counts; higher trails are drawn over lower ones, so use Heights to see what lies beneath. Long sampling gaps, large jumps and dimension changes are not joined; ◆ marks a dimension change between two consecutive samples (select it to see the other side). Drag to pan; pinch or use +/− to zoom.</p>
+    <section id="map-blocks" aria-labelledby="map-blocks-title" hidden>
+      <div class="controls">
+        <h2 id="map-blocks-title">Building and digging</h2>
+        <div id="mb-show" class="seg" role="group" aria-label="Which block changes to shade on the map"></div>
+        <div id="mb-who" class="seg" role="group" aria-label="Whose block changes"></div>
+      </div>
+      <p id="mb-source" class="fine source"></p>
+      <div id="mb-hours" class="hour-bars" role="group" aria-label="Block changes per hour in the map's window; select an hour to show only it"></div>
+      <p id="mb-summary" class="fine"></p>
+      <div class="map-browse">
+        <div id="mb-areas"></div>
+        <section id="mb-cell" aria-label="Selected chunk"></section>
+      </div>
+    </section>
     <section id="map-profile-box" aria-labelledby="map-profile-title">
       <div class="controls">
         <h2 id="map-profile-title">Elevation</h2>
@@ -165,6 +190,18 @@
         <section id="map-selection" aria-label="Selected saved place"></section>
       </div>
     </section>
+  </section>
+
+  <section id="p-diorama" class="panel" aria-labelledby="t-diorama" hidden>
+    <div class="controls">
+      <div id="dio-who" class="seg" role="group" aria-label="Whose surroundings"></div>
+      <label class="dio-cut">Cut at <input type="range" id="dio-cut" step="1" aria-label="Highest height shown"> <output id="dio-cut-value" for="dio-cut" class="data"></output></label>
+      <span class="seg"><button type="button" id="dio-cut-reset">Default cut</button><button type="button" id="dio-cut-none">No cut</button></span>
+    </div>
+    <p id="dio-status" class="readout" aria-live="polite"></p>
+    <div id="dio-box"><canvas id="dio" aria-label="Isometric view of the blocks around the selected resident" aria-describedby="dio-status dio-readout dio-help"></canvas></div>
+    <p id="dio-readout" class="readout">Move over or tap the blocks for their coordinates and name.</p>
+    <p id="dio-help" class="fine">The blocks around the resident as their own game client holds them right now: 3 × 3 chunks (48 × 48 blocks) and whole 16-block layers from about 16 below the feet to 16 above, viewed from the south-east. It is read only while this tab is open, at most every ten seconds; nothing is loaded or asked of the server. Ores and everything else are shown as they are. The cut removes everything above the chosen height (darker tops are cut surfaces, and the top of the slab is where the data ends); underground and in the Nether it starts just above the resident. Dashed outlines show where the resident and other players in the slab stand, even inside rock. Hatched squares are chunks the client had not loaded. Colours come from the modpack's textures when the host has built its colour table, otherwise from a small built-in list or a colour made from the block's name.</p>
   </section>
 
   <section id="p-notes" class="panel" aria-labelledby="t-notes" hidden>

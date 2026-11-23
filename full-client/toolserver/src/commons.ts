@@ -3,6 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { Events } from "./events.ts";
 import type { AlarmRequest } from "../../commons/src/resident-contracts-alarm.ts";
 import type { SightAnswer } from "../../commons/src/resident-sight.ts";
+import type { FrontierReply } from "../../commons/src/resident-advancements.ts";
 
 /** Only the hub holds shared data. Failed mutations are never automatically retried. */
 export class CommonsClient {
@@ -48,6 +49,13 @@ export class CommonsClient {
    * unknown. Bounded: an alarm's sight check never waits long on the hub. */
   sight(resident: string, timeout = 2500): Promise<SightAnswer> {
     return this.request(`sight?to=${encodeURIComponent(resident)}`, undefined, undefined, timeout);
+  }
+
+  /** This resident's own advancement frontier (one step from what it has done), optionally for one tab or mod.
+   * Bounded like sight: `what_next` never waits long on the hub. Each call shows the next rotation. */
+  frontier(query: { tab?: string; limit: number }, timeout = 2500): Promise<FrontierReply> {
+    const params = new URLSearchParams({ limit: String(query.limit), ...(query.tab ? { tab: query.tab } : {}) });
+    return this.request(`advancements/frontier?${params}`, undefined, undefined, timeout);
   }
 
   /** A single bounded long-poll; only reads retry, with cancellation on toolserver shutdown. */

@@ -4,8 +4,9 @@ Decision document, 2026-11-23. Question from the owner: could the map be an isom
 "diorama" where a cube is one chunk, to show depth and Nether travel? Short answer: **yes for a
 few chunks around one resident; no for the whole explored world.** The 2D map now carries
 dimension and height (see the README's Map section), so a diorama is a close-up, not a
-replacement. A working canvas prototype is at `<dashboard>/iso-chunk.html` (unlinked,
-synthetic terrain only; its screenshots went with the 2026-11-23 report).
+replacement. The owner chose the §5 first version with block data from the residents' own
+clients and ores shown as they are; what was built is in §6. (The synthetic-terrain prototype
+page this document first measured, `iso-chunk.html`, was replaced by the real panel.)
 
 ## 1. What block data it needs, and where it could come from
 
@@ -55,7 +56,7 @@ own chunk every 10–30 s (they dig), the ring around it only when it changes or
 
 ## 3. Rendering in the browser without a build step
 
-**Canvas isometric painter** (the prototype, `public/iso-chunk.js`, ~180 lines): extract the
+**Canvas isometric painter** (the prototype, now `public/diorama.js`): extract the
 visible faces (top, east, south) of every solid block, sort back to front by x + y + z, fill
 parallelograms from a block-colour table, seal hairline seams. Measured in the headless
 WebKit on the development machine (synthetic 128-tall terrain, a carved tunnel, 1240 × 1000):
@@ -118,3 +119,48 @@ standing in it, ◆ portals and the Map's height colours as a side bar.
 Later, only if wanted: WebGL (three.js) for orbiting and 9 × 9 overviews (3–5 days); a
 surface-only world overview from region files or Xaero caches (2–3 days, needs a decision on
 §4). Not recommended: a whole-world block diorama.
+
+## 6. What was built (first version, 2026-11-23)
+
+As recommended in §5, with these choices and differences:
+
+- **Synapse `GET /chunks?radius=&below=&above=&have=`** (source (2a), Synapse README): radius
+  0..2 chunks (default 1, 3 × 3; capped at 5 × 5 because this is a close-up and every read is
+  x-ray of the resident's surroundings), `below`/`above` 0..32 blocks (default 16), always
+  widened to **whole sections** (so ±16 returns three sections, 48 blocks; the cap gives five).
+  Per section: palette of block ids (no block states), indices packed LSB-first at
+  ceil(log2(palette)) bits, zlib, base64; a 64-bit FNV revision over position, palette and
+  indices, per section rather than per chunk (a chunk's window is three to five sections, and a
+  resident digging changes one). `have=` lists revisions the caller holds; those come back as
+  `{y, rev, same: true}`. Missing columns are listed, never loaded. The client thread only copies
+  each section's `PalettedContainer` (an array copy) and the player list, in slices of about
+  1 ms (whole columns; at most one column over) with a client tick between slices; packing,
+  compression and hashing run on the HTTP thread; one read at a time (`BUSY` 429 otherwise);
+  `observe` token level. Reported per read: `timing.clientThreadMicros`,
+  `clientThreadMaxSliceMicros`, `clientThreadSlices`, `encodeMicros`, `totalMicros`.
+- **Commons** (`src/diorama.ts`, `GET diorama?resident=&have=`): no timer. A host asks a
+  resident's client only when a dashboard asks, at most every 10 s per resident for all
+  viewers, and sends `have` for what it already holds; the page asks every 15 s while the tab is
+  open and visible, with its own `have`. The last view is kept per resident (only its current
+  window) with the time it was read; an offline client keeps showing it, labelled. The hub
+  forwards to the owning station and re-validates every section (ids, bits versus palette, zlib
+  length, counts); an older or unreachable station, or another shape, is `unavailable`.
+- **Page:** a *Diorama* tab beside Map rather than a panel inside it (the slab needs the
+  height, and the Map's controls already fill a phone screen). The §3 painter, plus: thin
+  decorations (grass, torches, rails…) as floor markers, water and glass translucent, hatched
+  missing columns, dashed outlines and names for every player in the slab, a compass, tap/hover
+  for a block's coordinates and id, the dimension and Nether ↔ Overworld equivalent in the status
+  line. Cut by default two blocks over the feet underground (sky light 0) and three in the
+  Nether; not on the surface or in the End. Not built: the cross-section clip, the Map's height
+  ramp as a side bar, zoom, rotation, the lava sea as a plane.
+- **Colours:** `scripts/build-block-colours.ts` reads the client jar and the mods directory
+  (including `META-INF/jarjar` jars) at deploy: blockstate → first model → parent chain → the
+  top/end/all texture → average of visible pixels; biome-tinted faces get plains colours; for
+  `*_ore` blocks the average of the fifth of pixels farthest from the mean (the specks), so ores
+  are visible. On the residents' 125-mod pack: 6 659 blocks in 1.6 s, 283 without a readable
+  texture (dynamic models), which get a hashed colour; the table is ~280 KB and never committed.
+- **Measured:** the Synapse unit tests, the Commons/page tests and a synthetic demo
+  (`DEMO_DIORAMA=underground bun scripts/demo.ts`; screenshots labelled synthetic). The real
+  payload sizes and client-thread times for 3 × 3 chunks on a live client are **not measured
+  yet**: the live check waits for an approved disposable client. The synthetic demo's
+  surface reply is 13.5 KB of JSON for 27 sections.

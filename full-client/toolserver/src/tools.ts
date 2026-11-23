@@ -10,7 +10,8 @@ import { craft } from "./craft.ts";
 import { createNotes, notesDefinitions, type Notes } from "./notes.ts";
 import { Skills, skillDefinitions, type SkillRun, type ToolReply } from "./skills.ts";
 import { createPlans, planDefinitions, type Plans } from "./plan.ts";
-import { readPlaces, snapshotOf, whatNext } from "./ideas.ts";
+import { frontierRoom, readPlaces, snapshotOf, whatNext } from "./ideas.ts";
+import { frontierReport } from "./advancement-ideas.ts";
 import { guideDefinition, lookupGuide } from "./guides.ts";
 import { fromMod, modsDefinition, modsReply, packKinds } from "./mods.ts";
 import { CommonsClient } from "./commons.ts";
@@ -73,7 +74,7 @@ export const definitions = {
   skill_find: { ...skillDefinitions.skill_find, description: `${skillDefinitions.skill_find.description} limit: default 5, at most 10.` },
   notes_shared: { ...skillDefinitions.notes_shared, description: `${skillDefinitions.notes_shared.description} limit: default 3, at most 8.` },
   ...planDefinitions,
-  what_next: { description: "For when you are unsure what to do: at most five suggestions worked out from what your body can see (what you carry and wear, health and food, saved places, recent deaths, your plan), each with the numbers it rests on. They name things that are missing or unused; they are not orders. The current step of your plan in focus comes first.", schema: z.object({}).strict() },
+  what_next: { description: "For when you are unsure what to do: at most five suggestions worked out from what your body can see (what you carry and wear, health and food, saved places, recent deaths, your plan), each with the numbers it rests on, and when there is room up to three advancements within reach (not done, the one before done, as the advancements screen shows them). They name things that are missing, unused or within reach; they are not orders. The current step of your plan in focus comes first. advancements: a tab or mod (\"Nether\", \"mekanism\") lists more of what is within reach there, \"all\" across your tabs; each ask shows others.", schema: z.object({ advancements: z.string().trim().min(1).max(64).optional() }).strict() },
 };
 export type ToolName = keyof typeof definitions;
 /**
@@ -561,9 +562,22 @@ export class Tools {
       case "plan_focus": return this.plans.focus(args);
       case "plan_finish": return this.plans.finish(args);
       case "what_next": {
+        // Only the frontier of one tab or mod, or of all tabs: no body snapshot needed.
+        if (args.advancements !== undefined) {
+          const asked = args.advancements.trim();
+          const reply = await this.commons.frontier({ tab: /^all$/i.test(asked) ? undefined : asked, limit: 8 }).catch((error: unknown) => error instanceof Error ? error.message : String(error));
+          return frontierReport(asked, reply, this.knowledge);
+        }
         const [state, saved, plan] = await Promise.all([api.state(true), readPlaces(body.config.residentDir, this.commons), this.plans.focused().catch(() => undefined)]);
         const society = await this.society.snapshot({ project: plan?.name, needs: [plan?.goal, plan?.needs].filter(Boolean).join(" "), dimension: state.dimension });
-        return whatNext(snapshotOf(state, { now: this.now(), ...saved, plan, knowledge: this.knowledge, society, pack: this.knowledge && packKinds(this.knowledge) }));
+        const snapshot = snapshotOf(state, { now: this.now(), ...saved, plan, knowledge: this.knowledge, society, pack: this.knowledge && packKinds(this.knowledge) });
+        // Advancements only when there is room for them; without hub data the reply is as it was, silent about them.
+        const room = frontierRoom(snapshot);
+        if (room > 0) {
+          const frontier = await this.commons.frontier({ limit: room }).catch(() => undefined);
+          if (frontier?.status === "ok") snapshot.frontier = frontier;
+        }
+        return whatNext(snapshot);
       }
       case "set_reflexes":
         Object.assign(body.reflexes, args);
