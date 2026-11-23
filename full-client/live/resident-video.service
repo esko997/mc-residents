@@ -1,0 +1,25 @@
+[Unit]
+Description=Private resident WebRTC transport (no capture while unwatched)
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=%h/gary-client/bin/mediamtx %h/gary-client/live/mediamtx.yml
+WorkingDirectory=%h/gary-client/live
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+KillMode=control-group
+Slice=residents.slice
+CPUQuota=100%
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=default.target

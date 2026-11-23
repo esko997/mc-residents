@@ -132,6 +132,56 @@ public networks. When `COMMONS_TOKEN` is not set, a token is made at the first
 start, saved (mode 600) next to the database, and the full address is printed
 once; later starts print only where the token file is.
 
+## Private live video
+
+The **Live** panel selects any configured resident. Watch starts one shared,
+video-only channel; selecting another resident switches it for all viewers.
+Up to four viewers may share that channel. Stop, leaving Live, or hiding the
+page releases that viewer; capture and encoding stop when the last viewer
+leaves. Lost viewers expire after 30 seconds. Errors require an explicit Watch,
+not an automatic reconnect. There is no audio, recording, or desktop capture.
+
+The path is the client's main framebuffer → authenticated loopback raw frames
+→ FFmpeg → loopback RTSP → MediaMTX → WebRTC. Only encoded WebRTC media listens
+on the LAN (UDP/TCP 8189); signaling uses this dashboard's existing secret URL.
+Keep the dashboard on a trusted LAN: its HTTP signaling is not HTTPS. No
+Internet traversal, STUN or TURN is configured. Status beside the video has its
+own sample time; it is not frame-synchronized and does not infer the resident's
+current action.
+
+Install FFmpeg with `h264_nvenc` support and MediaMTX **1.21.4** on the client
+host. Copy the MediaMTX executable to `~/gary-client/bin/mediamtx`, and
+`../live/mediamtx.yml` to `~/gary-client/live/mediamtx.yml`. Install
+`../live/resident-video.service` as a user service. The relay may stay running;
+the encoder and framebuffer capture are on demand only.
+
+Enable `[features] videoEnabled = true` in each stopped client's
+`config/synapse-client.toml`, with the matching Synapse build installed.
+Set `COMMONS_LIVE_ENABLED=true` for Commons, start `resident-video.service`,
+then restart Commons. The default encoder is `h264_nvenc`; failures are shown,
+never silently retried with software encoding.
+
+Optional overrides: `COMMONS_LIVE_FFMPEG` (executable path),
+`COMMONS_LIVE_RTSP_URL` (default `rtsp://127.0.0.1:8554/resident`) and
+`COMMONS_LIVE_WHEP_URL` (default `http://127.0.0.1:8889/resident/whep`).
+Both URLs must remain loopback-only. `COMMONS_LIVE_ENCODER=libx264` is an
+explicit isolated-test option, not a production fallback.
+
+### Less obstructive client HUD
+
+While a client is stopped, back up its options and configuration, then run:
+
+```bash
+python3 ~/gary-client/tools/client-hud.py --game ~/gary-client/game --enable-video
+```
+
+Use the resident's actual game directory. `--dry-run` previews the changes.
+The helper hides the minimap in Xaero's currently selected profile, reduces
+GUI/chat scale and chat height, and enables Synapse's exact Days-sidebar
+suppression. It does not remove Xaero, change key bindings or render distance,
+or alter the server scoreboard. Unrelated scoreboard objectives remain visible.
+Omit `--enable-video` to adjust only the HUD.
+
 ## Environment
 
 | Name | Default | What |

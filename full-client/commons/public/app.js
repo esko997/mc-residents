@@ -1,5 +1,6 @@
 "use strict";
 import { mergeMapTrail } from "./map-trails.js";
+import { createLiveView } from "./live-view.js";
 // The Shared Knowledge page. No framework and no build step: each panel fetches JSON from
 // api/<route> (relative, so the token in the address carries over) and patches
 // only the parts of the page whose content changed, so nothing flickers and
@@ -100,6 +101,7 @@ function patch(container, items, keyOf, render, tag = "div") {
 // ---------- residents everyone shares ----------
 const state = { names: [], residents: null, active: "residents", failures: 0 };
 const colour = name => name === "shared" ? "var(--shared)" : `var(--c${Math.max(0, state.names.indexOf(name)) % 4})`;
+const liveView = createLiveView($("#p-live"), { now: serverNow, stamp, colour });
 function segmented(container, choices, current, onPick) {
   setHtml(container, html`${choices.map(choice => html`<button type="button" data-value="${choice.value}" aria-pressed="${String(choice.value === current)}"
     ${choice.who ? html`data-who style="--who:${colour(choice.who)}"` : ""}>${choice.label}</button>`)}`);
@@ -240,6 +242,7 @@ async function loadResidents() {
   const first = !state.residents;
   state.residents = data;
   state.names = data.residents.map(resident => resident.name);
+  liveView.updateResidents(data);
   const online = data.residents.filter(resident => resident.status === "online").length;
   $("#pulse").textContent = `${online} of ${data.residents.length} clients reachable, read ${clock(data.now)}`;
   renderResidents(data);
@@ -1130,6 +1133,7 @@ async function loadConsole() {
 // ---------- panels, tabs, and the refresh loop ----------
 const panels = [
   { id: "residents", title: "Residents", every: 5000, load: loadResidents, always: true },
+  { id: "live", title: "Live", every: 5000, load: () => liveView.loadStatus() },
   { id: "activity", title: "Activity", every: 4000, load: loadActivity },
   { id: "map", title: "Map", every: 10000, load: loadMap },
   { id: "notes", title: "Notes", every: 30000, load: loadNotes },
@@ -1155,6 +1159,7 @@ function drawTabs() {
 function show(id) {
   const panel = panels.find(entry => entry.id === id && !entry.hidden) ?? panels[0];
   state.active = panel.id;
+  liveView.setActive(panel.id === "live");
   $("#top h1").textContent = panel.title;
   document.title = `${panel.title} — Minecraft residents`;
   for (const entry of panels) $(`#p-${entry.id}`).hidden = entry.id !== panel.id;

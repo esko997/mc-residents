@@ -7,6 +7,7 @@
 <title>Residents — Minecraft residents</title>
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="watch-layout.css">
+<link rel="stylesheet" href="live-view.css">
 
 <header id="top">
   <h1>Residents</h1>
@@ -30,6 +31,41 @@
         <div id="glance-view" class="console-view"></div>
       </aside>
     </div>
+  </section>
+
+  <section id="p-live" class="panel" aria-labelledby="t-live" hidden>
+    <div class="controls live-controls">
+      <label class="live-picker">Resident
+        <select id="live-resident" aria-describedby="live-sharing" disabled></select>
+      </label>
+      <button type="button" id="live-watch" disabled>Watch</button>
+      <button type="button" id="live-stop" disabled>Stop</button>
+    </div>
+    <div class="live-notice">
+      <p class="fine" id="live-sharing">One shared channel. Watching another resident switches it for every viewer.
+        Stop leaves your view; capture stops when the last viewer leaves. Leaving Live or hiding this page stops your view.</p>
+      <p class="fine" id="live-channel">Live service status has not been read yet.</p>
+    </div>
+    <div class="live-status-line" role="status" aria-live="polite">
+      <span id="live-status" class="pill offline">Idle</span>
+      <p id="live-detail" class="fine">Choose a resident, then press Watch.</p>
+    </div>
+    <div id="live-stage">
+      <header><h2 id="live-name">Resident view</h2><span class="fine">Video only · No audio · No recording</span></header>
+      <div class="live-picture">
+        <video id="live-video" autoplay playsinline muted aria-label="Selected resident's live game view" hidden></video>
+        <p id="live-blank">Choose a resident, then press Watch.</p>
+      </div>
+      <footer>
+        <button type="button" id="live-fullscreen" disabled>Fullscreen</button>
+        <p id="live-fullscreen-note" class="fine" role="status"></p>
+      </footer>
+    </div>
+    <section id="live-context" aria-labelledby="live-context-heading" hidden>
+      <h3 id="live-context-heading">Resident context</h3>
+      <p id="live-context-time" class="fine"></p>
+      <dl id="live-facts" class="facts"></dl>
+    </section>
   </section>
 
   <section id="p-activity" class="panel" aria-labelledby="t-activity" hidden>

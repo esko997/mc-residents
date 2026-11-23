@@ -1,0 +1,30 @@
+/* Live keeps the field-station palette; the framebuffer is the main surface. */
+#p-live .live-controls { align-items: end; }
+#p-live .live-picker { display: grid; gap: 4px; min-width: 0; flex: 1 1 12em; max-width: 24em; font-size: .875rem; }
+#p-live select { width: 100%; min-width: 0; background: #15181c; border: 2px solid var(--seam); border-radius: 2px; padding: 8px 10px; }
+#p-live button { min-height: 44px; border: 2px solid var(--seam); border-radius: 2px; padding: 8px 16px; background: var(--basalt); font-weight: 700; cursor: pointer; }
+#p-live #live-watch { background: var(--moss); border-color: var(--moss); color: #10210a; }
+#p-live button:disabled { opacity: .5; cursor: default; }
+#p-live .live-notice { margin-bottom: 12px; }
+#p-live .live-status-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 10px; }
+#live-detail, #live-channel { overflow-wrap: anywhere; }
+#live-stage { border: 2px solid var(--seam); background: #0f1114; margin-bottom: 14px; }
+#live-stage > header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 8px 12px; background: var(--basalt); }
+#live-name { font-size: 1.0625rem; overflow-wrap: anywhere; color: var(--who, var(--parchment)); }
+#live-stage .live-picture { position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 70dvh; min-height: 160px; }
+#live-video { display: block; width: 100%; height: 100%; object-fit: contain; }
+#live-blank { position: absolute; inset: 0; display: grid; place-content: center; padding: 20px; text-align: center; color: var(--lichen); }
+#live-stage > footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 6px 10px; border-top: 1px solid var(--seam); }
+#live-fullscreen-note { flex: 1 1 12em; }
+#live-context { border-left: 4px solid var(--seam); padding-left: 12px; }
+#live-context > h3 { font-size: .9375rem; margin-bottom: 4px; }
+#live-context-time { margin-bottom: 8px; }
+#live-stage:fullscreen { display: flex; flex-direction: column; width: 100%; height: 100%; margin: 0; border: 0; }
+#live-stage:fullscreen .live-picture { flex: 1; aspect-ratio: auto; min-height: 0; max-height: none; }
+#live-stage:fullscreen > header, #live-stage:fullscreen > footer { flex: none; }
+@media (max-width: 520px) {
+  #p-live .live-picker { max-width: none; flex-basis: 100%; }
+  #p-live .live-controls > button { flex: 1; }
+  #live-stage .live-picture { min-height: 130px; }
+  #live-context .facts { grid-template-columns: auto minmax(0, 1fr); gap: 5px 10px; }
+}

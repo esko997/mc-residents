@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { Config } from "./config.ts";
 import { Console, ConsoleFeed } from "./console.ts";
 import { openCommons } from "./db.ts";
+import { LiveStream } from "./live-stream.ts";
 import type { TextFile } from "./notes.ts";
 import { RolloutTail } from "./rollouts.ts";
 import { activityRoutes, type ActivityReply } from "./routes/activity.ts";
@@ -39,6 +40,7 @@ const STATIC: Record<string, string> = {
   "": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "app.css": "text/css; charset=utf-8",
   "map-trails.js": "text/javascript; charset=utf-8",
   "watch-layout.js": "text/javascript; charset=utf-8", "watch-layout.css": "text/css; charset=utf-8",
+  "live-view.js": "text/javascript; charset=utf-8", "live-view.css": "text/css; charset=utf-8",
 };
 const MAX_BODY = 8192;
 
@@ -48,6 +50,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   const tail = new RolloutTail(config.sessionsDir, config.residents, { days: config.activityDays, now, callsDir: config.callsDir });
   const stream = new Console(config.consoleUrl !== undefined, { now, names: [...config.residents.map(resident => resident.name), ...config.owners] });
   const feed = new ConsoleFeed(stream, config, now);
+  const live = new LiveStream(config, { now });
   let lastRead = 0;
   const context: Context = {
     config, db, watcher, tail, stream, feed, now,
@@ -69,6 +72,9 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     // Without the trailing slash the page's own relative requests would lose the token.
     if (rest.length === 0) return new Response(null, { status: 308, headers: { Location: `/${token}/` } });
     const route = rest.join("/");
+    // The URL token was checked before this dispatch. Live owns its larger,
+    // stream-bounded SDP body limit and same-origin mutation checks.
+    if (rest[0] === "api" && rest[1] === "live") return live.handle(request, rest.slice(2).join("/"));
     if (rest[0] === "api") {
       const key = `${request.method} ${rest.slice(1).join("/")}`;
       const handler = Object.hasOwn(routes, key) ? routes[key] : undefined;
@@ -81,7 +87,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
     if (!type || request.method !== "GET") return refuse(404, "Not found.");
     const file = Bun.file(join(config.publicDir, route || "index.html"));
     if (!await file.exists()) return refuse(404, "Not found.");
-    return new Response(file, { headers: { "Content-Type": type, "Cache-Control": "no-store" } });
+    return new Response(file, { headers: { "Content-Type": type, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
   }
 
   return {
@@ -105,6 +111,10 @@ export function createApp(config: Config, token: string, now: () => number = Dat
       return response;
     },
     start() { watcher.start(); feed.start(); void context.readSessions(); },
-    stop() { watcher.stop(); feed.stop(); db.close(); },
+    stop() {
+      // Abort capture and signal FFmpeg now; TERM → KILL/reap continues boundedly.
+      void live.shutdown().catch(() => log("Live video encoder cleanup failed; restart Commons before streaming again."));
+      watcher.stop(); feed.stop(); db.close();
+    },
   };
 }

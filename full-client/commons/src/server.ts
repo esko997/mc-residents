@@ -39,7 +39,8 @@ export function serve(config: Config): Running {
 
 if (import.meta.main) {
   const running = serve(loadConfig());
-  const stop = () => { running.stop(); process.exit(0); };
+  // Let the encoder's bounded TERM/KILL/reap cleanup finish before Bun exits.
+  const stop = () => { running.stop(); process.exitCode = 0; };
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);
 }

@@ -16,6 +16,14 @@ export interface ResidentConfig {
   clientLog: string;
 }
 export interface UnitConfig { unit: string; resident?: string }
+
+export interface LiveConfig {
+  enabled: boolean;
+  ffmpeg: string;
+  encoder: "h264_nvenc" | "libx264";
+  rtspUrl: string;
+  whepUrl: string;
+}
 export interface Config {
   home: string;
   port: number;
@@ -33,6 +41,8 @@ export interface Config {
   consoleUrl?: string;
   /** Optional read-only server observations, independent of each client's controls. */
   observer?: ObserverSource;
+  /** On-demand, video-only framebuffer streaming; absent means disabled. */
+  live?: LiveConfig;
   /** Make every proposed shared note visible to residents at once; review comes afterwards. */
   autoAccept: boolean;
   /** In-game names of the people who own and play on the server; the console keeps mod lines that mention them. */
@@ -96,6 +106,32 @@ function residents(home: string, env: Record<string, string | undefined>): Resid
   return found;
 }
 
+function liveConfig(env: Record<string, string | undefined>): LiveConfig {
+  const endpoint = (key: string, fallback: string, protocol: string) => {
+    const value = env[key] ?? fallback;
+    let url: URL;
+    try { url = new URL(value); } catch { throw new Error(`${key} must be a loopback URL.`); }
+    // Numeric loopback only (or localhost): no DNS-dependent arbitrary hosts.
+    if (url.protocol !== protocol || !["127.0.0.1", "[::1]", "localhost"].includes(url.hostname)
+      || url.username || url.password || url.search || url.hash || value.includes("?") || value.includes("#")
+      || !/^\/[A-Za-z0-9_/-]+$/.test(url.pathname) || url.pathname.endsWith("/")) {
+      throw new Error(`${key} must be a loopback ${protocol} URL without credentials, query or fragment.`);
+    }
+    return url.href;
+  };
+  const encoder = env.COMMONS_LIVE_ENCODER ?? "h264_nvenc";
+  if (encoder !== "h264_nvenc" && encoder !== "libx264") {
+    throw new Error("COMMONS_LIVE_ENCODER must be h264_nvenc (production) or libx264 (explicit isolated tests).");
+  }
+  const ffmpeg = env.COMMONS_LIVE_FFMPEG ?? "ffmpeg";
+  if (!ffmpeg.trim() || ffmpeg.includes("\0")) throw new Error("COMMONS_LIVE_FFMPEG must name an executable.");
+  return {
+    enabled: env.COMMONS_LIVE_ENABLED === "true", ffmpeg, encoder,
+    rtspUrl: endpoint("COMMONS_LIVE_RTSP_URL", "rtsp://127.0.0.1:8554/resident", "rtsp:"),
+    whepUrl: endpoint("COMMONS_LIVE_WHEP_URL", "http://127.0.0.1:8889/resident/whep", "http:"),
+  };
+}
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const home = real(expandHome(env.GARY_CLIENT_HOME ?? "~/gary-client"));
   const dbPath = expandHome(env.COMMONS_DB ?? join(home, "commons", "commons.sqlite"));
@@ -119,6 +155,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   return {
     consoleUrl: consoleUrl && `${consoleUrl.replace(/\/+$/, "")}/`,
     observer: observerSourceFromEnv(env),
+    live: liveConfig(env),
     autoAccept: !/^(0|off|false|no)$/i.test(env.COMMONS_AUTO_ACCEPT ?? ""),
     owners: (env.COMMONS_OWNER ?? "spesk01").split(/[\s,]+/).filter(Boolean),
     home, port, hostname: env.COMMONS_BIND ?? "0.0.0.0", dbPath,
