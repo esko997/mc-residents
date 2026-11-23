@@ -109,6 +109,10 @@ Merged dashboard shapes preserve existing fields:
     bun run demo               # anywhere: made-up data, a stand-in client for Gary, Margo offline
     bun test && bun run typecheck   # needs `bun install` once (types and tsc only)
 
+The demo also stores a made-up week of the server record (`scripts/demo-server-data.ts`) and
+runs a stand-in server bridge; `DEMO_OLD_BRIDGE=1 bun run demo` makes it an older bridge
+without queries, to see how the Server record says so.
+
 As a service: see `commons.service`.
 
 The dedicated resident host is **Inspiron**, `swatson@192.168.1.69` (Debian 13).
@@ -228,7 +232,12 @@ jar swap. Read API, hub only: `GET api/server-data` (summary and ingest health),
 `server-data/stats?resident=&type=&key=&since=`, `server-data/advancements?resident=`,
 `server-data/blocks?since=&until=&resident=&dimension=&limit=`,
 `server-data/block-changes?since=&resident=&limit=`, `server-data/flows?since=&facility=&limit=`,
-`server-data/gaps?since=`. Times there are the server's clock.
+`server-data/gaps?since=`. Times there are the server's clock. The **Server record** panel and
+the Map's building layer read four more, aggregated on the hub and bounded
+(`src/server-data-views.ts`): `server-data/record?window=session|24h|7d`,
+`server-data/block-map?since=&until=&dimension=&resident=&limit=`,
+`server-data/block-cell?dimension=&chunkX=&chunkZ=&since=&until=&limit=` and
+`server-data/ledger?since=` (see [Panels](#panels-and-what-each-reads)).
 
 Dashboard addresses are `http://<machine>:<PORT>/<token>/...`. A wrong or missing token
 gets 404. `/<token>` redirects to `/<token>/`. Keep the address private and off
@@ -579,6 +588,41 @@ after API note submission. Preserve the place-picture cache beside the database.
   resident's card data arrives with `residents`, its thoughts in the merged
   `activity`, and `thoughts` is forwarded to its station through the five-second
   scoped cache. Thoughts are dashboard-only: the stream overlay never receives them.
+- **Server record** (hub only; a station's page says to open the hub's): what the
+  Minecraft server itself counted for every resident, whichever machine runs them,
+  from the hub's copy of the server bridge's queries (`server_*` tables). Stations hold
+  none of this; the hub ingests it for all residents. Each section says next to its
+  figures where they come from, how fresh they are, the known gaps, and plainly when the
+  running bridge does not offer that query (an older jar).
+  - **What they have done**: per resident, side by side in roster order (never ranked,
+    with a note on arrival dates, machines and personas), time played, distance on foot,
+    swimming, by boat, riding and gliding, blocks mined, items crafted, mobs killed,
+    deaths and damage, each all-time and changed over the chosen window; then the most
+    mined, crafted, used, picked up and killed things by name, and every other counter.
+    Windows: **Last session** (found from the saves alone: play time grows only while
+    online, so two stored saves whose play time grew by less than half the time between
+    them have an absence between them), 24 h or 7 days, each measured from the value in
+    force at its start. When the hub's record does not reach back that far, the change
+    counts from the first stored save and says so. Statistics are the server's files,
+    written about every five minutes while playing and at logout.
+  - **Advancements**: per resident, done of the advancements loaded on the server, per
+    in-game tab (the root each advancement's parents lead to, so a mod's advancements
+    hung under a vanilla tab count there; ones whose parent is not loaded are grouped as
+    "<mod>, outside the tabs"), the recently earned ones with times, those started but not
+    finished, and "one step away" (visible, not started, the one before it done). Titles
+    that are untranslated keys (`advancements.occultism.craft_satchel.title`) are shown
+    as words made from the key, in italics.
+  - **Building and digging**: per resident, placed and broken in 24 h, 7 or 30 days, and
+    "who built where" by 64-block area, named after the nearest saved place within 64
+    blocks, with a link to the spot on the Map. Changes counted without a position (the
+    bridge's table was full) are added separately.
+  - **Container flows**: per registered facility, what went in and out by item, the
+    nearest resident at each change and the changes with none near, and why a change may
+    be incomplete; labelled as evidence, not proof (human players are never considered;
+    hoppers, pipes and machines are invisible). "Facility entry" opens that facility's
+    card under Shared Knowledge.
+  - **Where this comes from**: each data set's state at the bridge, the hub's last read,
+    the newest time in it and known gaps over 7 days.
 - **Map**: the `positions` table (this app writes one row per online resident
   every 10 s: x, y, z, the dimension id, health, food and `sky`, the sky light
   0-15 at the feet from the client's full state; older rows have `sky` NULL),
@@ -627,6 +671,16 @@ after API note submission. Preserve the place-picture cache beside the database.
   - Federation: stations send the same reply; the hub adds `host`. A station still
     running an older Commons (flat overworld `trail`, no heights) shows no trail
     until it is updated, rather than a guessed one; update stations and hub together.
+  - **Building and digging** (hub only): per-chunk counts of blocks residents placed and
+    broke in the map's window, from the server bridge's hour cells, shaded under the
+    trails of the shown dimension in the resident's colour (logarithmic strength; a
+    corner marks a second resident). Below the map: Off / placed and broken / placed /
+    broken, a resident filter, one bar per hour of the window (select one to shade only
+    that hour), "who built where", and the selected chunk's hours, block kinds, and the
+    recent individual changes the hub still keeps (a sample: the bridge skips some in
+    bursts and the hub keeps them 14 days; the counts are complete). Explosions, pistons,
+    fluids, mobs, machines and bucket placement are never seen. Dimensions with block
+    changes are offered on the dimension switch even without a trail.
   - A block-level 3D "diorama" is assessed in [docs/map-3d.md](docs/map-3d.md); its
     canvas prototype is the unlinked page `iso-chunk.html` (synthetic terrain only).
   New/revised places may also receive a saved view: within 30 seconds of observing

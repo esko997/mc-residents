@@ -53,6 +53,7 @@ export interface App {
 const STATIC: Record<string, string> = {
   "": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "app.css": "text/css; charset=utf-8",
   "map-trails.js": "text/javascript; charset=utf-8",
+  "server-data.js": "text/javascript; charset=utf-8", "server-record.js": "text/javascript; charset=utf-8", "map-blocks.js": "text/javascript; charset=utf-8",
   "watch-layout.js": "text/javascript; charset=utf-8", "watch-layout.css": "text/css; charset=utf-8",
   "live-view.js": "text/javascript; charset=utf-8", "live-view.css": "text/css; charset=utf-8",
   "run-control.js": "text/javascript; charset=utf-8",

@@ -9,6 +9,7 @@ import { appendFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "../src/server.ts";
 import { clientLogLine, fakePhoneChat, fakeSynapse, fixture, png, rollout, serverLogLine, tempHome } from "../test/helpers.ts";
+import { fakeServerBridge, seedServerData } from "./demo-server-data.ts";
 
 const now = Date.now(), minute = 60_000;
 const home = tempHome();
@@ -120,15 +121,20 @@ for (const [script, body] of [["run-status.sh", canned(runStatus)],
 }
 chmodSync(home.put("commons-data/controller-credentials.json", JSON.stringify([{ name: "demo", role: "controller", sha256: createHash("sha256").update(DEMO_CONTROLLER).digest("hex") }])), 0o600);
 
+// A stand-in server bridge (two registered facilities, queries with nothing new; DEMO_OLD_BRIDGE=1: an older jar).
+const bridge = fakeServerBridge("demo-observer-token");
 // The same start-up path as `bun src/server.ts`, on loopback only.
 const running = serve(home.config({
   GARY_SYNAPSE_URL: client.url, CODEX_HOME: join(home.dir, "codex-home"), COMMONS_SYSTEMCTL: "systemctl",
   COMMONS_BIND: "127.0.0.1", PORT: process.env.PORT ?? "0", COMMONS_TOKEN: process.env.COMMONS_TOKEN ?? "demo-token",
   CONSOLE_URL: process.env.CONSOLE_URL ?? server.url,
+  COMMONS_OBSERVER_URL: bridge.url, COMMONS_OBSERVER_TOKEN_FILE: home.put("observer-token", "demo-observer-token\n"),
   ...(process.env.CHAT_URL ? { CHAT_URL: process.env.CHAT_URL } : {}),
   ...(process.env.COMMONS_AUTO_ACCEPT ? { COMMONS_AUTO_ACCEPT: process.env.COMMONS_AUTO_ACCEPT } : {}),
 }));
 const app = running.app;
+// A week of the server record (statistics, advancements, blocks, container flows) for the Server record panel and the Map's building layer.
+seedServerData(app.db, now);
 // Something is said now and then, by a player (in both logs) and by tellraw (in the client's only),
 // and whatever polls the server over RCON leaves its two lines each time.
 let spoken = 0;
@@ -214,6 +220,6 @@ insertFeedback.run("note", bread, "Margo", 1, "", null, now - 200 * minute);
 
 console.log(`demo: http://127.0.0.1:${running.port}/${running.token}/   (home ${home.dir}; Ctrl-C removes it)`);
 console.log(`demo: run controls unlock with the controller token ${DEMO_CONTROLLER}`);
-const stop = () => { running.stop(); client.stop(); server.stop(); home.remove(); process.exit(0); };
+const stop = () => { running.stop(); client.stop(); server.stop(); bridge.stop(); home.remove(); process.exit(0); };
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
