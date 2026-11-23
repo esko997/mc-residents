@@ -54,6 +54,36 @@ class ObserverConfigTest {
     }
 
     @Test
+    void lanRequiresExplicitOptInAndExactHostNames() throws Exception {
+        ObserverConfig c = ObserverConfig.parse(Fixtures.configJson(
+                "\"bind\":\"0.0.0.0\",\"allowNonLoopback\":true,\"allowedHosts\":[\"POP-OS\",\"192.168.1.233\"],", 0));
+        assertTrue(c.allowNonLoopback());
+        assertTrue(c.allowedHosts().contains("pop-os"));
+        assertTrue(c.allowedHosts().contains("localhost"));
+        for (String hosts : new String[]{"[\"*.example\"]", "[\"pop-os:25640\"]", "[\"http://pop-os\"]", "[\"\"]", "[1]"}) {
+            rejects(Fixtures.configJson("\"allowedHosts\":" + hosts + ",", 0));
+        }
+        for (String bind : new String[]{"localhost", "server.example", "999.1.2.3", "1.2.3", "fe80::1%eth0"}) {
+            rejects(Fixtures.configJson("\"bind\":\"" + bind + "\",\"allowNonLoopback\":true,", 0));
+        }
+        assertEquals("::", ObserverConfig.parse(Fixtures.configJson("\"bind\":\"::\",\"allowNonLoopback\":true,", 0)).bind());
+    }
+
+    @Test
+    void libraryIsExplicitAndNeverGrantedToSelf() throws Exception {
+        ObserverConfig c = ObserverConfig.parse(Fixtures.configJson("", 1).replace("\"pos\":[0,64,0]", "\"pos\":[0,64,0],\"library\":true"));
+        assertTrue(c.facility("f0").library());
+        assertFalse(Fixtures.config("", 1).facility("f0").library());
+        rejects(Fixtures.configJson("", 1).replace("\"pos\":[0,64,0]", "\"pos\":[0,64,0],\"library\":\"yes\""));
+        rejects(Fixtures.configJson("", 1).replace("\"pos\":[0,64,0]", "\"pos\":[0,64,0],\"library\":true,\"side\":\"up\""));
+        rejects(minimal("{\"name\":\"g\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"self\",\"library\"],\"resident\":\"Gary\"}"));
+        for (String setting : new String[]{"\"maxSightDistance\":513", "\"requestQueueCapacity\":0",
+                "\"requestTimeoutMs\":0", "\"maxBookPages\":101", "\"maxBookPageChars\":32768", "\"maxBookChars\":262145"}) {
+            rejects(Fixtures.configJson(setting + ",", 0));
+        }
+    }
+
+    @Test
     void aTypoIsAnErrorNotASilentDefault() {
         String json = minimal("{\"name\":\"c\",\"tokenSha256\":\"" + HASH + "\",\"scopes\":[\"residents\"]}")
                 .replaceFirst("\\{", "{\"tickBudgetMicro\":100,");

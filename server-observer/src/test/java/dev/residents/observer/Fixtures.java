@@ -29,7 +29,7 @@ final class Fixtures {
                 + "\"residents\":[{\"name\":\"Gary\",\"uuid\":\"" + GARY + "\"},{\"name\":\"Margo\",\"uuid\":\"" + MARGO + "\"}],"
                 + "\"facilities\":[" + facilities + "],"
                 + "\"consumers\":["
-                + "{\"name\":\"commons\",\"tokenSha256\":\"" + TokenAuth.sha256Hex(COMMONS_TOKEN) + "\",\"scopes\":[\"residents\",\"facilities\",\"status\"]},"
+                + "{\"name\":\"commons\",\"tokenSha256\":\"" + TokenAuth.sha256Hex(COMMONS_TOKEN) + "\",\"scopes\":[\"residents\",\"facilities\",\"library\",\"status\"]},"
                 + "{\"name\":\"gary\",\"tokenSha256\":\"" + TokenAuth.sha256Hex(GARY_TOKEN) + "\",\"scopes\":[\"self\"],\"resident\":\"Gary\"},"
                 + "{\"name\":\"ops\",\"tokenSha256\":\"" + TokenAuth.sha256Hex(STATUS_TOKEN) + "\",\"scopes\":[\"status\"]}"
                 + "]}";
@@ -64,7 +64,7 @@ final class Fixtures {
     }
 
     /** A world whose residents/facilities are set by the test; each facility read costs {@code readCostNanos}. */
-    static final class FakeWorld implements WorldAccess {
+    static final class FakeWorld implements WorldAccess, BridgeAccess {
         final Clock clock;
         long readCostNanos;
         long gameTime = 1000;
@@ -74,6 +74,33 @@ final class Fixtures {
         final java.util.Map<String, Observations.Contents> contents = new java.util.HashMap<>();
         final java.util.Set<String> throwing = new java.util.HashSet<>();
         final List<String> reads = new ArrayList<>();
+        Thread bridgeThread;
+        int bridgeReads;
+        boolean bridgeThrows;
+        BridgeAccess.Sight sightResult = new BridgeAccess.Sight(null, null, "offline");
+
+        @Override
+        public BridgeAccess.Sight sight(ObserverConfig.ResidentSpec from, ObserverConfig.ResidentSpec to) {
+            bridgeThread = Thread.currentThread();
+            bridgeReads++;
+            clock.nanos += readCostNanos;
+            if (bridgeThrows) throw new IllegalStateException("bridge failure");
+            return sightResult;
+        }
+
+        @Override
+        public BridgeAccess.Shelf shelf(ObserverConfig.FacilitySpec f) {
+            bridgeThread = Thread.currentThread();
+            bridgeReads++;
+            return new BridgeAccess.Shelf(f.id(), "observed", null, List.of());
+        }
+
+        @Override
+        public BridgeAccess.BookResult book(ObserverConfig.FacilitySpec f, int slot) {
+            bridgeThread = Thread.currentThread();
+            bridgeReads++;
+            return new BridgeAccess.BookResult(f.id(), "empty", null, null, List.of());
+        }
 
         FakeWorld(Clock clock) {
             this.clock = clock;
@@ -106,7 +133,7 @@ final class Fixtures {
     }
 
     static Sampler sampler(ObserverConfig config, FakeWorld world, List<String> warnings) {
-        return new Sampler(config, world, new EventLog(config.eventCapacity()),
+        return new Sampler(config, world, world, new EventLog(config.eventCapacity()),
                 () -> world.clock.nanos, () -> world.clock.ms, warnings::add);
     }
 }

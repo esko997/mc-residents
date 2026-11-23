@@ -27,6 +27,8 @@ public final class Sampler {
 
     private final ObserverConfig config;
     private final WorldAccess world;
+    private final BridgeAccess bridge;
+    private final TickRequests requests;
     private final LongSupplier nanos;
     private final LongSupplier wallMs;
     private final EventLog events;
@@ -44,7 +46,7 @@ public final class Sampler {
     private int lagStreak;
     private int consecutiveFailures;
     private String lastError;
-    private boolean tripped;
+    private volatile boolean tripped;
     private long lastPublishAtMs;
     private final long startedAtMs;
 
@@ -53,10 +55,12 @@ public final class Sampler {
     private volatile long heartbeatAtMs;
     private volatile boolean paused;
 
-    public Sampler(ObserverConfig config, WorldAccess world, EventLog events,
+    public Sampler(ObserverConfig config, WorldAccess world, BridgeAccess bridge, EventLog events,
                    LongSupplier nanos, LongSupplier wallMs, Consumer<String> warn) {
         this.config = config;
         this.world = world;
+        this.bridge = bridge;
+        this.requests = new TickRequests(config.requestQueueCapacity(), config.requestTimeoutMs(), nanos);
         this.events = events;
         this.nanos = nanos;
         this.wallMs = wallMs;
@@ -82,13 +86,16 @@ public final class Sampler {
         long now = wallMs.getAsLong();
         heartbeatAtMs = now;
         if (tripped) {
+            requests.rejectAll("tripped");
             return;
         }
         if (paused) {
+            requests.rejectAll("paused");
             publishStatus(0);
             return;
         }
         long t0 = nanos.getAsLong();
+        TickRequests.Ticket<?> eligible = requests.next();
         try {
             ticks++;
             boolean worked = false;
@@ -107,6 +114,7 @@ public final class Sampler {
             ticksIntoCycle = (ticksIntoCycle + 1) % config.intervalTicks();
 
             long budgetNanos = config.tickBudgetMicros() * 1000L;
+            if (nanos.getAsLong() - t0 < budgetNanos) requests.runOne(eligible, bridge);
             while (cursor < facilities.length && nanos.getAsLong() - t0 < budgetNanos) {
                 readFacility(cursor, now, gameTime);
                 cursor++;
@@ -124,6 +132,7 @@ public final class Sampler {
             warn.accept("tick failed (" + consecutiveFailures + "/" + config.failureTripCount() + "): " + lastError);
             if (consecutiveFailures >= config.failureTripCount()) {
                 tripped = true;
+                requests.rejectAll("tripped");
                 events.append("observer_tripped", now, 0L, null, null, lastError);
                 warn.accept("tripped after " + consecutiveFailures + " consecutive failures; observing stops until restart");
             }
@@ -213,6 +222,16 @@ public final class Sampler {
     /** Set from the pause-file watcher. Takes effect at the next tick. */
     public void setPaused(boolean value) {
         paused = value;
+    }
+
+    /** HTTP threads may only enqueue. No game object escapes through these immutable results. */
+    <T> TickRequests.Ticket<T> request(java.util.function.Function<BridgeAccess, T> read) {
+        if (paused || tripped) throw new TickRequests.Unavailable(tripped ? "tripped" : "paused");
+        return requests.submit(read);
+    }
+
+    public void stop() {
+        requests.close();
     }
 
     public Observations.Snapshot snapshot() {

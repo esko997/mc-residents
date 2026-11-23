@@ -1,10 +1,11 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   choosePosition, normalizeObserverSnapshot, ObserverFeed, observerGet, observerSourceFromEnv,
-  type ClientSighting, type ObserverHealth, type ObserverSource,
+  observerSight, observerShelf, observerBook, observerEvents,
+  type BookInfo, type ClientSighting, type ObserverEventsArgs, type ObserverHealth, type ObserverSource,
 } from "../src/observer.ts";
 
 const TOKEN = "observer-test-token-0123456789";
@@ -76,7 +77,7 @@ function fakeFetch(routes: Record<string, () => Response>, seen: Seen[] = []): t
 }
 const json = (body: unknown, status = 200) => () => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const events = (list: object[], extra: Record<string, unknown> = {}) =>
-  json({ schema: 1, source: "server-observer", state: "ok", events: list, oldestSeq: 1, latestSeq: list.length, gap: false, ...extra });
+  json({ schema: 1, source: "server-observer", state: "ok", servedAtMs: SERVED, events: list, oldestSeq: 1, latestSeq: list.length, gap: false, ...extra });
 
 test("the observer is configured by both variables or neither, and never with a secret in the URL", () => {
   expect(observerSourceFromEnv({})).toBeUndefined();
@@ -106,6 +107,204 @@ test("the token travels only as a bearer header and never appears in a failure",
   ]);
   expect(failures.map(reach => reach.ok ? "ok" : reach.status)).toEqual(["offline", "unauthorized", "forbidden", "incompatible", "error", "unauthorized"]);
   for (const reach of failures) expect(JSON.stringify(reach)).not.toContain(TOKEN);
+});
+
+function endpointReply(value: Record<string, unknown>, overrides: Record<string, unknown> = {}) {
+  return {
+    schema: 1, source: "server-observer", consumer: "commons", scopes: ["sight", "library", "events"],
+    state: "ok", stateDetail: null, servedAtMs: SERVED, heartbeatAtMs: SERVED - 50,
+    ...value, ...overrides,
+  };
+}
+const getWith = (fetchImpl: typeof fetch, now = () => SERVED + 5000): typeof observerGet =>
+  (source, path, timeoutMs) => observerGet(source, path, timeoutMs, fetchImpl, now);
+const bookMetadata: BookInfo = {
+  slot: 2, kind: "written", title: "Our garden", author: "Margo", generation: 1, pageCount: 2, contentHash: "sha256:abc",
+};
+
+test("sight consumers distinguish unknown from false and retain server health, grant and encoded names", async () => {
+  const seen: Seen[] = [], src = source();
+  const from = "Gary & friends?", to = "Margo/西+#";
+  for (const visible of [null, false, true]) {
+    const sight = { visible, distance: visible === null ? null : 12.5, reason: visible === null ? "offline" : visible ? "visible" : "occluded" };
+    const result = await observerSight(src, { from, to }, getWith(fakeFetch({
+      "/v1/sight": json(endpointReply({ sight }, { state: "degraded", stateDetail: "slow sampling" })),
+    }, seen)));
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.detail);
+    expect(result.data.sight).toEqual(sight);
+    expect(result.data.sight.visible).toBe(visible);
+    expect(result.data).toMatchObject({
+      schema: 1, source: "server-observer", consumer: "commons", scopes: ["sight", "library", "events"],
+      state: "degraded", stateDetail: "slow sampling", servedAtMs: SERVED, heartbeatAtMs: SERVED - 50,
+    });
+    expect(result.receivedAt).toBe(SERVED + 5000);
+  }
+  for (const request of seen) {
+    const url = new URL(request.url);
+    expect([...url.searchParams]).toEqual([["from", from], ["to", to]]);
+    expect(url.hash).toBe("");
+    expect(request.authorization).toBe(`Bearer ${TOKEN}`);
+  }
+});
+
+test("library helpers expose selected metadata and plain page text without losing nulls or encoding", async () => {
+  const seen: Seen[] = [], src = source(), facility = "Town library/&?雪#";
+  const slots: BookInfo[] = [
+    bookMetadata,
+    { slot: 0, kind: "writable", title: null, author: null, generation: null, pageCount: 1, contentHash: "draft" },
+    { slot: 1, kind: "enchanted", title: null, author: null, generation: null, pageCount: 0, contentHash: null },
+    { slot: 5, kind: "plain", title: null, author: null, generation: null, pageCount: 0, contentHash: null },
+  ];
+  const pages = ["Plant wheat.\nLeave seed for neighbours.", "雪 & <text>, not HTML"];
+  const get = getWith(fakeFetch({
+    "/v1/library/shelf": json(endpointReply({ shelf: { facility, status: "observed", reason: null, slots } })),
+    "/v1/library/book": json(endpointReply({ book: { facility, status: "observed", reason: null, book: bookMetadata, pages } })),
+  }, seen));
+  const shelf = await observerShelf(src, { facility }, get);
+  const book = await observerBook(src, { facility, slot: 2 }, get);
+  if (!shelf.ok || !book.ok) throw new Error("library read failed");
+  expect(shelf.data.shelf).toEqual({ facility, status: "observed", reason: null, slots });
+  expect(book.data.book).toEqual({ facility, status: "observed", reason: null, book: bookMetadata, pages });
+  expect(new URL(seen[0].url).searchParams.get("facility")).toBe(facility);
+  expect([...new URL(seen[1].url).searchParams]).toEqual([["facility", facility], ["slot", "2"]]);
+  expect(new URL(seen[1].url).hash).toBe("");
+});
+
+test("library non-observations remain explicit status/reason outcomes, not invented books or failures", async () => {
+  const src = source();
+  for (const status of ["unloaded", "no_level", "no_block_entity", "unsupported", "empty", "not_readable", "too_large", "invalid", "error"] as const) {
+    const reason = `${status}: no readable text`;
+    const get = getWith(fakeFetch({
+      "/v1/library/shelf": json(endpointReply({ shelf: { facility: "library", status, reason, slots: [] } })),
+      "/v1/library/book": json(endpointReply({ book: { facility: "library", status, reason, book: null, pages: [] } })),
+    }));
+    const shelf = await observerShelf(src, { facility: "library" }, get);
+    const book = await observerBook(src, { facility: "library", slot: 0 }, get);
+    if (!shelf.ok || !book.ok) throw new Error(`lost library outcome ${status}`);
+    expect(shelf.data.shelf).toEqual({ facility: "library", status, reason, slots: [] });
+    expect(book.data.book).toEqual({ facility: "library", status, reason, book: null, pages: [] });
+  }
+});
+
+test("helper argument validation refuses invalid bounds before any request", async () => {
+  let calls = 0;
+  const get: typeof observerGet = async () => { calls++; throw new Error("must not request"); };
+  const src = source();
+  const results: unknown[] = [
+    await observerSight(src, { from: " ", to: "Margo" }, get),
+    await observerSight(src, { from: "Gary", to: "" }, get),
+    await observerShelf(src, { facility: "" }, get),
+    await observerBook(src, { facility: " ", slot: 0 }, get),
+  ];
+  for (const slot of [-1, 6, 0.5, NaN, Infinity]) results.push(await observerBook(src, { facility: "library", slot }, get));
+  const badEvents: ObserverEventsArgs[] = [
+    { after: -1 }, { after: 0.5 }, { after: Number.MAX_SAFE_INTEGER + 1 }, { after: NaN },
+    { limit: 0 }, { limit: 501 }, { limit: 1.5 }, { limit: Infinity },
+    { wait: -1 }, { wait: 26 }, { wait: 0.5 }, { wait: NaN },
+    { timeoutMs: 0 }, { timeoutMs: Infinity },
+  ];
+  for (const args of badEvents) results.push(await observerEvents(src, args, get));
+  for (const result of results) expect(result).toMatchObject({ ok: false, status: "error" });
+  expect(calls).toBe(0);
+  for (const eventWaitSeconds of [-1, 26, 0.5, NaN]) {
+    expect(() => new ObserverFeed(src, { eventWaitSeconds })).toThrow(/eventWaitSeconds/);
+  }
+});
+
+test("malformed endpoint data cannot manufacture negative sight, metadata or readable pages", async () => {
+  const src = source();
+  const sight = (value: unknown) => observerSight(src, { from: "Gary", to: "Margo" },
+    getWith(fakeFetch({ "/v1/sight": json(endpointReply({ sight: value })) })));
+  for (const value of [{ distance: null, reason: "unknown" }, { visible: "false", distance: 3, reason: "blocked" }, { visible: false, distance: -1, reason: "bad" }]) {
+    expect(await sight(value)).toMatchObject({ ok: false, status: "error" });
+  }
+  for (const slots of [[{ ...bookMetadata, kind: "unknown" }], [bookMetadata, bookMetadata], [{ ...bookMetadata, slot: 6 }]]) {
+    expect(await observerShelf(src, { facility: "library" }, getWith(fakeFetch({
+      "/v1/library/shelf": json(endpointReply({ shelf: { facility: "library", status: "observed", reason: "read", slots } })),
+    })))).toMatchObject({ ok: false, status: "error" });
+  }
+  for (const patch of [{ pages: [{ text: "not plain text" }] }, { book: { ...bookMetadata, pageCount: -1 } }, { status: "surprise" }]) {
+    expect(await observerBook(src, { facility: "library", slot: 2 }, getWith(fakeFetch({
+      "/v1/library/book": json(endpointReply({ book: { facility: "library", status: "observed", reason: "read", book: bookMetadata, pages: ["text"], ...patch } })),
+    })))).toMatchObject({ ok: false, status: "error" });
+  }
+});
+
+test("all helpers retain transport, token, scope, schema and tick-request failures", async () => {
+  const src = source();
+  const readers = [
+    (get: typeof observerGet) => observerSight(src, { from: "Gary", to: "Margo" }, get),
+    (get: typeof observerGet) => observerShelf(src, { facility: "library" }, get),
+    (get: typeof observerGet) => observerBook(src, { facility: "library", slot: 0 }, get),
+    (get: typeof observerGet) => observerEvents(src, {}, get),
+  ];
+  const failures = [
+    { status: 401, code: "unauthorized", expected: "unauthorized" },
+    { status: 403, code: "forbidden", expected: "forbidden" },
+    { status: 503, code: "busy", expected: "error" },
+    { status: 503, code: "paused", expected: "error" },
+    { status: 503, code: "tripped", expected: "error" },
+    { status: 504, code: "timeout", expected: "error" },
+    { status: 200, code: "wrong_schema", expected: "incompatible" },
+  ];
+  for (const reader of readers) {
+    for (const failure of failures) {
+      const fetchImpl = (async () => json({ schema: 2, source: "server-observer", error: { code: failure.code, message: failure.code } }, failure.status)()) as unknown as typeof fetch;
+      const result = await reader(getWith(fetchImpl));
+      expect(result).toMatchObject({ ok: false, status: failure.expected });
+      if (!result.ok && failure.status !== 200) expect(result.detail).toContain(failure.code);
+      expect(JSON.stringify(result)).not.toContain(TOKEN);
+    }
+    expect(await reader(getWith(fakeFetch({})))).toMatchObject({ ok: false, status: "offline" });
+  }
+});
+
+test("event helper validates boundaries, keeps the default URL, and adds wait to the timeout margin", async () => {
+  const src = source(), seen: { path: string; timeoutMs: number | undefined }[] = [];
+  const event = { seq: 1, type: "chat", atMs: SERVED + 1900, gameTime: 5, resident: "Gary", facility: null, detail: "hello" };
+  const transport = getWith(fakeFetch({
+    "/v1/events": events([event], { servedAtMs: SERVED + 2000 }),
+  }), () => SERVED + 10_000);
+  const get: typeof observerGet = (source, path, timeoutMs) => { seen.push({ path, timeoutMs }); return transport(source, path, timeoutMs); };
+  const first = await observerEvents(src, {}, get);
+  if (!first.ok) throw new Error(first.detail);
+  expect(first.data.events[0]).toEqual({ seq: 1, type: "chat", at: SERVED + 9900, gameTime: 5, resident: "Gary", facility: null, detail: "hello" });
+  expect(first.data).toMatchObject({ oldestSeq: 1, latestSeq: 1, gap: false, servedAtMs: SERVED + 2000 });
+  await observerEvents(src, { after: Number.MAX_SAFE_INTEGER, limit: 1, wait: 25 }, get);
+  await observerEvents(src, { after: 1, limit: 500, wait: 1, timeoutMs: 700 }, get);
+  expect(seen).toEqual([
+    { path: "/v1/events?after=0&limit=500", timeoutMs: 4000 },
+    { path: `/v1/events?after=${Number.MAX_SAFE_INTEGER}&limit=1&wait=25`, timeoutMs: 29_000 },
+    { path: "/v1/events?after=1&limit=500&wait=1", timeoutMs: 1700 },
+  ]);
+});
+
+test("feed long polls use the event reply clock and extend only the event fetch deadline", async () => {
+  const timeouts: number[] = [], seen: Seen[] = [];
+  const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+  const timeout = spyOn(AbortSignal, "timeout").mockImplementation(ms => { timeouts.push(ms); return realTimeout(ms); });
+  try {
+    let now = SERVED + 5000;
+    const feed = new ObserverFeed(source(), {
+      eventWaitSeconds: 25, timeoutMs: 700, now: () => now,
+      fetchImpl: fakeFetch({
+        "/v1/snapshot": json(snapshotReply()),
+        "/v1/events": () => {
+          now += 26_000;
+          return events([{ seq: 1, type: "chat", atMs: SERVED + 24_000, gameTime: 7 }], { servedAtMs: SERVED + 25_000 })();
+        },
+      }, seen),
+    });
+    await feed.poll();
+    expect(timeouts).toEqual([700, 25_700]);
+    expect(seen.map(entry => new URL(entry.url).pathname + new URL(entry.url).search))
+      .toEqual(["/v1/snapshot", "/v1/events?after=0&limit=500&wait=25"]);
+    expect(feed.events()[0].at).toBe(SERVED + 30_000);
+    expect(feed.health()).toMatchObject({ status: "ok", okAt: SERVED + 5000 });
+  } finally {
+    timeout.mockRestore();
+  }
 });
 
 test("a snapshot is normalized onto the local clock, and only observed facilities have current stock", () => {
@@ -192,6 +391,8 @@ test("events resume from the last sequence and a dropped range is flagged after 
   expect(feed.health().missedEvents).toBe(false); // nothing was missed before we started listening
   await feed.poll();
   const eventUrls = seen.filter(entry => entry.url.includes("/v1/events")).map(entry => new URL(entry.url).searchParams.get("after"));
+  expect(seen.filter(entry => entry.url.includes("/v1/events")).map(entry => new URL(entry.url).search))
+    .toEqual(["?after=0&limit=500", "?after=4&limit=500"]);
   expect(eventUrls).toEqual(["0", "4"]);
   expect(feed.health().missedEvents).toBe(true);
   expect(feed.events().map(event => event.seq)).toEqual([4, 9]);

@@ -186,4 +186,116 @@ class ObserverHttpServerTest {
         assertFalse(ObserverHttpServer.hostAllowed("[::1]x"));
         assertFalse(ObserverHttpServer.hostAllowed("192.168.1.233:25640"));
     }
+
+    @Test
+    void configuredHostsAreExactAndNeverReplaceBearerAuthorization() throws Exception {
+        assertTrue(ObserverHttpServer.hostAllowed("POP-OS:25640", java.util.Set.of("pop-os")));
+        assertFalse(ObserverHttpServer.hostAllowed("pop-os.evil:25640", java.util.Set.of("pop-os")));
+        assertFalse(ObserverHttpServer.hostAllowed("pop-os@evil", java.util.Set.of("pop-os")));
+        server.stop();
+        ObserverConfig lan = Fixtures.config("\"allowedHosts\":[\"pop-os\",\"192.168.1.233\"],", 0);
+        sampler = Fixtures.sampler(lan, world, warnings);
+        server = ObserverHttpServer.start(lan, 0, sampler, () -> clock.ms, warnings::add);
+        assertEquals(401, request("GET", "/v1/status", "Host: pop-os:25640").status());
+        assertEquals(200, request("GET", "/v1/status", "Host: pop-os:25640", bearer(Fixtures.COMMONS_TOKEN)).status());
+    }
+
+    @Test
+    void bridgeScopesQueriesRegistrationPauseAndTimeoutAreEnforced() throws Exception {
+        assertEquals(401, request("GET", "/v1/sight?from=Gary&to=Margo").status());
+        assertEquals(403, request("GET", "/v1/sight?from=Gary&to=Margo", bearer(Fixtures.GARY_TOKEN)).status());
+        assertEquals(403, request("GET", "/v1/library/shelf?facility=f0", bearer(Fixtures.GARY_TOKEN)).status());
+        assertEquals(400, request("GET", "/v1/sight?from=Gary&to=Nobody", bearer(Fixtures.COMMONS_TOKEN)).status());
+        assertEquals(400, request("GET", "/v1/sight?from=Gary&from=Margo&to=Gary", bearer(Fixtures.COMMONS_TOKEN)).status());
+        assertEquals(404, request("GET", "/v1/library/shelf?facility=f0", bearer(Fixtures.COMMONS_TOKEN)).status(),
+                "an ordinary registered facility must not grant book access");
+        sampler.setPaused(true);
+        assertEquals(503, request("GET", "/v1/sight?from=Gary&to=Margo", bearer(Fixtures.COMMONS_TOKEN)).status());
+        assertEquals(0, world.bridgeReads);
+        server.stop();
+        ObserverConfig fast = Fixtures.config("\"requestTimeoutMs\":100,", 0);
+        sampler = Fixtures.sampler(fast, world, warnings);
+        server = ObserverHttpServer.start(fast, 0, sampler, () -> clock.ms, warnings::add);
+        assertEquals(504, request("GET", "/v1/sight?from=Gary&to=Margo", bearer(Fixtures.COMMONS_TOKEN)).status());
+        sampler.onServerTick();
+        assertEquals(0, world.bridgeReads, "a timed-out request is removed before a later tick");
+    }
+
+    @Test
+    void sightAndLibraryResultsComeFromTicksNotHttpThreads() throws Exception {
+        server.stop();
+        ObserverConfig library = ObserverConfig.parse(Fixtures.configJson("", 1)
+                .replace("\"pos\":[0,64,0]", "\"pos\":[0,64,0],\"library\":true"));
+        sampler = Fixtures.sampler(library, world, warnings);
+        server = ObserverHttpServer.start(library, 0, sampler, () -> clock.ms, warnings::add);
+        assertEquals(400, request("GET", "/v1/library/book?facility=f0&slot=6", bearer(Fixtures.COMMONS_TOKEN)).status());
+        assertEquals(400, request("GET", "/v1/library/book?facility=f0", bearer(Fixtures.COMMONS_TOKEN)).status());
+        world.sightResult = new BridgeAccess.Sight(null, 42.0, "unloaded");
+        java.util.concurrent.ScheduledExecutorService ticks = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+                r -> new Thread(r, "test-server-tick"));
+        try {
+            ticks.scheduleAtFixedRate(sampler::onServerTick, 0, 5, java.util.concurrent.TimeUnit.MILLISECONDS);
+            Reply sight = request("GET", "/v1/sight?from=%47ary&to=Margo", bearer(Fixtures.COMMONS_TOKEN));
+            assertEquals(200, sight.status());
+            assertTrue(sight.body().getAsJsonObject("sight").get("visible").isJsonNull());
+            assertEquals("unloaded", sight.body().getAsJsonObject("sight").get("reason").getAsString());
+            Reply shelf = request("GET", "/v1/library/shelf?facility=f0", bearer(Fixtures.COMMONS_TOKEN));
+            assertEquals("observed", shelf.body().getAsJsonObject("shelf").get("status").getAsString());
+            Reply book = request("GET", "/v1/library/book?facility=f0&slot=0", bearer(Fixtures.COMMONS_TOKEN));
+            assertEquals("empty", book.body().getAsJsonObject("book").get("status").getAsString());
+            assertEquals("test-server-tick", world.bridgeThread.getName());
+        } finally {
+            ticks.shutdownNow();
+            assertTrue(ticks.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void eventWaitIsBoundedAndDoesNotBlockStatusRequests() throws Exception {
+        long after = sampler.events().latestSeq();
+        java.util.concurrent.ExecutorService callers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            long started = System.nanoTime();
+            var pending = callers.submit(() -> request("GET", "/v1/events?after=" + after + "&wait=1", bearer(Fixtures.COMMONS_TOKEN)));
+            assertEquals(200, request("GET", "/v1/status", bearer(Fixtures.STATUS_TOKEN)).status());
+            Reply reply = pending.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertEquals(200, reply.status());
+            assertEquals(0, reply.body().getAsJsonArray("events").size());
+            assertTrue(System.nanoTime() - started >= 900_000_000L, "empty page should wait for the deadline");
+            // A committed event page is immediate even when a long wait is requested.
+            Reply available = request("GET", "/v1/events?after=0&wait=25", bearer(Fixtures.COMMONS_TOKEN));
+            assertTrue(available.body().getAsJsonArray("events").size() >= 2);
+            assertEquals(400, request("GET", "/v1/events?wait=26", bearer(Fixtures.COMMONS_TOKEN)).status());
+            assertEquals(400, request("GET", "/v1/events?wait=-1", bearer(Fixtures.COMMONS_TOKEN)).status());
+            assertEquals(400, request("GET", "/v1/events?wait=1&wait=2", bearer(Fixtures.COMMONS_TOKEN)).status());
+        } finally {
+            callers.shutdownNow();
+            assertTrue(callers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void publishedEventsEndALongPollWithFreshEnvelopeTimes() throws Exception {
+        long after = sampler.events().latestSeq();
+        world.online.put(Fixtures.MARGO, Fixtures.body(clock.ms, "minecraft:overworld", 8, false));
+        long served = clock.ms + 5000;
+        java.util.concurrent.ScheduledExecutorService tick = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+        java.util.concurrent.ExecutorService callers = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var pending = callers.submit(() -> request("GET", "/v1/events?after=" + after + "&wait=25", bearer(Fixtures.COMMONS_TOKEN)));
+            tick.schedule(() -> {
+                clock.ms = served;
+                sampler.onServerTick();
+            }, 100, java.util.concurrent.TimeUnit.MILLISECONDS);
+            Reply reply = pending.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            assertEquals(200, reply.status());
+            assertEquals(served, reply.body().get("servedAtMs").getAsLong());
+            assertEquals("Margo", reply.body().getAsJsonArray("events").get(0).getAsJsonObject().get("resident").getAsString());
+        } finally {
+            tick.shutdownNow();
+            callers.shutdownNow();
+            assertTrue(tick.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(callers.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
+        }
+    }
 }

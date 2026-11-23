@@ -44,6 +44,14 @@ public final class JsonViews {
         return o;
     }
 
+    /** Tick results contain only immutable bounded DTOs, never game objects or NBT. */
+    static JsonObject bridge(ObserverConfig.ConsumerSpec consumer, String key, Object value,
+                             Sampler.State state, long nowMs, long heartbeatAtMs) {
+        JsonObject o = header(consumer, state, nowMs, heartbeatAtMs);
+        o.add(key, GSON.toJsonTree(value));
+        return o;
+    }
+
     public static JsonObject snapshot(ObserverConfig.ConsumerSpec consumer, Observations.Snapshot snap,
                                       Sampler.State state, long nowMs, long heartbeatAtMs) {
         JsonObject o = header(consumer, state, nowMs, heartbeatAtMs);

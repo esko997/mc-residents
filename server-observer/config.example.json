@@ -2,6 +2,14 @@
   "_comment": "Copy to <server>/config/resident_observer.json. UUIDs, positions and hashes below are placeholders: replace every one. Hashes come from tools/new-consumer-token.sh; never put a token itself here.",
   "enabled": true,
   "bind": "127.0.0.1",
+  "allowNonLoopback": false,
+  "allowedHosts": [],
+  "maxSightDistance": 128,
+  "requestQueueCapacity": 16,
+  "requestTimeoutMs": 2000,
+  "maxBookPages": 100,
+  "maxBookPageChars": 8192,
+  "maxBookChars": 65536,
   "port": 25640,
   "intervalTicks": 20,
   "tickBudgetMicros": 500,
@@ -15,9 +23,10 @@
     { "name": "Margo", "uuid": "00000000-0000-0000-0000-000000000002" }
   ],
   "facilities": [
-    { "id": "commons-chest", "label": "Shared chest by the meeting place", "dimension": "minecraft:overworld", "pos": [100, 64, -200], "side": null }
+    { "id": "commons-chest", "label": "Shared chest by the meeting place", "dimension": "minecraft:overworld", "pos": [100, 64, -200], "side": null },
+    { "id": "commons-library", "label": "Registered chiseled bookshelf", "dimension": "minecraft:overworld", "pos": [101, 64, -200], "library": true }
   ],
   "consumers": [
-    { "name": "commons", "tokenSha256": "0000000000000000000000000000000000000000000000000000000000000000", "scopes": ["residents", "facilities", "status"] }
+    { "name": "commons", "tokenSha256": "0000000000000000000000000000000000000000000000000000000000000000", "scopes": ["residents", "facilities", "library", "status"] }
   ]
 }

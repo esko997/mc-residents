@@ -23,6 +23,14 @@ import java.util.regex.Pattern;
 public record ObserverConfig(
         boolean enabled,
         String bind,
+        boolean allowNonLoopback,
+        Set<String> allowedHosts,
+        int maxSightDistance,
+        int requestQueueCapacity,
+        int requestTimeoutMs,
+        int maxBookPages,
+        int maxBookPageChars,
+        int maxBookChars,
         int port,
         int intervalTicks,
         int tickBudgetMicros,
@@ -47,13 +55,16 @@ public record ObserverConfig(
     private static final Set<String> SIDES = Set.of("down", "up", "north", "south", "west", "east");
     private static final Set<String> KNOWN_KEYS = Set.of("enabled", "bind", "port", "intervalTicks", "tickBudgetMicros",
             "maxFacilitySlots", "maxItemKinds", "eventCapacity", "failureTripCount", "stallSeconds",
-            "residents", "facilities", "consumers", "_comment");
+            "residents", "facilities", "consumers", "_comment", "allowNonLoopback", "allowedHosts",
+            "maxSightDistance", "requestQueueCapacity", "requestTimeoutMs",
+            "maxBookPages", "maxBookPageChars", "maxBookChars");
 
     public record ResidentSpec(String name, UUID uuid) {
     }
 
     /** A registered facility: one block position whose block entity is read when its chunks are loaded. */
-    public record FacilitySpec(String id, String label, String dimension, int x, int y, int z, String side) {
+    public record FacilitySpec(String id, String label, String dimension, int x, int y, int z, String side,
+                               boolean library) {
     }
 
     /** One credential. {@code resident} is set only for a {@link Scope#SELF} consumer. */
@@ -68,6 +79,7 @@ public record ObserverConfig(
     }
 
     public ObserverConfig {
+        allowedHosts = Set.copyOf(allowedHosts);
         residents = List.copyOf(residents);
         facilities = List.copyOf(facilities);
         consumers = List.copyOf(consumers);
@@ -99,10 +111,31 @@ public record ObserverConfig(
 
         boolean enabled = bool(o, "enabled", true);
         String bind = string(o, "bind", "127.0.0.1");
-        if (!bind.equals("127.0.0.1") && !bind.equals("::1")) {
-            throw new InvalidConfig("bind must be 127.0.0.1 or ::1 (loopback only; use an SSH tunnel or WireGuard "
-                    + "to reach it from another machine), got '" + bind + "'");
+        boolean allowNonLoopback = bool(o, "allowNonLoopback", false);
+        if (!allowNonLoopback && !bind.equals("127.0.0.1") && !bind.equals("::1")) {
+            throw new InvalidConfig("bind is loopback only unless allowNonLoopback is explicitly true");
         }
+        if (!literalAddress(bind)) {
+            throw new InvalidConfig("bind must be a literal IPv4 or IPv6 address, never a hostname");
+        }
+        Set<String> hosts = new HashSet<>(Set.of("127.0.0.1", "localhost", "[::1]"));
+        JsonArray hostArray = array(o, "allowedHosts");
+        if (hostArray.size() > 32) {
+            throw new InvalidConfig("at most 32 allowedHosts");
+        }
+        for (JsonElement host : hostArray) {
+            if (!host.isJsonPrimitive() || !host.getAsJsonPrimitive().isString()
+                    || !validHostName(host.getAsString())) {
+                throw new InvalidConfig("allowedHosts entries must be exact hostnames or IP literals, without ports");
+            }
+            hosts.add(host.getAsString().toLowerCase(Locale.ROOT));
+        }
+        int sightDistance = integer(o, "maxSightDistance", 128, 1, 512);
+        int requestQueue = integer(o, "requestQueueCapacity", 16, 1, 64);
+        int requestTimeout = integer(o, "requestTimeoutMs", 2000, 100, 10000);
+        int bookPages = integer(o, "maxBookPages", 100, 1, 100);
+        int bookPageChars = integer(o, "maxBookPageChars", 8192, 1, 32767);
+        int bookChars = integer(o, "maxBookChars", 65536, 1, 262144);
         int port = integer(o, "port", 25640, 1024, 65535);
         int interval = integer(o, "intervalTicks", 20, 1, 1200);
         int budget = integer(o, "tickBudgetMicros", 500, 50, 5000);
@@ -118,8 +151,9 @@ public record ObserverConfig(
         if (consumers.isEmpty()) {
             throw new InvalidConfig("at least one consumer is required (nobody could read the observer otherwise)");
         }
-        return new ObserverConfig(enabled, bind, port, interval, budget, slots, kinds, events, trip, stall,
-                residents, facilities, consumers);
+        return new ObserverConfig(enabled, bind, allowNonLoopback, hosts, sightDistance, requestQueue,
+                requestTimeout, bookPages, bookPageChars, bookChars,
+                port, interval, budget, slots, kinds, events, trip, stall, residents, facilities, consumers);
     }
 
     public ResidentSpec resident(String name) {
@@ -129,6 +163,45 @@ public record ObserverConfig(
             }
         }
         return null;
+    }
+
+    public FacilitySpec facility(String id) {
+        for (FacilitySpec f : facilities) {
+            if (f.id().equals(id)) return f;
+        }
+        return null;
+    }
+
+    /** Numeric-only parsing: never resolves operator-supplied names through DNS. */
+    static boolean literalAddress(String address) {
+        if (address == null || address.isEmpty()) return false;
+        if (address.contains(":")) {
+            if (!address.matches("[0-9a-fA-F:.]+")) return false;
+            try {
+                java.net.InetAddress.getByName(address);
+                return true;
+            } catch (java.net.UnknownHostException e) {
+                return false;
+            }
+        }
+        String[] parts = address.split("\\.", -1);
+        if (parts.length != 4) return false;
+        for (String part : parts) {
+            if (!part.matches("0|[1-9][0-9]{0,2}") || Integer.parseInt(part) > 255) return false;
+        }
+        return true;
+    }
+
+    static boolean validHostName(String host) {
+        if (host == null || host.length() > 253 || host.isEmpty()) return false;
+        if (host.startsWith("[") && host.endsWith("]")) {
+            String ip = host.substring(1, host.length() - 1);
+            return ip.contains(":") && literalAddress(ip);
+        }
+        for (String label : host.split("\\.", -1)) {
+            if (!label.matches("[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")) return false;
+        }
+        return true;
     }
 
     // === sections ===
@@ -170,6 +243,11 @@ public record ObserverConfig(
         for (int i = 0; i < arr.size(); i++) {
             String where = "facilities[" + i + "]";
             JsonObject f = object(arr.get(i), where);
+            for (String key : f.keySet()) {
+                if (!Set.of("id", "label", "dimension", "pos", "side", "library").contains(key)) {
+                    throw new InvalidConfig(where + ": unknown key '" + key + "'");
+                }
+            }
             String id = required(f, "id", where);
             if (!FACILITY_ID.matcher(id).matches()) {
                 throw new InvalidConfig(where + ".id must be 1-48 of a-z 0-9 _ - (starting with a letter or digit)");
@@ -204,7 +282,11 @@ public record ObserverConfig(
             if (!places.add(dimension + " " + x + " " + y + " " + z + " " + side)) {
                 throw new InvalidConfig(where + " repeats another facility's position and side");
             }
-            out.add(new FacilitySpec(id, label, dimension, x, y, z, side));
+            boolean library = bool(f, "library", false);
+            if (library && side != null) {
+                throw new InvalidConfig(where + ": library shelves have no side");
+            }
+            out.add(new FacilitySpec(id, label, dimension, x, y, z, side, library));
         }
         return out;
     }
@@ -236,7 +318,7 @@ public record ObserverConfig(
             for (JsonElement s : scopeArr) {
                 Scope scope = s.isJsonPrimitive() ? Scope.byId(s.getAsString()) : null;
                 if (scope == null) {
-                    throw new InvalidConfig(where + ".scopes: unknown scope " + s + " (known: residents, facilities, status, self)");
+                    throw new InvalidConfig(where + ".scopes: unknown scope " + s + " (known: residents, facilities, library, status, self)");
                 }
                 scopes.add(scope);
             }
@@ -245,9 +327,9 @@ public record ObserverConfig(
                 if (resident == null || residents.stream().noneMatch(r -> r.name().equals(resident))) {
                     throw new InvalidConfig(where + ": scope 'self' needs \"resident\" naming a configured resident");
                 }
-                if (scopes.contains(Scope.RESIDENTS) || scopes.contains(Scope.FACILITIES)) {
-                    // A resident's own credential must not see other residents or remote stock.
-                    throw new InvalidConfig(where + ": a 'self' consumer cannot also hold 'residents' or 'facilities'");
+                if (scopes.contains(Scope.RESIDENTS) || scopes.contains(Scope.FACILITIES) || scopes.contains(Scope.LIBRARY)) {
+                    // A resident's own credential must not see other residents, remote stock or books.
+                    throw new InvalidConfig(where + ": a 'self' consumer cannot also hold 'residents', 'facilities' or 'library'");
                 }
             } else if (resident != null) {
                 throw new InvalidConfig(where + ": \"resident\" is only allowed with scope 'self'");

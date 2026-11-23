@@ -76,8 +76,11 @@ public final class ResidentObserverMod {
             EventLog events = new EventLog(config.eventCapacity());
             MinecraftWorldAccess world = new MinecraftWorldAccess(event.getServer(),
                     config.maxFacilitySlots(), config.maxItemKinds());
-            Sampler sampler = new Sampler(config, world, events, System::nanoTime, System::currentTimeMillis,
+            Sampler sampler = new Sampler(config, world, new MinecraftBridgeAccess(event.getServer(), config),
+                    events, System::nanoTime, System::currentTimeMillis,
                     msg -> LOGGER.warn("[resident_observer] {}", msg));
+            Path pause = dir.resolve(PAUSE_FILE);
+            sampler.setPaused(Files.exists(pause));
             ObserverHttpServer http = ObserverHttpServer.start(config, config.port(), sampler, System::currentTimeMillis,
                     msg -> LOGGER.warn("[resident_observer] {}", msg));
             ScheduledExecutorService watcher = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -85,7 +88,6 @@ public final class ResidentObserverMod {
                 t.setDaemon(true);
                 return t;
             });
-            Path pause = dir.resolve(PAUSE_FILE);
             // File checks run here, never on the server thread.
             watcher.scheduleWithFixedDelay(() -> sampler.setPaused(Files.exists(pause)), 0, 5, TimeUnit.SECONDS);
             running = new Running(sampler, http, watcher);
