@@ -79,7 +79,7 @@ for tool in pactl python3 setsid timeout; do
   fi
 done
 
-module= child= creating=0
+module= child= router= creating=0
 pulse_control() { timeout 5s pactl "$@"; }
 # Never reuse a sink, including one left behind by another client. Only the
 # module created below may be unloaded, and the game process group dies first.
@@ -101,8 +101,13 @@ cleanup_audio() {
   local result=$?
   trap - EXIT
   trap '' HUP INT TERM
-  # Also covers a signal between spawning the sole job and assigning $!.
-  if [ -z "$child" ]; then child=$(jobs -pr); fi
+  # Stop the stream router first so no Pulse call of ours overlaps the unload.
+  if [ -n "$router" ]; then
+    kill -TERM "$router" 2>/dev/null || true
+    wait "$router" 2>/dev/null || true
+  fi
+  # Also covers a signal between spawning the game and assigning $!.
+  if [ -z "$child" ]; then child=$(jobs -pr | head -n 1); fi
   if [ -n "$child" ]; then
     kill -TERM -- "-$child" 2>/dev/null || true
     kill -TERM "$child" 2>/dev/null || true
@@ -152,17 +157,17 @@ module=$(pulse_control load-module module-null-sink "sink_name=$audio" \
   "sink_properties=device.description=Resident_game_audio device.class=abstract resident.launch_id=$$" \
   rate=48000 channels=2 2>/dev/null) || audio_error "resident audio could not create its dedicated Pulse null sink"
 [[ $module =~ ^[0-9]+$ ]] || audio_error "resident audio returned an invalid module identity"
-if ! pulse_control --format=json list sinks 2>/dev/null | python3 -c '
+sink_index=$(pulse_control --format=json list sinks 2>/dev/null | python3 -c '
 import json,sys
 try:
     sinks=json.load(sys.stdin)
     matches=[s for s in sinks if s["name"]==sys.argv[1]]
     ok=len(matches)==1 and str(matches[0].get("owner_module"))==sys.argv[2] and matches[0].get("monitor_source")==sys.argv[1]+".monitor" and matches[0].get("properties",{}).get("device.class")=="abstract"
-    sys.exit(0 if ok else 1)
+    if not ok: sys.exit(1)
+    print(int(matches[0]["index"]))
 except Exception: sys.exit(1)
-' "$audio" "$module"; then
-  audio_error "resident audio sink ownership or isolated monitor validation failed"
-fi
+' "$audio" "$module") || audio_error "resident audio sink ownership or isolated monitor validation failed"
+[[ $sink_index =~ ^[0-9]+$ ]] || audio_error "resident audio sink ownership or isolated monitor validation failed"
 current_default=$(pulse_control get-default-sink 2>/dev/null) || audio_error "resident audio could not verify the unchanged default sink"
 if [ "$current_default" != "$default_sink" ]; then
   pulse_control set-default-sink "$default_sink" >/dev/null 2>&1 || true
@@ -173,6 +178,28 @@ fi
 # microphones, or a mixed default output. Minecraft volume remains operator-set.
 ALSOFT_DRIVERS=pulse PULSE_SINK="$audio" setsid "${command[@]}" &
 child=$!
+# PULSE_SINK alone is not enough: Minecraft opens its OpenAL device by name, and
+# its stream then lands on the default output (seen on Inspiron: the laptop
+# speakers). Keep every playback stream owned by the game's own session on the
+# dedicated sink; streams of any other process are never touched.
+route_streams() {
+  pulse_control --format=json list sink-inputs 2>/dev/null | python3 -c '
+import json,sys
+try:
+    for stream in json.load(sys.stdin):
+        pid=str(stream.get("properties",{}).get("application.process.id",""))
+        if not pid.isdigit() or str(stream.get("sink"))==sys.argv[2]: continue
+        try: session=open("/proc/"+pid+"/stat").read().rsplit(")",1)[1].split()[3]
+        except (OSError,IndexError): continue
+        if session==sys.argv[1]: print(int(stream["index"]))
+except Exception: sys.exit(1)
+' "$child" "$sink_index" 2>/dev/null | while read -r stream; do
+    pulse_control move-sink-input "$stream" "$audio" >/dev/null 2>&1 || true
+  done
+}
+# The TERM trap lets an in-flight Pulse call finish before the router exits.
+( trap 'exit 0' TERM; while kill -0 "$child" 2>/dev/null; do route_streams || true; sleep 0.5; done ) &
+router=$!
 set +e
 wait "$child"
 result=$?

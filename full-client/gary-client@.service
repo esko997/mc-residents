@@ -12,3 +12,6 @@ EnvironmentFile=-%h/gary-client/instances/%i.env
 CPUQuota=400%
 Nice=10
 Restart=no
+# With a dedicated audio sink the launcher stays as a wrapper and exits with the
+# stop signal's code; a requested stop is not a failure.
+SuccessExitStatus=129 130 143

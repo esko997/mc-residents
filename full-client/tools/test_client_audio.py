@@ -31,6 +31,16 @@ elif a == ["--format=json","list","sinks"]:
     print(json.dumps([{"name":"resident_Gary","index":2,"owner_module":8 if s["wrong_owner"] else 7,
         "monitor_source":"resident_Gary.monitor","properties":{"device.class":"abstract"}}]))
 elif a[:1] == ["set-default-sink"]: s["default"]=a[1]
+elif a == ["--format=json","list","sink-inputs"]:
+    # The game's own stream starts on the speakers (sink 1); another process's stream must stay there.
+    client=Path(os.environ["AUDIO_TEST_CLIENT"])
+    game=json.loads(client.read_text())["pid"] if client.exists() else None
+    streams=[{"index":42,"sink":1,"properties":{"application.process.id":"1"}}]
+    if game: streams.append({"index":41,"sink":2 if 41 in s.get("moved",[]) else 1,"properties":{"application.process.id":str(game)}})
+    print(json.dumps(streams))
+elif a[:1] == ["move-sink-input"]:
+    s.setdefault("moved",[]).append(int(a[1]))
+    s.setdefault("moved_to",[]).append(a[2])
 elif a == ["unload-module","7"]: s["loaded"]=False
 else: sys.exit(2)
 p.write_text(json.dumps(s))
@@ -38,7 +48,7 @@ p.write_text(json.dumps(s))
 CLIENT = r'''#!/usr/bin/env python3
 import json,os,sys,time
 from pathlib import Path
-Path(os.environ["AUDIO_TEST_CLIENT"]).write_text(json.dumps({"sink":os.environ.get("PULSE_SINK"),"driver":os.environ.get("ALSOFT_DRIVERS"),"args":sys.argv[1:]}))
+Path(os.environ["AUDIO_TEST_CLIENT"]).write_text(json.dumps({"sink":os.environ.get("PULSE_SINK"),"driver":os.environ.get("ALSOFT_DRIVERS"),"args":sys.argv[1:],"pid":os.getpid()}))
 if os.environ.get("AUDIO_TEST_WAIT"): time.sleep(60)
 sys.exit(int(os.environ.get("AUDIO_TEST_EXIT","0")))
 '''
@@ -128,6 +138,33 @@ class ClientAudioTest(unittest.TestCase):
             _, error = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 143, error)
             self.assertFalse(json.loads(self.state.read_text())["loaded"])
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=3)
+
+    def test_game_stream_is_moved_to_its_sink_and_other_streams_are_left_alone(self):
+        self.env["AUDIO_TEST_WAIT"] = "1"
+        process = subprocess.Popen(["bash", str(LAUNCH), "Gary"], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 8
+            moved = []
+            while process.poll() is None and time.monotonic() < deadline and not moved:
+                time.sleep(0.1)
+                try:
+                    moved = json.loads(self.state.read_text()).get("moved", [])
+                except ValueError:
+                    pass  # the stub was mid-write
+            self.assertEqual(moved, [41], "the game's stream was not moved off the speakers")
+            time.sleep(1.2)  # two more router passes: no repeat move, and stream 42 stays put
+            process.send_signal(signal.SIGTERM)
+            _, error = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 143, error)
+            state = json.loads(self.state.read_text())
+            self.assertEqual(state["moved"], [41])
+            self.assertEqual(state["moved_to"], ["resident_Gary"])
+            self.assertFalse(state["loaded"])
+            self.assertEqual(state["calls"][-1], ["unload-module", "7"])
         finally:
             if process.poll() is None:
                 process.kill()
