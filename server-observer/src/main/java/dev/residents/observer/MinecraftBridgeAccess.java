@@ -43,12 +43,15 @@ public final class MinecraftBridgeAccess implements BridgeAccess {
     private final ObserverConfig config;
     private final WorldAccess world;
     private final BookText.Limits bookLimits;
+    /** The scan's book memo (server thread only); shelf reads use it too, book reads never (they need pages). */
+    private final BookMemo memo;
 
     public MinecraftBridgeAccess(MinecraftServer server, ObserverConfig config, WorldAccess world) {
         this.server = server;
         this.config = config;
         this.world = world;
         this.bookLimits = new BookText.Limits(config.maxBookPages(), config.maxBookPageChars(), config.maxBookChars());
+        this.memo = new BookMemo(config.maxBookPages());
     }
 
     private void requireServerThread() {
@@ -231,8 +234,8 @@ public final class MinecraftBridgeAccess implements BridgeAccess {
     private Slot slot(ItemStack item, int slot, int[] scan) {
         if (item == null || item.isEmpty()) return null;
         if (scan != null) {
-            Memo m = memos.get(item);
-            if (m != null && m.matches(item)) return m.slot(slot);
+            BookInfo known = memo.get(item, item.getTag(), slot);
+            if (known != null) return Slot.of(slot, new BookText.Selected(known, List.of()));
             if (scan[0] <= 0) {
                 scan[1]++;
                 return null;
@@ -247,60 +250,11 @@ public final class MinecraftBridgeAccess implements BridgeAccess {
         } catch (RuntimeException e) {
             s = Slot.failed(slot, "error", Sampler.describe(e));
         }
-        if (scan != null) {
-            if (memos.size() >= MAX_MEMOS) memos.clear();
-            memos.put(item, Memo.of(item, s));
-            if (s.book() != null) s = Slot.of(slot, new BookText.Selected(s.book().info(), List.of())); // no pages kept
+        if (scan != null && s.book() != null) {
+            memo.put(item, item.getTag(), s.book().info()); // successes only; failures are tried again, within the limits
+            s = Slot.of(slot, new BookText.Selected(s.book().info(), List.of())); // no pages kept
         }
         return s;
-    }
-
-    /** Scan memos (server thread only): weakly keyed by item stack, so they go when the stack goes. */
-    private final java.util.Map<ItemStack, Memo> memos = new java.util.WeakHashMap<>();
-    static final int MAX_MEMOS = 32_768;
-
-    /**
-     * What one book stack selected to (its BookInfo, or why it failed), valid while the stack still holds the same
-     * tag objects for everything {@link #selected} reads: the tag, title, author, generation, the pages list and
-     * each page. Tags are replaced, not edited, when a book changes (StringTag is immutable; a page edit puts a
-     * new element), so identity is a complete check of what was read. Pages are not kept.
-     */
-    private record Memo(CompoundTag tag, Tag title, Tag author, Tag generation, Tag pages, Tag[] pageTags,
-                        BookInfo info, String status, String reason) {
-        static Memo of(ItemStack stack, Slot s) {
-            CompoundTag tag = stack.getTag();
-            Tag pages = tag == null ? null : tag.get("pages");
-            Tag[] each = new Tag[0];
-            if (pages instanceof ListTag list) {
-                each = new Tag[list.size()];
-                for (int i = 0; i < each.length; i++) each[i] = list.get(i);
-            }
-            return new Memo(tag, tag == null ? null : tag.get("title"), tag == null ? null : tag.get("author"),
-                    tag == null ? null : tag.get("generation"), pages, each,
-                    s.book() == null ? null : s.book().info(), s.status(), s.reason());
-        }
-
-        boolean matches(ItemStack stack) {
-            CompoundTag now = stack.getTag();
-            if (now != tag) return false;
-            if (now == null) return true;
-            if (now.get("title") != title || now.get("author") != author || now.get("generation") != generation) return false;
-            Tag p = now.get("pages");
-            if (p != pages) return false;
-            if (p instanceof ListTag list) {
-                if (list.size() != pageTags.length) return false;
-                for (int i = 0; i < pageTags.length; i++) if (list.get(i) != pageTags[i]) return false;
-            }
-            return true;
-        }
-
-        /** The memo as a slot at {@code slot} (a stack moved within a shelf keeps its book; the hash ignores slots). */
-        Slot slot(int slot) {
-            if (info == null) return Slot.failed(slot, status, reason);
-            BookInfo at = new BookInfo(slot, info.kind(), info.item(), info.title(), info.author(), info.generation(),
-                    info.pageCount(), info.contentHash());
-            return Slot.of(slot, new BookText.Selected(at, List.of()));
-        }
     }
 
     private BookText.Selected selected(ItemStack stack, int slot) throws BookText.Invalid {
