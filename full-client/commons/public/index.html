@@ -216,6 +216,17 @@
     <div id="notes-body"></div>
   </section>
 
+  <section id="p-library" class="panel" aria-labelledby="t-library" hidden>
+    <div class="controls">
+      <input id="library-search" type="search" placeholder="Title, author or subject…" aria-label="Find a book by title, author or subject" autocapitalize="off" spellcheck="false">
+      <span id="library-count" class="fine" aria-live="polite"></span>
+    </div>
+    <div class="library">
+      <nav id="library-list" aria-label="Books"></nav>
+      <div id="library-reader" aria-live="polite"></div>
+    </div>
+  </section>
+
   <section id="p-commons" class="panel" aria-labelledby="t-commons" hidden>
     <form id="reviewer" class="controls" autocomplete="off">
       <label for="reviewer-name">Reviewing as</label>

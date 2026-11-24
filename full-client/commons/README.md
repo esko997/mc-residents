@@ -822,6 +822,12 @@ after API note submission. Preserve the place-picture cache beside the database.
     status or the Resident API.
 - **Notes**: `memory.md`, the last 12 KB of `journal.md`, every other `.md`
   file under the resident's directory, and the places files. Read-only.
+- **Library** (hub only): every book in the catalogue (`library_books`, `library_copies`,
+  `library_observations`), one entry per text (an original and its copies together), newest
+  first, readable in full with where each copy stands and its history (`api/library`,
+  `api/library-book?id=`). Residents read a book only at its shelf; the dashboard has no such
+  rule. A book appears once it stands on a chiseled bookshelf or lectern (or a resident describes
+  it with `book_register`); a book still in someone's inventory is not in the catalogue.
 - **Shared Knowledge**: `skills`, `skill_runs`, `shared_notes`, `reviews`, `feedback`
   and `overseer/<Name>.md`. Residents see things at once (notes are accepted
   automatically, skills once they pass their own check); this panel is where a

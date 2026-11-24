@@ -26,6 +26,8 @@ import { residentRoutes, type ResidentsReply } from "./routes/residents.ts";
 import { Watcher } from "./watcher.ts";
 import { ingestOptionsFromEnv, ObserverIngest } from "./observer-ingest.ts";
 import { serverDataRoutes } from "./routes/server-data.ts";
+import { libraryRoutes } from "./routes/library.ts";
+import type { LibraryBook, LibraryList } from "./library-view.ts";
 import { ResidentApi } from "./resident-api.ts";
 import { importSharedPlaces, sharedPlaces } from "./resident-places.ts";
 import { alarmActivityText, recentAlarms } from "./resident-alarms.ts";
@@ -39,7 +41,7 @@ import { WatchPush } from "./watch.ts";
 /** The JSON each GET route under /<token>/api/ returns, for whoever reads it (the page, the tests). */
 export interface Replies {
   residents: ResidentsReply; activity: ActivityReply; map: MapReply; commons: CommonsReply; notes: NotesReply; file: TextFile; console: ConsoleReply;
-  thoughts: ThoughtsReply; diorama: DioramaReply; "block-colours": BlockColours;
+  thoughts: ThoughtsReply; diorama: DioramaReply; "block-colours": BlockColours; library: LibraryList; "library-book": LibraryBook;
 }
 
 export interface App {
@@ -64,7 +66,7 @@ const STATIC: Record<string, string> = {
   "server-data.js": "text/javascript; charset=utf-8", "server-record.js": "text/javascript; charset=utf-8", "map-blocks.js": "text/javascript; charset=utf-8",
   "watch-layout.js": "text/javascript; charset=utf-8", "watch-layout.css": "text/css; charset=utf-8",
   "live-view.js": "text/javascript; charset=utf-8", "live-view.css": "text/css; charset=utf-8",
-  "run-control.js": "text/javascript; charset=utf-8",
+  "run-control.js": "text/javascript; charset=utf-8", "library-view.js": "text/javascript; charset=utf-8",
   "overlay": "text/html; charset=utf-8", "overlay/control": "text/html; charset=utf-8", "overlay/preview": "text/html; charset=utf-8",
   "overlay.js": "text/javascript; charset=utf-8", "overlay-control.js": "text/javascript; charset=utf-8",
   "overlay-preview.js": "text/javascript; charset=utf-8", "overlay-core.js": "text/javascript; charset=utf-8",
@@ -121,7 +123,7 @@ export function createApp(config: Config, token: string, now: () => number = Dat
   const runControl = new RunControl(config, tail, federation, { log });
   const localRoutes: Routes = {
     ...residentRoutes(context), ...activityRoutes(context), ...mapRoutes(context), ...dioramaRoutes(context), ...notesRoutes(context),
-    ...(config.role === "hub" ? { ...commonsRoutes(context), ...consoleRoutes(context), ...serverDataRoutes(context, ingest) } : {}),
+    ...(config.role === "hub" ? { ...commonsRoutes(context), ...consoleRoutes(context), ...serverDataRoutes(context, ingest), ...libraryRoutes(context) } : {}),
   };
   const routes = federation ? federation.wrap(localRoutes) : localRoutes;
   const secret = Buffer.from(token);

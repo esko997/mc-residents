@@ -73,7 +73,7 @@ function distanceFrom(near: Position | undefined, at: { x: number; y: number; z:
 /** From the centre of the block to a body's position. */
 const reach = (place: { x: number; y: number; z: number }, body: { x: number; y: number; z: number }) =>
   Math.hypot(place.x + 0.5 - body.x, place.y + 0.5 - body.y, place.z + 0.5 - body.z);
-const holderName = (block: string | null) => block === SHELF ? "chiseled bookshelf" : block === LECTERN ? "lectern" : block ? block.replace(/^minecraft:/, "") : "place";
+export const holderName = (block: string | null) => block === SHELF ? "chiseled bookshelf" : block === LECTERN ? "lectern" : block ? block.replace(/^minecraft:/, "") : "place";
 const coords = (at: { x: number; y: number; z: number }) => `${at.x},${at.y},${at.z}`;
 const readable = (slot: BookInfo): slot is BookInfo & { kind: "written" | "writable"; contentHash: string } =>
   (slot.kind === "written" || slot.kind === "writable") && slot.contentHash !== null;

@@ -10,6 +10,8 @@ import { join } from "node:path";
 import { serve } from "../src/server.ts";
 import { clientLogLine, fakePhoneChat, fakeSynapse, fixture, png, rollout, serverLogLine, tempHome } from "../test/helpers.ts";
 import { fakeServerBridge, seedServerData } from "./demo-server-data.ts";
+import { applyShelf, catalogueBook, storeText } from "../src/library.ts";
+import { bookContentHash } from "../src/resident-contracts-library.ts";
 import { DEMO_CAVE, DEMO_TUNNEL, demoChunks, demoTop } from "./demo-diorama.ts";
 
 const now = Date.now(), minute = 60_000;
@@ -146,6 +148,19 @@ const running = serve(home.config({
 const app = running.app;
 // A week of the server record (statistics, advancements, blocks, container flows) for the Server record panel and the Map's building layer.
 seedServerData(app.db, now);
+// A small library for the Library panel: a signed book with a copy, a short one on a lectern, and a draft.
+for (const [pos, block, books] of [
+  [[100, 64, -200], "minecraft:chiseled_bookshelf", [
+    { kind: "written", title: "Rail Notes", author: "Tobin", generation: 0, pages: ["Powered rails every 34 blocks keep a cart at full speed on the flat.\n\nGold for them comes from the nether fortress north of the portal.", "Put a detector rail before each station so the doors open by themselves.", "Do not run a line through the birch meadow: the bees nest there."] },
+    { kind: "written", title: "Rail Notes", author: "Tobin", generation: 1, pages: ["Powered rails every 34 blocks keep a cart at full speed on the flat.\n\nGold for them comes from the nether fortress north of the portal.", "Put a detector rail before each station so the doors open by themselves.", "Do not run a line through the birch meadow: the bees nest there."] },
+  ]],
+  [[104, 64, -198], "minecraft:lectern", [{ kind: "written", title: "Herbs of the Stream", author: "Margo", generation: 0, pages: ["Sweet berries grow by the river bend. Pick them with an empty hand; they come back in a day."] }]],
+  [[100, 65, -200], "minecraft:chiseled_bookshelf", [{ kind: "writable", title: null, author: null, generation: null, pages: ["Shopping: wool, glass, three torches"] }]],
+] as const) {
+  const slots = books.map((book, slot) => ({ slot, kind: book.kind, title: book.title, author: book.author, generation: book.generation, pageCount: book.pages.length, contentHash: bookContentHash({ ...book, pages: [...book.pages] }) }));
+  applyShelf(app.db, { dimension: "minecraft:overworld", pos: [...pos], block, slots }, now - 3_600_000, true);
+  for (const [index, book] of books.entries()) storeText(app.db, catalogueBook(app.db, slots[index]!, now - 3_600_000), [...book.pages], "server", now - 3_600_000);
+}
 // Something is said now and then, by a player (in both logs) and by tellraw (in the client's only),
 // and whatever polls the server over RCON leaves its two lines each time.
 let spoken = 0;

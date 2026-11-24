@@ -5,6 +5,7 @@ import { createLiveView } from "./live-view.js";
 import { createRunControls } from "./run-control.js";
 import { createServerRecord } from "./server-record.js";
 import { createBlockLayer } from "./map-blocks.js";
+import { createLibraryView } from "./library-view.js";
 // The Shared Knowledge page. No framework and no build step: each panel fetches JSON from
 // api/<route> (relative, so the token in the address carries over) and patches
 // only the parts of the page whose content changed, so nothing flickers and
@@ -859,6 +860,9 @@ const serverRecord = createServerRecord($("#p-record"), {
   html, setHtml, get, colour, stamp, clock, ago, now: serverNow, residents: () => state.residents, places: () => map.places, goToMap,
   openFacility: id => { commons.focus = id; show("commons"); if (commons.data) renderCommons(); },
 });
+
+// ---------- Library (public/library-view.js) ----------
+const library = createLibraryView($("#p-library"), { html, setHtml, get, stamp, ago, colour });
 
 // ---------- Map: elevation profile ----------
 function profileFor(name) {
@@ -1815,6 +1819,7 @@ const panels = [
   // The host reads the client at most every 10 s; asking every 15 s keeps each view under ~25 s old.
   { id: "diorama", title: "Diorama", every: 15000, load: loadDiorama },
   { id: "notes", title: "Notes", every: 30000, load: loadNotes },
+  { id: "library", title: "Library", every: 30000, load: () => library.load() },
   { id: "commons", title: "Shared Knowledge", every: 15000, load: loadCommons },
   // One poll also feeds the visible chat beside Residents or Live.
   { id: "console", title: "Console", every: 2000, load: loadConsole, also: ["residents", "live"] },
