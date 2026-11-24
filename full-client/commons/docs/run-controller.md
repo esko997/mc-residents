@@ -78,6 +78,13 @@ by hand). `thread_id` is the resident's current thread from `sessions/<Name>-hea
   "on_behalf_of": "daily_window" }      // optional word recorded as "daily_window via <credential name>"
 ```
 
+For a commission that belongs to one resident rather than to the run, deliver
+`project-brief.md` once in that resident's directory. A nonempty file is called
+out at the opening of a fresh **or resumed** session. The resident records their
+plan or decision, then empties the brief; ordinary code deploys must not refill
+it. The launcher does not overwrite `plan.json`, clear a full project list, or
+require a thread reset. `note` above still applies to the whole requested start.
+
 ### `POST stop`
 
 ```json

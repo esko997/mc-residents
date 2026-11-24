@@ -23,6 +23,7 @@ import { vehicleDefinitions, Vehicles, vehicleStatusLine } from "./vehicles.ts";
 import { alarmDefinition, alarmFromState } from "./alarms.ts";
 import { attackReport, bucketGuard, bucketKind, bucketReport, holdReport, lookReport, sightsText, writeSign } from "./aim.ts";
 import { bookDefinitions, Books } from "./books.ts";
+import { Drafts, draftingDefinitions } from "./drafting.ts";
 
 const finite = z.number().finite();
 // Block coordinates use the containing block, including at negative positions.
@@ -74,6 +75,7 @@ export const definitions = {
   skill_find: { ...skillDefinitions.skill_find, description: `${skillDefinitions.skill_find.description} limit: default 5, at most 10.` },
   notes_shared: { ...skillDefinitions.notes_shared, description: `${skillDefinitions.notes_shared.description} limit: default 3, at most 8.` },
   ...planDefinitions,
+  ...draftingDefinitions,
   what_next: { description: "For when you are unsure what to do: at most five suggestions worked out from what your body can see (what you carry and wear, health and food, saved places, recent deaths, your plan), each with the numbers it rests on, and when there is room up to three advancements within reach (not done, the one before done, as the advancements screen shows them). They name things that are missing, unused or within reach; they are not orders. The current step of your plan in focus comes first. advancements: a tab or mod (\"Nether\", \"mekanism\") lists more of what is within reach there, \"all\" across your tabs; each ask shows others.", schema: z.object({ advancements: z.string().trim().min(1).max(64).optional() }).strict() },
 };
 export type ToolName = keyof typeof definitions;
@@ -163,6 +165,7 @@ export class Tools {
   private readonly vehicles: Vehicles;
   /** Written books, the book catalogue and records. */
   readonly books: Books;
+  readonly drafts: Drafts;
   constructor(readonly body: Body, readonly knowledge?: Knowledge, private knowledgeError = "KNOWLEDGE_DB is not configured.") {
     const { residentDir, name } = body.config;
     this.machines = new Machines(body.api);
@@ -177,6 +180,7 @@ export class Tools {
     this.plans = createPlans({ residentDir, now: () => this.now() });
     this.society = createSociety({ client: this.commons, resident: name });
     this.books = new Books(body, this.commons);
+    this.drafts = new Drafts(body);
     if (body.config.commonsUrl && body.config.commonsTokenFile) {
       void registerResidentTools(this.commons, name, this.registeredNames).catch(() => {});
       body.onAlarm = alarm => this.commons.alarm(alarm);
@@ -199,7 +203,7 @@ export class Tools {
   async call(name: string, args: unknown = {}, signal?: AbortSignal): Promise<CallToolResult> {
     // A paged reader takes the event tail first and pages within what is left, so the cut below never drops text
     // its continuation handle has already passed; events that arrive during the call show in the next result.
-    const early = name === "read_book" ? this.body.events.consume() : undefined;
+    const early = name === "read_book" || name.startsWith("draft_") ? this.body.events.consume() : undefined;
     const reply = await this.run(name, args, signal, undefined, early === undefined ? undefined : 1499 - early.length - 2);
     let text = reply.text;
     const events = early ?? this.body.events.consume();
@@ -256,6 +260,9 @@ export class Tools {
     const [tool, args] = command;
     const body = this.body, api = body.api;
     switch (tool) {
+      case "draft_create": case "draft_copy": case "draft_edit": case "draft_view":
+      case "draft_compare": case "draft_preview": case "draft_list":
+        return this.drafts.run(command, budget);
       case "alarm": {
         const state = await api.state();
         if (state.health <= 0) throw new Error("You cannot raise an alarm while dead.");

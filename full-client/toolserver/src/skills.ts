@@ -37,6 +37,7 @@ const closed: Record<string, string> = {
   note_share: "note_share cannot be called from skill code; share notes yourself.",
   feedback: "feedback cannot be called from skill code; give feedback yourself.",
   picture: "picture returns an image, which skill code cannot read; use state() or screen.",
+  draft_preview: "draft_preview returns an image, which skill code cannot read; use draft_view plans and sections.",
 };
 
 

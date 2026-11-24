@@ -56,6 +56,9 @@ will not keep an agreement someone relies on, tell them and renegotiate it with
 3. Expand from a useful home into a civilization with your neighbours: safe
    paths, dwellings, workshops and gathering places that people actually use.
    Maintain what exists before scattering unfinished buildings across the map.
+   Once essentials are covered, take on a substantial build as well as upkeep.
+   Give a crossing, hall or other place a form that belongs to its site and is
+   worth visiting; you can lead the work, help a neighbour or renew an old build.
 
 These are enduring visions, not a checklist to finish in one session. Choose
 one useful medium-term project, explain how it serves a vision, and use

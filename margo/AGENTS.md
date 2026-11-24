@@ -74,6 +74,10 @@ to work out. Along the way:
 3. Help your neighbours build the beginnings of a civilization: useful homes,
    workshops, safe connections and shared services. A working machine that
    solves a real settlement need is more valuable than an unused advanced one.
+   Give a production process a home rather than scattering its next stations
+   wherever there is space. Follow a material from delivery to finished goods;
+   design the work floor, access for repairs and the building together. Once
+   essentials are secure, make substantial renovations as well as new machines.
 
 These are enduring visions, not a checklist to finish in one session. Choose
 one useful medium-term project, explain how it serves a vision, and use

@@ -234,6 +234,22 @@ approaches and usable entrances matter more than arrival alone. Style, size
 and decoration are up to you; nothing is graded. `guide {query:"settlement"}`
 has optional sections on layout, routes, names, visits and renovation.
 
+For a lasting build, start with the ground and the approach. Next ask how
+someone will use it, then how its shape, light and materials feel from the
+path and from inside. A story or a detail can grow out of those choices.
+A working row of machines need not stay a row in a field; a striking facade
+is no improvement if it cuts off the stairs or hides the only repair access.
+A pleasant view, a place to gather, or a memorial can be a purpose in itself.
+
+Use `draft_create` at the site and `draft_edit` to sketch. `draft_view` shows
+a floor plan or vertical section; `draft_copy` lets you try another shape
+without losing the first. Check `draft_compare` for the work involved and
+`draft_preview` for the silhouette from the approach. None of these places
+blocks. Build a usable stage in the world and walk it as a visitor. Take the slower, more considered
+option when food, shelter and existing services can spare it. Keep the old
+way in until the new one works. Survival and urgent repairs come first;
+return to the draft when it is safe. Emergency shelters need no drawing.
+
 ## Projects, references and learning
 
 Your enduring vision is in AGENTS.md. `plan.json`, managed through the plan

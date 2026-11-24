@@ -107,9 +107,94 @@ COMMONS_TOKEN_FILE = "/home/your-user/gary-client/commons-tokens/Gary"
 - `plan_finish` — Explicitly close a project. `outcome: "done"` requires closed actions, a completion criterion and nonempty `evidence` describing the observed result; optional `unlocks` records a capability made available. This is resident-reported evidence, not automatic world verification. `outcome: "dropped"` records abandonment separately. History retains ten endings; legacy endings remain labelled unverified.
 - `plan_show` — Open projects plus recent endings, or full project details by `name`. Long results give a `page` continuation rather than losing steps or evidence to truncation.
 - `plan_focus` — Choose the project whose next action or pending verification `status` shows. Survives restarts and context summaries.
+- `draft_create`, `draft_copy`, `draft_edit`, `draft_view`, `draft_compare`, `draft_preview`, `draft_list` — Persistent, deterministic local architectural workbench; see "Architecture drafts". These never build, dig, walk or send world commands.
 - `what_next` — At most five suggestions computed from one snapshot (inventory, armour, health, food, saved places, deaths of the last six hours, the plan in focus), most useful first, each with the numbers it rests on; no model call. The current step of the plan in focus is the first line. The rules are the `rules` table in `src/ideas.ts`: a rule is `{ id, priority, keeps?, suggest(view) }` returning text or nothing. Recipes are checked against the knowledge database when it is open (tags included); otherwise against the vanilla recipe written in the rule. Reply capped at 1,300 characters.
   - **Advancements within reach** (`src/advancement-ideas.ts`). When the hub has the resident's advancement progress (Resident API `advancements/frontier`, see the Commons README), up to three lines name advancements not yet done whose parent is done, as the advancements screen shows them, across base-game and mod tabs: title, tab and source (base game or mod, and the mod when it adds one to another tab), how many are done in that tab, the description and criteria items from the knowledge export (it also replaces a title the server left as a translation key; otherwise the line says it is an id), what is still missing (criteria met of all, any one of N, or one per group; the server's files never name the missing criteria), where to learn more (`mods {query}` for modded ones, `recipes {item}` when a criterion names an item, `guide`) and how old the server's record is. They are information, worded as "within reach", never ranked: the hub rotates each resident's frontier on every ask, one tab after another (each tab alike, base game or mod), so repeated calls show different ones. Room: a stalled plan and everything above it (safety, agreements, unused carried means) and rules marked `keeps` (`no_armour`) never give way; advancement lines come after the other suggestions, at most three, at least two while only unkept suggestions would fill the five places, none once kept ones fill them. Without hub data (no hub, an older hub, no bridge, nothing ingested) the reply is exactly what it was and says nothing about advancements; the hub call waits at most 2.5 s.
   - `what_next {advancements: "<tab or mod>"}` lists up to eight of one tab's or mod's frontier entries (a tab title such as "Nether", a mod id such as "mekanism"; "all" for every tab, with the tabs and their counts), a different set on each ask, or the reason when there is no data. It reads only the hub, not the body.
+
+## Architecture drafts
+
+Drafts are private files in `RESIDENT_DIR/drafts/<name>.json`, not Commons projects or a build queue.
+Their **world origin, dimension, crop and original survey are immutable**. Names are lowercase
+letters/digits/`_`/`-`, at most 40 characters; up to 32 drafts. Copy a draft to compare alternatives;
+use a new survey/name for another site. A draft is never applied automatically.
+
+- `draft_create {name, origin:[x,y,z], min:[x,y,z], max:[x,y,z], notes?}`: origin is world coordinates;
+  inclusive bounds and every later geometry coordinate are **local offsets**. The crop must fit
+  48×64×48 blocks (x,y,z), at most 147,456 cells, and at most **3×3 actual chunk columns**.
+  Chunk-boundary alignment matters: 48 blocks starting inside a chunk can span four columns and is refused.
+  The helper crops the client's current loaded-chunk snapshot; origin does not move the client or fetch
+  remote terrain. Missing columns/sections, out-of-window heights and unread cells stay unknown, not air.
+- `draft_edit {name, operations:[...], notes?}`: up to 64 operations and 500,000 visited cells per atomic batch.
+  `box` takes `min,max,block,mode?` (`solid`, or `outline` for all six boundary faces).
+  Air boxes make openings; `erase {min,max}` removes planned intent and exposes the original site.
+  `repeat {min,max,step:[dx,dy,dz],count}` makes 1..32 translated copies of **planned cells**, not terrain;
+  `mirror {min,max,axis:"x"|"y"|"z",about:n}` copies planned cells across the local integer plane n.
+  Each copy operation freezes its source before writing; unspecified cells do not erase destinations.
+  Later operations win. Every source/destination must be inside the crop: errors reject the entire batch,
+  never clip it. Optional `notes` replaces separate design prose (8,000 characters), not an action plan.
+- `draft_view {name,view?,at?,page?}`: `summary` by default; `plan` is a horizontal cut at local y;
+  `section_x`/`section_z` are separate vertical cuts at local x/z. Rows descend; columns ascend along the
+  named axis. Two-character symbols name registry blocks through `view:"legend"`; `??` is unknown and
+  `..` is air. `view:"notes"` reads design prose. Long outputs give stable numbered pages; repeat the
+  exact page after a long event tail if it leaves too little room. No rows are silently dropped.
+- `draft_compare {name,fresh?:false,view?:"materials"|"excavation"|"conflicts",page?}` compares planned
+  cells to the original site. `fresh:true` instead takes a new read-only as-built survey, refuses a
+  dimension mismatch (including a transition during the survey), and never overwrites the baseline.
+  Counts distinguish observed matches, unknown cells, known excavation and occupied replacement
+  conflicts. Material quantities are block placements, with uncertain quantities on unknown terrain
+  separate; they are **not item costs, drops, recipes, ownership/protection checks or structural advice**.
+- `draft_preview {name,facing?:"north"|"east"|"south"|"west"}` returns the helper's schematic PNG.
+  Facing is looking in that direction from an elevated outside view, not the client's yaw.
+  `draft_copy {name,to}` retains the exact original survey/frame. `draft_list {page?}` lists saved names.
+
+This is a registry-block schematic, not Minecraft simulation: no block states, stairs/slab orientation,
+water flow, lighting, gravity, redstone, entities, inventory use or buildability is simulated. Unrecognized
+but syntactically valid registry IDs are not proof that the installed pack contains that block.
+Conflicts mean occupied replacement cells, not a claim that natural terrain or another player's build
+is safe to remove. Text symbols support up to 1,296 distinct non-air IDs; excess palettes are refused
+explicitly for text cuts/legend (comparison and PNG remain available). Old surveys can be stale.
+
+Files use schema-checked versioned JSON, mode-600 synced temporary writes and atomic rename.
+A fail-fast `.write-lock` serializes edits across toolserver processes; corrupt data is never reset.
+After a crash, an operator must verify no writer remains before removing a stale lock. Preserve this
+directory with resident backups; archive unwanted draft files manually rather than expecting eviction.
+
+Example: a ridge hall shell, doorway and repeated posts, with an alternative:
+
+```json
+{"tool":"draft_create","args":{"name":"ridge-a","origin":[100,70,100],"min":[-4,-2,-4],"max":[4,8,4],"notes":"Fit the ridge; keep a useful sheltered passage and a distinctive roofline."}}
+{"tool":"draft_edit","args":{"name":"ridge-a","operations":[{"op":"box","min":[-3,0,-3],"max":[3,4,3],"block":"stone_bricks","mode":"outline"},{"op":"box","min":[-1,1,-3],"max":[1,3,-3],"block":"air"},{"op":"box","min":[-3,0,-3],"max":[-3,5,-3],"block":"oak_log"},{"op":"repeat","min":[-3,0,-3],"max":[-3,5,-3],"step":[3,0,0],"count":2}]}}
+{"tool":"draft_copy","args":{"name":"ridge-a","to":"ridge-b"}}
+{"tool":"draft_view","args":{"name":"ridge-a","view":"plan","at":1}}
+{"tool":"draft_view","args":{"name":"ridge-a","view":"section_z","at":0}}
+{"tool":"draft_view","args":{"name":"ridge-a","view":"legend"}}
+{"tool":"draft_compare","args":{"name":"ridge-a","view":"conflicts"}}
+{"tool":"draft_compare","args":{"name":"ridge-a","fresh":true}}
+{"tool":"draft_preview","args":{"name":"ridge-a","facing":"north"}}
+```
+
+Integration smoke, **only against an authorized disposable client**, no model and no world mutation.
+Set the usual `SYNAPSE_URL`, `SYNAPSE_TOKEN_FILE`, `CLIENT_LOG`, `RESIDENT_NAME` environment as for
+`scripts/call.ts`; choose a world origin near its current position and a fresh scratch `RESIDENT_DIR`.
+The concrete coordinates below are an example, not an instruction to relocate a client:
+
+```sh
+cd full-client/toolserver
+RESIDENT_DIR="$(mktemp -d)" bun scripts/call.ts \
+  draft_create '{"name":"smoke-a","origin":[100,70,100],"min":[-4,-2,-4],"max":[4,8,4]}' \
+  draft_edit '{"name":"smoke-a","operations":[{"op":"box","min":[-2,0,-2],"max":[2,3,2],"block":"stone_bricks","mode":"outline"},{"op":"box","min":[0,1,-2],"max":[0,2,-2],"block":"air"}]}' \
+  draft_copy '{"name":"smoke-a","to":"smoke-b"}' \
+  draft_view '{"name":"smoke-a","view":"plan","at":1}' \
+  draft_view '{"name":"smoke-a","view":"section_z","at":0}' \
+  draft_compare '{"name":"smoke-a","fresh":true}' \
+  draft_preview '{"name":"smoke-a","facing":"north"}' \
+  draft_list '{}'
+```
+
+`call.ts` prints `[image content]` for the PNG; a real MCP image-capable client displays it.
+Selected integration-owner checks: `bun test test/drafting.test.ts test/draft-site.test.ts`,
+then `bun run typecheck` (use the repository's host-memory guard where required).
 
 Not registered: `src/wiki.ts` is a newer-version vanilla wiki prototype, not the active reference interface. `guide` supplies version-scoped starter references and body-control translations instead; it is not an unrestricted web browser or an exhaustive encyclopedia.
 

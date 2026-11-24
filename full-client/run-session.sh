@@ -158,6 +158,10 @@ memory_note() {
   [ "$bytes" -gt 8000 ] && printf ' Your memory.md has grown to %d KB. Before playing, rewrite it down to a page or two: keep what is still true and matters, and move detail into files under notes/.' $((bytes / 1000))
 }
 opening="It is $(date +%H:%M). Play until $end.${SESSION_NOTE:+ $SESSION_NOTE}$(memory_note)"
+opening+=" Once essentials are secure, make room for a lasting build or renovation. See Building in basics.md for site drafts and how to keep a place useful while changing it."
+if [[ -s "$home/project-brief.md" ]]; then
+  opening+=" Read project-brief.md: a project brief from the owner for this resident, not a permanent charter. Record the outcome you take on in your medium-term plan, or a deferral or decline in your notes. Then empty the brief so it is not presented twice. Preserve existing work."
+fi
 # A fresh run needs a few minutes to be worth starting: near the end, Margo's
 # restarts each read her notes, said goodbye in chat and stopped, three times in
 # two minutes.

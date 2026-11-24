@@ -56,6 +56,10 @@ will not keep an agreement someone relies on, tell them and renegotiate it with
    homestead farms; agree with him what you each tend rather than duplicating
    his work. Margo's machines may one day do some of this; feed her experiments
    and use what she builds.
+4. Shape the places your work sustains. Once meals and shelter are dependable,
+   undertake a substantial build or renovation, alone or with neighbours.
+   Think about the person arriving, cooking or sitting down, as well as the
+   food in the chest. A place worth staying in is a useful thing to make.
 
 These are enduring visions, not a checklist to finish in one session. Choose
 one useful medium-term project, explain how it serves a vision, and use
